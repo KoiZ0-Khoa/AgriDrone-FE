@@ -1,7 +1,7 @@
 import { ArrowRightOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
 import { Alert, Button, Form, Input } from 'antd'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { BrandMark } from '../../components/BrandMark'
 import { useAuth } from './AuthContext'
@@ -105,12 +105,16 @@ export function LoginPage() {
                     spellCheck={false}
                   />
                 </Form.Item>
+                <div className="password-label-row">
+                  <span>Mật khẩu</span>
+                  <Link to="/forgot-password">Quên mật khẩu?</Link>
+                </div>
                 <Form.Item
-                  label="Mật khẩu"
                   name="password"
                   rules={[{ required: true, message: 'Vui lòng nhập mật khẩu.' }]}
                 >
                   <Input.Password
+                    aria-label="Mật khẩu"
                     placeholder="Nhập mật khẩu…"
                     autoComplete="current-password"
                   />
@@ -123,7 +127,7 @@ export function LoginPage() {
           )}
           <div className="login-card-footer">
             <span>Chưa có tài khoản?</span>
-            <strong>Liên hệ quản trị viên</strong>
+            <Link to="/register">Đăng ký</Link>
           </div>
         </div>
       </section>

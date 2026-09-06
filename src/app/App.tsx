@@ -9,6 +9,15 @@ import { ProtectedRoute } from '../features/auth/ProtectedRoute'
 const LoginPage = lazy(() =>
   import('../features/auth/LoginPage').then((module) => ({ default: module.LoginPage })),
 )
+const RegisterPage = lazy(() =>
+  import('../features/auth/AuthActionPages').then((module) => ({ default: module.RegisterPage })),
+)
+const ForgotPasswordPage = lazy(() =>
+  import('../features/auth/AuthActionPages').then((module) => ({ default: module.ForgotPasswordPage })),
+)
+const ResetPasswordPage = lazy(() =>
+  import('../features/auth/AuthActionPages').then((module) => ({ default: module.ResetPasswordPage })),
+)
 const AppLayout = lazy(() =>
   import('../layouts/AppLayout').then((module) => ({ default: module.AppLayout })),
 )
@@ -59,6 +68,9 @@ export function App() {
               <Suspense fallback={<div className="route-loading">Đang tải giao diện…</div>}>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
                   <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
                       <Route index element={<Navigate to="/dashboard" replace />} />

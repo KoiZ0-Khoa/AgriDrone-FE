@@ -116,6 +116,9 @@ a { color: inherit; }
 .login-card .ant-alert { margin-bottom: 20px; border-radius: 4px; }
 .login-card .ant-form-item { margin-bottom: 24px; }
 .login-card .ant-form-item-label > label { color: #66686d; font-size: 15px; font-weight: 400; }
+.password-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: #66686d; font-size: 15px; }
+.password-label-row a { color: #5d6065; text-decoration: underline; text-underline-offset: 3px; }
+.password-label-row a:hover { color: var(--mint); }
 .login-card .ant-input-affix-wrapper {
   min-height: 58px;
   padding-inline: 16px;
@@ -150,7 +153,26 @@ a { color: inherit; }
   border-top: 1px solid var(--cloud);
   font-size: 14px;
 }
-.login-card-footer strong { color: var(--ink); font-weight: 500; }
+.login-card-footer a { color: var(--ink); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.login-card-footer a:hover { color: var(--mint); }
+.auth-action-card.is-wide { width: min(100%, 760px); }
+.login-main.has-wide-card .login-brand { margin-bottom: 48px; }
+.auth-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.auth-grid-full { grid-column: 1 / -1; }
+.auth-success { display: grid; gap: 18px; }
+.auth-primary-link {
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: var(--ink);
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.auth-primary-link:hover { color: #fff; background: #252628; }
 .tenant-options { display: grid; gap: 10px; }
 .tenant-option {
   display: flex;
@@ -401,6 +423,8 @@ a { color: inherit; }
   .login-card { padding: 34px 24px; border-radius: 16px; }
   .form-heading h1 { font-size: 28px; }
   .login-card-footer { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .auth-form-grid { grid-template-columns: 1fr; }
+  .auth-grid-full { grid-column: auto; }
   .page-container { width: calc(100% - 32px); padding: 44px 0 64px; }
   .dashboard-intro { align-items: flex-start; flex-direction: column; }
   .dashboard-intro h1 { font-size: 34px; }

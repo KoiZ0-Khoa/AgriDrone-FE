@@ -30,6 +30,29 @@ export type LoginUserResponse = {
 
 export type LoginCredentials = { email: string; password: string }
 
+export type RegisterUserRequest = {
+  email: string
+  password: string
+  fullName: string
+  phone: string
+  tenantCode: string
+  tenantName: string
+}
+
+export type RegisterUserResponse = {
+  id: string
+  email: string
+  fullName: string
+  phone: string | null
+  tenantCode: string
+  tenantName: string
+  createdAt: string
+}
+
+export type ForgotPasswordResponse = { message: string }
+export type ResetPasswordRequest = { token: string; newPassword: string; confirmPassword: string }
+export type ResetPasswordResponse = { message: string }
+
 export type AuthSession = {
   email: string
   fullName: string
