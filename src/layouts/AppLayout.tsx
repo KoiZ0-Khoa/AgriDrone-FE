@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
 import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
 
@@ -27,8 +27,6 @@ const roleLabels = {
 }
 
 const plannedNavigation = [
-  { label: 'Nông trại', icon: <HomeOutlined aria-hidden="true" /> },
-  { label: 'Khu vực', icon: <EnvironmentOutlined aria-hidden="true" /> },
   { label: 'Bản đồ', icon: <GlobalOutlined aria-hidden="true" /> },
   { label: 'Cây trồng', icon: <DeploymentUnitOutlined aria-hidden="true" /> },
   { label: 'Nhiệm vụ bay', icon: <RocketOutlined aria-hidden="true" /> },
@@ -37,9 +35,21 @@ const plannedNavigation = [
   { label: 'Phân tích', icon: <BarChartOutlined aria-hidden="true" /> },
 ]
 
+const activeNavigation = [
+  { to: '/farms', label: 'Nông trại', icon: <HomeOutlined aria-hidden="true" /> },
+  { to: '/zones', label: 'Khu vực', icon: <EnvironmentOutlined aria-hidden="true" /> },
+]
+
+function getPageTitle(pathname: string) {
+  if (pathname.startsWith('/farms')) return 'Nông trại'
+  if (pathname.startsWith('/zones')) return 'Khu vực'
+  return 'Tổng quan'
+}
+
 export function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const { session, logout } = useAuth()
+  const { pathname } = useLocation()
 
   if (!session) return null
 
@@ -73,6 +83,12 @@ export function AppLayout() {
             <DashboardOutlined aria-hidden="true" />
             <span>Tổng quan</span>
           </NavLink>
+          {activeNavigation.map((item) => (
+            <NavLink to={item.to} onClick={() => setMenuOpen(false)} key={item.to}>
+              {item.icon}
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
           {plannedNavigation.map((item) => (
             <span className="sidebar-navigation-item is-disabled" aria-disabled="true" title="Chưa triển khai" key={item.label}>
               {item.icon}
@@ -101,7 +117,7 @@ export function AppLayout() {
 
       <div className="app-main-column">
         <header className="app-topbar">
-          <strong>Tổng quan</strong>
+          <strong>{getPageTitle(pathname)}</strong>
           <div className="topbar-scope">
             <span>Phạm vi hiện tại</span>
             <strong>{session.tenant?.name ?? 'Toàn hệ thống'}</strong>

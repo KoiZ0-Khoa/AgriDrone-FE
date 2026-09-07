@@ -24,6 +24,15 @@ const AppLayout = lazy(() =>
 const DashboardPage = lazy(() =>
   import('../pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
 )
+const FarmsPage = lazy(() =>
+  import('../features/farms/FarmsPage').then((module) => ({ default: module.FarmsPage })),
+)
+const FarmDetailPage = lazy(() =>
+  import('../features/farms/FarmsPage').then((module) => ({ default: module.FarmDetailPage })),
+)
+const ZonesPage = lazy(() =>
+  import('../features/farms/ZonesPage').then((module) => ({ default: module.ZonesPage })),
+)
 const NotFoundPage = lazy(() =>
   import('../pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })),
 )
@@ -75,6 +84,9 @@ export function App() {
                     <Route element={<AppLayout />}>
                       <Route index element={<Navigate to="/dashboard" replace />} />
                       <Route path="/dashboard" element={<DashboardPage />} />
+                      <Route path="/farms" element={<FarmsPage />} />
+                      <Route path="/farms/:farmId" element={<FarmDetailPage />} />
+                      <Route path="/zones" element={<ZonesPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<NotFoundPage />} />
