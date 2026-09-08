@@ -53,23 +53,20 @@ a { color: inherit; }
 .brand-symbol {
   display: grid;
   place-items: center;
-  width: 40px;
+  width: 60px;
   height: 40px;
-  color: var(--mint);
-  background: var(--mint-soft);
-  border-radius: 4px;
+  flex-shrink: 0;
+  mix-blend-mode: multiply;
 }
-.brand-symbol svg {
-  width: 28px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.brand-symbol img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
-.brand-symbol .brand-leaf { fill: var(--mint); stroke: none; }
+.brand-agri { color: #104f39; }
 .brand-copy { display: flex; flex-direction: column; line-height: 1; }
-.brand-copy strong { font-size: 18px; font-weight: 600; letter-spacing: -.45px; }
+.brand-copy strong { font-size: 20px; font-weight: 700; letter-spacing: -.7px; white-space: nowrap; color: #5c9e26; }
 .brand-copy small { margin-top: 6px; color: #777b82; font-size: 8px; font-weight: 600; letter-spacing: 1.25px; }
 
 /* Login — intentionally quiet, like Mintlify's authentication surface. */
@@ -85,8 +82,8 @@ a { color: inherit; }
   padding: 42px 24px 64px;
 }
 .login-brand { margin-bottom: clamp(72px, 14vh, 180px); }
-.login-brand .brand-symbol { width: 46px; height: 46px; background: #fff; }
-.login-brand .brand-copy strong { font-size: 24px; }
+.login-brand .brand-symbol { width: 84px; height: 56px; }
+.login-brand .brand-copy strong { font-size: 28px; }
 .login-brand .brand-copy small { font-size: 9px; }
 .login-card {
   width: min(100%, 570px);
@@ -424,6 +421,11 @@ a { color: inherit; }
 .primary-action-link:hover { color: #fff; background: #08774f; }
 .detail-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, .8fr); gap: 18px; }
 .detail-main-panel .resource-panel-heading { margin-bottom: 4px; }
+.farm-assignment-panel { margin-top: 18px; }
+.assignment-select-label { display: block; margin-bottom: 8px; font-size: 14px; }
+.assignment-user-select { width: 100%; max-width: 640px; }
+.assignment-editor { display: grid; gap: 18px; margin-top: 20px; }
+.assignment-help { margin: 14px 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .detail-list { margin: 0; }
 .detail-list > div { display: grid; grid-template-columns: minmax(120px, .6fr) 1fr; gap: 20px; padding: 16px 0; border-bottom: 1px solid var(--mist); }
 .detail-list > div:last-child { border-bottom: 0; }
@@ -528,7 +530,7 @@ a { color: inherit; }
     backdrop-filter: blur(10px);
   }
   .mobile-menu-button { display: grid; width: 38px; height: 38px; place-items: center; color: var(--ink); background: #fff; border: 1px solid var(--cloud); border-radius: 4px; cursor: pointer; }
-  .mobile-header .brand-symbol { width: 34px; height: 34px; }
+  .mobile-header .brand-symbol { width: 51px; height: 34px; }
   .mobile-header .brand-copy small { display: none; }
   .app-content { min-height: calc(100vh - 68px); }
   .dashboard-lower-grid { grid-template-columns: 1fr; }

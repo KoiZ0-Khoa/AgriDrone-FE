@@ -12,6 +12,7 @@ import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { createFarm, getFarm, getFarms } from './farmsApi'
+import { FarmAssignmentPanel } from './FarmAssignmentPanel'
 import type { CreateFarmRequest, Farm, GeneralStatus } from './types'
 
 type FarmFormValues = {
@@ -259,6 +260,9 @@ export function FarmDetailPage() {
           <p>{farm.boundary ? `Đã lưu ${farm.boundary.coordinates[0]?.length ?? 0} điểm ranh giới.` : 'Chưa thiết lập polygon ranh giới.'}</p>
         </aside>
       </div>
+      {session?.tenant && (session.role === 'OWNER' || session.role === 'TENANT_ADMIN') && (farm.status === 0 || farm.status === 'Active') ? (
+        <FarmAssignmentPanel key={`${session.tenant.id}:${farm.id}:${session.accessToken}`} farmId={farm.id} session={session} />
+      ) : null}
     </>
   )
 }

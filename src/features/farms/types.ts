@@ -65,3 +65,32 @@ export type CreateZoneRequest = {
   boundary: GeoJsonPolygon | null
   areaHectares: number | null
 }
+
+export type TenantUser = {
+  id: string
+  email: string
+  fullName: string
+  status: 0 | 1 | 2
+  role: 0 | 1 | 2
+}
+
+export type FarmAssignment = {
+  farmMembershipId: string
+  tenantId: string
+  farmId: string
+  userId: string
+  role: 'MANAGER' | 'WORKER'
+  accessScope: 'ALL_ZONES' | 'SELECTED_ZONES'
+  zoneIds: string[]
+  status: 'ACTIVE' | 'INACTIVE'
+  version: number
+  joinedAt: string
+}
+
+export type AssignFarmMemberRequest = {
+  role: 'MANAGER'
+  accessScope: 'ALL_ZONES'
+  zoneIds: string[]
+  expectedVersion: number | null
+  reason: string | null
+}
