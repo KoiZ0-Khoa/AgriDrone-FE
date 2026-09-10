@@ -4,6 +4,10 @@ import type {
   CreateFarmResponse,
   CreateZoneRequest,
   Farm,
+  FarmDetail,
+  ArchiveRequest,
+  UpdateZoneRequest,
+  UpdateZoneResponse,
   PagedResult,
   Zone,
 } from './types'
@@ -18,7 +22,7 @@ export function getFarms(token: string, pageNumber = 1, pageSize = 20) {
 }
 
 export function getFarm(token: string, farmId: string) {
-  return apiRequest<Farm>(`/api/farms/${encodeURIComponent(farmId)}`, { token })
+  return apiRequest<FarmDetail>(`/api/farms/${encodeURIComponent(farmId)}`, { token })
 }
 
 export function createFarm(token: string, request: CreateFarmRequest) {
@@ -46,4 +50,16 @@ export function createZone(token: string, farmId: string, request: CreateZoneReq
     token,
     body: request,
   })
+}
+
+export function updateZone(token: string, farmId: string, zoneId: string, body: UpdateZoneRequest) {
+  return apiRequest<UpdateZoneResponse>(`/api/farms/${encodeURIComponent(farmId)}/zones/${encodeURIComponent(zoneId)}`, { method: 'PUT', token, body })
+}
+
+export function archiveZone(token: string, farmId: string, zoneId: string, body: ArchiveRequest) {
+  return apiRequest<void>(`/api/farms/${encodeURIComponent(farmId)}/zones/${encodeURIComponent(zoneId)}/archive`, { method: 'PUT', token, body })
+}
+
+export function archiveFarm(token: string, farmId: string, body: ArchiveRequest) {
+  return apiRequest<void>(`/api/farms/${encodeURIComponent(farmId)}/archive`, { method: 'PUT', token, body })
 }

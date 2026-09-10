@@ -13,6 +13,7 @@ import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { createZone, getFarm, getFarms, getZone, getZones } from './farmsApi'
 import type { CreateZoneRequest, GeneralStatus, Zone } from './types'
+import { FarmManagementActions } from './FarmManagementActions'
 
 type ZoneFormValues = {
   code: string
@@ -88,6 +89,7 @@ export function ZonesPage() {
   })
 
   function chooseFarm(farmId: string) {
+    setSelectedZoneId('')
     setSearchParams({ farmId })
   }
 
@@ -240,6 +242,7 @@ export function ZonesPage() {
               <div><dt>Ranh giới</dt><dd>{zoneQuery.data.boundary ? 'Đã thiết lập' : 'Chưa thiết lập'}</dd></div>
               <div><dt>Cập nhật</dt><dd>{zoneQuery.data.updatedAt ? new Date(zoneQuery.data.updatedAt).toLocaleString('vi-VN') : 'Chưa cập nhật'}</dd></div>
             </dl>
+            <FarmManagementActions key={`${selectedFarmId}:${zoneQuery.data.zoneId}`} farmId={selectedFarmId} name={zoneQuery.data.name} version={zoneQuery.data.version} zone={zoneQuery.data} onArchived={() => setSelectedZoneId('')} />
           </div>
         ) : null}
       </Drawer>

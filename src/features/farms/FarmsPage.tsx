@@ -7,12 +7,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App as AntApp, Button, Form, Input, InputNumber, Modal, Pagination, Tag } from 'antd'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { createFarm, getFarm, getFarms } from './farmsApi'
 import { FarmAssignmentPanel } from './FarmAssignmentPanel'
+import { FarmManagementActions } from './FarmManagementActions'
 import type { CreateFarmRequest, Farm, GeneralStatus } from './types'
 
 type FarmFormValues = {
@@ -210,6 +211,7 @@ export function FarmsPage() {
 }
 
 export function FarmDetailPage() {
+  const navigate = useNavigate()
   const { farmId = '' } = useParams()
   const { session } = useAuth()
   const farmQuery = useQuery({
@@ -263,6 +265,7 @@ export function FarmDetailPage() {
       {session?.tenant && (session.role === 'OWNER' || session.role === 'TENANT_ADMIN') && (farm.status === 0 || farm.status === 'Active') ? (
         <FarmAssignmentPanel key={`${session.tenant.id}:${farm.id}:${session.accessToken}`} farmId={farm.id} session={session} />
       ) : null}
+      {session?.role === 'OWNER' ? <FarmManagementActions key={farm.id} farmId={farm.id} name={farm.name} version={farm.version} onArchived={() => navigate('/farms', { replace: true })} /> : null}
     </>
   )
 }

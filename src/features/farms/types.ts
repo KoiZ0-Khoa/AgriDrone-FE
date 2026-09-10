@@ -34,6 +34,11 @@ export type PagedResult<T> = {
   hasNextPage: boolean
 }
 
+export type FarmDetail = Farm & { version: number; updatedAt: string | null }
+export type ArchiveRequest = { expectedVersion: number; reason: string }
+export type UpdateZoneRequest = { name: string; areaHectares: number | null; boundary: GeoJsonPolygon | null; expectedVersion: number }
+export type UpdateZoneResponse = Omit<Zone, 'createdAt' | 'createdBy'> & { updatedAt: string }
+
 export type CreateFarmRequest = {
   code: string
   name: string
