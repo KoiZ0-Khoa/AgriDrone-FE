@@ -14,6 +14,7 @@ import { useAuth } from '../auth/AuthContext'
 import { createFarm, getFarm, getFarms } from './farmsApi'
 import { FarmAssignmentPanel } from './FarmAssignmentPanel'
 import { FarmManagementActions } from './FarmManagementActions'
+import { FarmEditButton } from '../../management/FarmEditButton'
 import type { CreateFarmRequest, Farm, GeneralStatus } from './types'
 
 type FarmFormValues = {
@@ -244,6 +245,7 @@ export function FarmDetailPage() {
         </Link>
       </section>
 
+      <FarmEditButton farm={farm} />
       <div className="detail-layout">
         <section className="resource-panel detail-main-panel">
           <div className="resource-panel-heading"><div><strong>Thông tin nông trại</strong><span>Dữ liệu chính thức từ backend</span></div></div>

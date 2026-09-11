@@ -128,6 +128,7 @@ export function LoginPage() {
           <div className="login-card-footer">
             <span>Chưa có tài khoản?</span>
             <Link to="/register">Đăng ký</Link>
+            <Link to="/invitation">Có lời mời?</Link>
           </div>
         </div>
       </section>

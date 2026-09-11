@@ -36,6 +36,10 @@ const ZonesPage = lazy(() =>
 const NotFoundPage = lazy(() =>
   import('../pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })),
 )
+const AccountPage = lazy(() => import('../management/AccountPage').then(m => ({ default: m.AccountPage })))
+const TeamPage = lazy(() => import('../management/TeamPage').then(m => ({ default: m.TeamPage })))
+const SystemPage = lazy(() => import('../management/SystemPage').then(m => ({ default: m.SystemPage })))
+const InvitationPage = lazy(() => import('../management/InvitationPage').then(m => ({ default: m.InvitationPage })))
 
 export function App() {
   const [queryClient] = useState(
@@ -80,6 +84,8 @@ export function App() {
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
+                  <Route path="/invitation" element={<InvitationPage />} />
+                  <Route path="/accept-invitation" element={<InvitationPage />} />
                   <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
                       <Route index element={<Navigate to="/dashboard" replace />} />
@@ -87,6 +93,9 @@ export function App() {
                       <Route path="/farms" element={<FarmsPage />} />
                       <Route path="/farms/:farmId" element={<FarmDetailPage />} />
                       <Route path="/zones" element={<ZonesPage />} />
+                      <Route path="/account" element={<AccountPage />} />
+                      <Route path="/team" element={<TeamPage />} />
+                      <Route path="/system" element={<SystemPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<NotFoundPage />} />

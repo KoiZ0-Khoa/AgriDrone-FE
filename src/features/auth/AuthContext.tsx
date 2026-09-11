@@ -2,6 +2,7 @@ import { createContext, use, useState, type ReactNode } from 'react'
 import { loginUser, selectTenant as selectTenantRequest } from './authApi'
 import { clearAuthSession, loadAuthSession, saveAuthSession, toAuthSession } from './authStorage'
 import type { AuthSession, LoginCredentials, TenantSelectionResponse } from './types'
+import { useQueryClient } from '@tanstack/react-query'
 
 type LoginOutcome = 'authenticated' | 'tenant-selection-required'
 
@@ -11,11 +12,13 @@ type AuthContextValue = {
   login: (credentials: LoginCredentials) => Promise<LoginOutcome>
   selectTenant: (tenantId: string) => Promise<void>
   logout: () => void
+  updateProfile: (profile: { fullName: string; phone: string | null }) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient()
   const [session, setSession] = useState<AuthSession | null>(loadAuthSession)
   const [tenantSelection, setTenantSelection] = useState<TenantSelectionResponse | null>(null)
 
@@ -24,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const nextSession = toAuthSession(response)
 
     if (nextSession) {
+      queryClient.clear()
       saveAuthSession(nextSession)
       setSession(nextSession)
       setTenantSelection(null)
@@ -46,18 +50,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!nextSession) throw new Error('Không thể tạo phiên làm việc cho tenant đã chọn.')
 
     saveAuthSession(nextSession)
+    queryClient.clear()
     setSession(nextSession)
     setTenantSelection(null)
   }
 
   function logout() {
+    void queryClient.cancelQueries()
+    queryClient.clear()
     clearAuthSession()
     setSession(null)
     setTenantSelection(null)
   }
 
+  function updateProfile(profile: { fullName: string; phone: string | null }) {
+    if (!session) return
+    const next = { ...session, ...profile }
+    saveAuthSession(next)
+    setSession(next)
+  }
+
   return (
-    <AuthContext value={{ session, tenantSelection, login, selectTenant, logout }}>
+    <AuthContext value={{ session, tenantSelection, login, selectTenant, logout, updateProfile }}>
       {children}
     </AuthContext>
   )
