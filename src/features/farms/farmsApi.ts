@@ -5,6 +5,7 @@ import type {
   CreateZoneRequest,
   Farm,
   FarmDetail,
+  ArchivedFarm,
   ArchiveRequest,
   UpdateZoneRequest,
   UpdateZoneResponse,
@@ -23,6 +24,19 @@ export function getFarms(token: string, pageNumber = 1, pageSize = 20) {
 
 export function getFarm(token: string, farmId: string) {
   return apiRequest<FarmDetail>(`/api/farms/${encodeURIComponent(farmId)}`, { token })
+}
+
+export function getArchivedFarms(token: string, pageNumber = 1, signal?: AbortSignal) {
+  const params = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: '20' })
+  return apiRequest<PagedResult<ArchivedFarm>>(`/api/farms/archived?${params}`, { token, signal })
+}
+
+export function getArchivedFarm(token: string, farmId: string, signal?: AbortSignal) {
+  return apiRequest<ArchivedFarm>(`/api/farms/${encodeURIComponent(farmId)}/archived`, { token, signal })
+}
+
+export function restoreFarm(token: string, farmId: string, body: { expectedVersion: number }) {
+  return apiRequest<void>(`/api/farms/${encodeURIComponent(farmId)}/restore`, { method: 'PUT', token, body })
 }
 
 export function createFarm(token: string, request: CreateFarmRequest) {

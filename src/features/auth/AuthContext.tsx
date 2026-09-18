@@ -3,6 +3,7 @@ import { loginUser, selectTenant as selectTenantRequest } from './authApi'
 import { clearAuthSession, loadAuthSession, saveAuthSession, toAuthSession } from './authStorage'
 import type { AuthSession, LoginCredentials, TenantSelectionResponse } from './types'
 import { useQueryClient } from '@tanstack/react-query'
+import { assertTenantSelectionFresh } from './authErrors'
 
 type LoginOutcome = 'authenticated' | 'tenant-selection-required'
 
@@ -41,9 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function selectTenant(tenantId: string) {
-    if (!tenantSelection) {
-      throw new Error('Phiên chọn tenant đã hết hạn. Vui lòng đăng nhập lại.')
-    }
+    assertTenantSelectionFresh(tenantSelection)
 
     const response = await selectTenantRequest(tenantSelection.selectionToken, tenantId)
     const nextSession = toAuthSession(response)

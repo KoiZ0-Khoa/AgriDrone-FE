@@ -4,37 +4,38 @@ import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import type { AuthSession } from '../auth/types'
-import { assignFarmMember, getFarmAssignment, getTenantAdmins } from './farmAssignmentsApi'
-import type { AssignFarmMemberRequest, TenantUser } from './types'
+import { assignFarmMember, getFarmAssignment, getAssignableUsers } from './farmAssignmentsApi'
+import { getZones } from './farmsApi'
+import type { AssignFarmMemberRequest, FarmAssignment, TenantUser, Zone } from './types'
 
 export function FarmAssignmentPanel({ farmId, session }: { farmId: string; session: AuthSession }) {
   const [userId, setUserId] = useState<string>()
   const adminsQuery = useQuery({
-    queryKey: ['tenant-admins', session.tenant!.id, session.accessToken],
-    queryFn: ({ signal }) => getTenantAdmins(session.accessToken, signal),
+    queryKey: ['assignable-users', session.tenant!.id, session.role],
+    queryFn: ({ signal }) => getAssignableUsers(session.accessToken, session.role, signal),
   })
   const selectedUser = adminsQuery.data?.find((user) => user.id === userId)
 
   return (
-    <section className="resource-panel farm-assignment-panel" aria-label="Phân công quản lý nông trại">
+    <section className="resource-panel farm-assignment-panel" aria-label="Phân công thành viên">
       <div className="resource-panel-heading">
         <div>
-          <strong>Phân công quản lý nông trại</strong>
-          <span>Gán quản trị viên tenant quản lý tất cả khu vực trong nông trại này.</span>
+          <strong>Phân công thành viên</strong>
+          <span>Chọn thành viên đã tham gia đơn vị, vai trò và khu vực làm việc.</span>
         </div>
       </div>
-      {adminsQuery.isPending ? <CommonState type="loading" title="Đang tải quản trị viên" /> : null}
+      {adminsQuery.isPending ? <CommonState type="loading" title="Đang tải thành viên" /> : null}
       {adminsQuery.isError ? (
         adminsQuery.error instanceof ApiError && adminsQuery.error.status === 403
           ? <CommonState type="forbidden" />
           : <CommonState type="error" description={adminsQuery.error.message} retry={() => adminsQuery.refetch()} />
       ) : null}
       {adminsQuery.isSuccess && adminsQuery.data.length === 0 ? (
-        <CommonState type="empty" title="Chưa có quản trị viên phù hợp" description="Tenant cần có quản trị viên đang hoạt động để phân công quản lý nông trại." />
+        <CommonState type="empty" title="Chưa có thành viên phù hợp" description="Mời thành viên vào đơn vị và chờ họ chấp nhận trước khi phân công. Chỉ Owner được phân công cho quản trị viên." />
       ) : null}
       {adminsQuery.isSuccess && adminsQuery.data.length > 0 ? (
         <>
-          <label className="assignment-select-label" htmlFor="farm-assignment-user">Quản trị viên tenant</label>
+          <label className="assignment-select-label" htmlFor="farm-assignment-user">Thành viên đơn vị</label>
           <Select
             id="farm-assignment-user"
             className="assignment-user-select"
@@ -46,7 +47,7 @@ export function FarmAssignmentPanel({ farmId, session }: { farmId: string; sessi
           />
           {selectedUser ? (
             <AssignmentEditor key={selectedUser.id} farmId={farmId} user={selectedUser} session={session} />
-          ) : <p className="assignment-help">Chọn một người để xem phân công hiện tại và cấp quyền quản lý.</p>}
+          ) : <p className="assignment-help">Chọn một người để xem hoặc cập nhật phân công.</p>}
         </>
       ) : null}
     </section>
@@ -54,7 +55,6 @@ export function FarmAssignmentPanel({ farmId, session }: { farmId: string; sessi
 }
 
 function AssignmentEditor({ farmId, user, session }: { farmId: string; user: TenantUser; session: AuthSession }) {
-  const [form] = Form.useForm<{ reason?: string }>()
   const { message } = AntApp.useApp()
   const queryClient = useQueryClient()
   const queryKey = ['farm-assignment', session.tenant!.id, farmId, user.id, session.accessToken]
@@ -63,18 +63,19 @@ function AssignmentEditor({ farmId, user, session }: { farmId: string; user: Ten
     queryFn: ({ signal }) => getFarmAssignment(session.accessToken, farmId, user.id, signal),
     staleTime: 0,
     retry: false,
+    refetchOnReconnect: false,
   })
+  const zonesQuery = useQuery({ queryKey: ['zones', session.tenant!.id, farmId], queryFn: () => getZones(session.accessToken, farmId) })
   const mutation = useMutation({
     mutationFn: (request: AssignFarmMemberRequest) => assignFarmMember(session.accessToken, farmId, user.id, request),
-    onSuccess: (assignment) => {
+    onSuccess: async (assignment) => {
       queryClient.setQueryData(queryKey, assignment)
-      form.resetFields()
-      message.success(`Đã phân công ${user.fullName} quản lý nông trại`)
+      message.success(`Đã lưu phân công cho ${user.fullName}`)
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['farm-members'] }), queryClient.invalidateQueries({ queryKey: ['my-farm-assignments'] })])
     },
   })
   const assignment = assignmentQuery.data
   const alreadyAssigned = assignment?.status === 'ACTIVE'
-    && assignment.role === 'MANAGER' && assignment.accessScope === 'ALL_ZONES'
   const conflict = mutation.error instanceof ApiError
     && ['FarmMembership.ConcurrentUpdate', 'FarmMembership.ExpectedVersionRequired'].includes(mutation.error.code ?? '')
   const forbidden = mutation.error instanceof ApiError && mutation.error.status === 403
@@ -96,44 +97,39 @@ function AssignmentEditor({ farmId, user, session }: { farmId: string; user: Ten
       <Alert
         type={alreadyAssigned ? 'success' : 'info'}
         showIcon
-        title={alreadyAssigned ? 'Đã được phân công quản lý tất cả khu vực' : assignment ? 'Đã có phân công trong nông trại' : 'Chưa được phân công vào nông trại này'}
+        title={alreadyAssigned ? 'Đang được phân công' : assignment ? 'Phân công đã được thu hồi' : 'Chưa được phân công vào nông trại này'}
         description={assignment
           ? `Vai trò: ${assignment.role === 'MANAGER' ? 'Quản lý' : 'Nhân viên'} · Phạm vi: ${assignment.accessScope === 'ALL_ZONES' ? 'Tất cả khu vực' : `${assignment.zoneIds.length} khu vực được chọn`} · ${assignment.status === 'ACTIVE' ? 'Đang hoạt động' : 'Ngừng hoạt động'}`
-          : 'Sau khi lưu, người này có quyền quản lý tất cả khu vực trong nông trại.'}
+          : 'Chọn vai trò và phạm vi trước khi lưu.'}
       />
       {conflict ? <CommonState type="conflict" reload={reloadAssignment} /> : null}
       {forbidden ? <CommonState type="forbidden" /> : null}
       {mutation.isError && !conflict && !forbidden ? (
         <Alert type="error" showIcon title="Không thể lưu phân công" description={
           mutation.error instanceof ApiError && mutation.error.code === 'FarmMembership.TargetTenantMembershipInactive'
-            ? 'Tư cách thành viên của quản trị viên đã ngừng hoạt động. Hãy chọn người khác.'
+            ? 'Tư cách thành viên đã ngừng hoạt động. Hãy chọn người khác.'
             : mutation.error.message
         } />
       ) : null}
-      {!alreadyAssigned ? (
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(values) => {
-            if (assignmentQuery.isFetching || mutation.isPending || conflict || forbidden) return
-            mutation.mutate({
-              role: 'MANAGER',
-              accessScope: 'ALL_ZONES',
-              zoneIds: [],
-              expectedVersion: assignment?.version ?? null,
-              reason: values.reason?.trim() || null,
-            })
-          }}
-        >
-          <p className="assignment-help">Quyền được cấp: Quản lý nông trại · Tất cả khu vực.</p>
-          <Form.Item label="Lý do phân công (không bắt buộc)" name="reason" rules={[{ max: 500, message: 'Lý do không được vượt quá 500 ký tự.' }]}>
-            <Input.TextArea rows={3} maxLength={500} showCount disabled={mutation.isPending} />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={mutation.isPending} disabled={assignmentQuery.isFetching || conflict || forbidden}>
-            {assignment ? 'Cập nhật phân công' : 'Gán quản lý nông trại'}
-          </Button>
-        </Form>
-      ) : null}
+      {zonesQuery.isPending ? <CommonState type="loading" title="Đang tải khu vực" /> : zonesQuery.isError ? <CommonState type="error" description={zonesQuery.error.message} retry={() => zonesQuery.refetch()} /> : <AssignmentForm key={assignment?.version ?? 'new'} user={user} assignment={assignment ?? null} zones={zonesQuery.data} busy={mutation.isPending} disabled={assignmentQuery.isFetching || conflict || forbidden} submit={body => mutation.mutate(body)} />}
     </div>
   )
+}
+
+function AssignmentForm({ user, assignment, zones, busy, disabled, submit }: { user: TenantUser; assignment: FarmAssignment | null; zones: Zone[]; busy: boolean; disabled: boolean; submit: (body: AssignFarmMemberRequest) => void }) {
+  const [form] = Form.useForm<AssignFarmMemberRequest>()
+  const scope = Form.useWatch('accessScope', form) ?? assignment?.accessScope ?? 'ALL_ZONES'
+  const activeZones = zones.filter(zone => zone.status === 0 || zone.status === 'Active')
+  const tenantAdmin = user.role === 1 || user.role === 'TenantAdmin'
+  return <Form form={form} layout="vertical" disabled={busy || disabled} initialValues={{ role: tenantAdmin ? 'MANAGER' : assignment?.role ?? 'WORKER', accessScope: assignment?.accessScope ?? 'ALL_ZONES', zoneIds: assignment?.zoneIds ?? [] }} onFinish={values => {
+    if (busy || disabled) return
+    submit({ role: tenantAdmin ? 'MANAGER' : values.role, accessScope: values.accessScope, zoneIds: values.accessScope === 'ALL_ZONES' ? [] : values.zoneIds, expectedVersion: assignment?.version ?? null, reason: values.reason?.trim() || null })
+  }}>
+    <Form.Item name="role" label="Vai trò tại nông trại" rules={[{ required: true }]}><Select disabled={busy || disabled || tenantAdmin} options={[{ value: 'MANAGER', label: 'Quản lý' }, { value: 'WORKER', label: 'Nhân viên' }]} /></Form.Item>
+    {tenantAdmin ? <p>Quản trị viên đơn vị chỉ được phân công vai trò Quản lý.</p> : null}
+    <Form.Item name="accessScope" label="Phạm vi làm việc" rules={[{ required: true }]}><Select options={[{ value: 'ALL_ZONES', label: 'Tất cả khu vực' }, { value: 'SELECTED_ZONES', label: 'Chọn khu vực' }]} /></Form.Item>
+    {scope === 'SELECTED_ZONES' ? <Form.Item name="zoneIds" label="Khu vực được giao" rules={[{ validator: (_, ids: string[]) => ids?.length && ids.every(id => activeZones.some(zone => zone.zoneId === id)) ? Promise.resolve() : Promise.reject(new Error('Chọn ít nhất một khu vực đang hoạt động. Bỏ các khu vực không còn khả dụng.')) }]}><Select mode="multiple" placeholder="Chọn khu vực" options={activeZones.map(zone => ({ value: zone.zoneId, label: `${zone.name} · ${zone.code}` }))} /></Form.Item> : null}
+    <Form.Item name="reason" label="Lý do phân công (không bắt buộc)" rules={[{ max: 500 }]}><Input.TextArea rows={3} maxLength={500} showCount /></Form.Item>
+    <Button type="primary" htmlType="submit" loading={busy} disabled={disabled}>{assignment ? 'Cập nhật phân công' : 'Lưu phân công'}</Button>
+  </Form>
 }

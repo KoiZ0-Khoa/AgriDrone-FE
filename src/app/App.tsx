@@ -30,6 +30,8 @@ const FarmsPage = lazy(() =>
 const FarmDetailPage = lazy(() =>
   import('../features/farms/FarmsPage').then((module) => ({ default: module.FarmDetailPage })),
 )
+const ArchivedFarmsPage = lazy(() => import('../features/farms/ArchivedFarmsPage').then(m => ({ default: m.ArchivedFarmsPage })))
+const ArchivedFarmDetailPage = lazy(() => import('../features/farms/ArchivedFarmsPage').then(m => ({ default: m.ArchivedFarmDetailPage })))
 const ZonesPage = lazy(() =>
   import('../features/farms/ZonesPage').then((module) => ({ default: module.ZonesPage })),
 )
@@ -38,6 +40,7 @@ const NotFoundPage = lazy(() =>
 )
 const AccountPage = lazy(() => import('../management/AccountPage').then(m => ({ default: m.AccountPage })))
 const TeamPage = lazy(() => import('../management/TeamPage').then(m => ({ default: m.TeamPage })))
+const MyFarmsPage = lazy(() => import('../management/MyFarmsPage').then(m => ({ default: m.MyFarmsPage })))
 const SystemPage = lazy(() => import('../management/SystemPage').then(m => ({ default: m.SystemPage })))
 const InvitationPage = lazy(() => import('../management/InvitationPage').then(m => ({ default: m.InvitationPage })))
 
@@ -91,10 +94,13 @@ export function App() {
                       <Route index element={<Navigate to="/dashboard" replace />} />
                       <Route path="/dashboard" element={<DashboardPage />} />
                       <Route path="/farms" element={<FarmsPage />} />
+                      <Route path="/farms/archived" element={<ArchivedFarmsPage />} />
+                      <Route path="/farms/archived/:farmId" element={<ArchivedFarmDetailPage />} />
                       <Route path="/farms/:farmId" element={<FarmDetailPage />} />
                       <Route path="/zones" element={<ZonesPage />} />
                       <Route path="/account" element={<AccountPage />} />
                       <Route path="/team" element={<TeamPage />} />
+                      <Route path="/my-farms" element={<MyFarmsPage />} />
                       <Route path="/system" element={<SystemPage />} />
                     </Route>
                   </Route>

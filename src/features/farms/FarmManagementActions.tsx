@@ -40,6 +40,8 @@ export function FarmManagementActions({ farmId, name, version, zone, onArchived 
       message.success(archived ? 'Đã lưu trữ, lịch sử liên quan được giữ lại.' : 'Đã cập nhật khu vực')
       await Promise.all([
         client.invalidateQueries({ queryKey: ['farms', session?.tenant?.id] }),
+        client.invalidateQueries({ queryKey: ['archived-farms', session?.tenant?.id] }),
+        client.invalidateQueries({ queryKey: ['archived-farm', session?.tenant?.id, farmId] }),
         client.invalidateQueries({ queryKey: ['farm', session?.tenant?.id, farmId] }),
         client.invalidateQueries({ queryKey: ['zones', session?.tenant?.id, farmId] }),
         client.invalidateQueries({ queryKey: ['zone', session?.tenant?.id, farmId, zone?.zoneId] }),

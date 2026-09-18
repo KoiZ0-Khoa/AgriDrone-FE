@@ -4,7 +4,7 @@ import { Button, Pagination, Space, Table } from 'antd'
 import { CommonState } from '../components/CommonState'
 import { useAuth } from '../features/auth/AuthContext'
 import * as api from './api'
-import { confirmation, inviteAction, roleLabel, type Action } from './actions'
+import { confirmation, inviteAction, inviteMemberAction, roleLabel, type Action } from './actions'
 import { ActionModal } from './ActionModal'
 
 export function TeamPage() {
@@ -15,7 +15,8 @@ export function TeamPage() {
   const query = useQuery({ queryKey: ['members', session?.tenant?.id, page], queryFn: () => api.getMembers(session!.accessToken, page), enabled: allowed })
   if (!allowed || !session) return <CommonState type="forbidden" />
   const token = session.accessToken
-  return <><section className="resource-page-heading"><div><span className="page-kicker">{session.tenant?.name}</span><h1>Thành viên đơn vị</h1><p>Quản lý vai trò và quyền truy cập của từng thành viên.</p></div>{session.role === 'OWNER' ? <Button type="primary" onClick={() => setAction(inviteAction(token))}>Mời quản trị viên</Button> : null}</section>
+  return <><section className="resource-page-heading"><div><span className="page-kicker">{session.tenant?.name}</span><h1>Thành viên đơn vị</h1><p>Quản lý vai trò và quyền truy cập của từng thành viên.</p></div><Space wrap><Button type="primary" onClick={() => setAction(inviteMemberAction(token))}>Mời thành viên</Button>{session.role === 'OWNER' ? <Button onClick={() => setAction(inviteAction(token))}>Mời quản trị viên</Button> : null}</Space></section>
+    <p>Thành viên nhận lời mời vào đơn vị trước, sau đó được phân công vào nông trại.</p>
     {query.isError ? <CommonState type="error" description={query.error.message} retry={() => query.refetch()} /> : null}
     <Table<api.User> loading={query.isPending} rowKey="id" dataSource={query.data?.items ?? []} pagination={false} scroll={{ x: 700 }} columns={[
       { title: 'Họ và tên', dataIndex: 'fullName' }, { title: 'Email', dataIndex: 'email' }, { title: 'Vai trò', render: (_, user) => roleLabel(user.role) },

@@ -1,11 +1,11 @@
-import { ArrowRightOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
 import { Alert, Button, Form, Input } from 'antd'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { ApiError } from '../../api/client'
 import { BrandMark } from '../../components/BrandMark'
 import { useAuth } from './AuthContext'
 import type { LoginCredentials } from './types'
+import { getAuthErrorMessage, requiresFreshTenantLogin } from './authErrors'
 
 const roleLabels: Record<string | number, string> = {
   0: 'Chủ tenant',
@@ -17,12 +17,6 @@ const roleLabels: Record<string | number, string> = {
   OWNER: 'Chủ tenant',
   TENANT_ADMIN: 'Quản trị tenant',
   MEMBER: 'Thành viên',
-}
-
-function getErrorMessage(error: Error) {
-  if (error instanceof ApiError && error.status === 401) return 'Email hoặc mật khẩu không đúng.'
-  if (error instanceof TypeError) return 'Không kết nối được tới máy chủ. Hãy kiểm tra backend đang chạy.'
-  return error.message || 'Đăng nhập không thành công. Vui lòng thử lại.'
 }
 
 export function LoginPage() {
@@ -57,15 +51,15 @@ export function LoginPage() {
                 <h1 id="login-title">Chọn đơn vị làm việc</h1>
                 <p>Chọn phạm vi bạn muốn sử dụng trong phiên đăng nhập này.</p>
               </div>
-              {tenantMutation.error ? <Alert type="error" showIcon title={getErrorMessage(tenantMutation.error)} /> : null}
+              {tenantMutation.error ? <Alert type="error" showIcon title={getAuthErrorMessage(tenantMutation.error, 'tenant-selection')} /> : null}
               <div className="tenant-options">
                 {auth.tenantSelection.tenants.map((tenant) => (
                   <button
                     className="tenant-option"
                     key={tenant.id}
                     type="button"
-                    disabled={tenantMutation.isPending}
-                    onClick={() => tenantMutation.mutate(tenant.id)}
+                    disabled={tenantMutation.isPending || requiresFreshTenantLogin(tenantMutation.error)}
+                    onClick={() => { if (!tenantMutation.isPending && !requiresFreshTenantLogin(tenantMutation.error)) tenantMutation.mutate(tenant.id) }}
                   >
                     <span className="tenant-avatar">{tenant.name.slice(0, 1).toUpperCase()}</span>
                     <span className="tenant-copy">
@@ -76,6 +70,20 @@ export function LoginPage() {
                   </button>
                 ))}
               </div>
+              <Button
+                icon={<ArrowLeftOutlined />}
+                block
+                style={{ marginTop: 16 }}
+                disabled={tenantMutation.isPending}
+                onClick={() => {
+                  if (tenantMutation.isPending) return
+                  auth.logout()
+                  loginMutation.reset()
+                  tenantMutation.reset()
+                }}
+              >
+                Quay lại đăng nhập
+              </Button>
             </>
           ) : (
             <>
@@ -84,7 +92,7 @@ export function LoginPage() {
                 <h1 id="login-title">Đăng nhập</h1>
                 <p>Nhập thông tin tài khoản AgriDrone của bạn.</p>
               </div>
-              {loginMutation.error ? <Alert type="error" showIcon title={getErrorMessage(loginMutation.error)} /> : null}
+              {loginMutation.error ? <Alert type="error" showIcon title={getAuthErrorMessage(loginMutation.error, 'login')} /> : null}
               <Form<LoginCredentials>
                 layout="vertical"
                 requiredMark={false}

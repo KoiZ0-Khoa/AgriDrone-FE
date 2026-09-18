@@ -14,6 +14,7 @@ import { useAuth } from '../auth/AuthContext'
 import { createZone, getFarm, getFarms, getZone, getZones } from './farmsApi'
 import type { CreateZoneRequest, GeneralStatus, Zone } from './types'
 import { FarmManagementActions } from './FarmManagementActions'
+import { MyFarmsPage } from '../../management/MyFarmsPage'
 
 type ZoneFormValues = {
   code: string
@@ -59,7 +60,7 @@ export function ZonesPage() {
   const farmsQuery = useQuery({
     queryKey: ['farms', session?.tenant?.id, 1],
     queryFn: () => getFarms(session!.accessToken, 1, 20),
-    enabled: Boolean(session?.accessToken && session.tenant),
+    enabled: Boolean(session?.accessToken && session.tenant && session.role !== 'MEMBER'),
   })
   const farmQuery = useQuery({
     queryKey: ['farm', session?.tenant?.id, selectedFarmId],
@@ -112,6 +113,7 @@ export function ZonesPage() {
   }
 
   if (!selectedFarmId) {
+    if (session.role === 'MEMBER') return <MyFarmsPage />
     return (
       <>
         <section className="resource-page-heading">

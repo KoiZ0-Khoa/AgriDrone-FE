@@ -35,6 +35,7 @@ export type PagedResult<T> = {
 }
 
 export type FarmDetail = Farm & { version: number; updatedAt: string | null }
+export type ArchivedFarm = Farm & { version: number; updatedAt: string; archivedAt: string }
 export type ArchiveRequest = { expectedVersion: number; reason: string }
 export type UpdateZoneRequest = { name: string; areaHectares: number | null; boundary: GeoJsonPolygon | null; expectedVersion: number }
 export type UpdateZoneResponse = Omit<Zone, 'createdAt' | 'createdBy'> & { updatedAt: string }
@@ -75,8 +76,8 @@ export type TenantUser = {
   id: string
   email: string
   fullName: string
-  status: 0 | 1 | 2
-  role: 0 | 1 | 2
+  status: 0 | 1 | 2 | 'Active' | 'Inactive' | 'Locked'
+  role: 0 | 1 | 2 | 'Owner' | 'TenantAdmin' | 'Member'
 }
 
 export type FarmAssignment = {
@@ -93,8 +94,8 @@ export type FarmAssignment = {
 }
 
 export type AssignFarmMemberRequest = {
-  role: 'MANAGER'
-  accessScope: 'ALL_ZONES'
+  role: 'MANAGER' | 'WORKER'
+  accessScope: 'ALL_ZONES' | 'SELECTED_ZONES'
   zoneIds: string[]
   expectedVersion: number | null
   reason: string | null

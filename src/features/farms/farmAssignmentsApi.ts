@@ -1,7 +1,7 @@
 import { ApiError, apiRequest } from '../../api/client'
 import type { AssignFarmMemberRequest, FarmAssignment, PagedResult, TenantUser } from './types'
 
-export async function getTenantAdmins(token: string, signal?: AbortSignal) {
+export async function getAssignableUsers(token: string, actorRole: string, signal?: AbortSignal) {
   const admins: TenantUser[] = []
   let pageNumber = 1
   let hasNextPage = true
@@ -11,7 +11,12 @@ export async function getTenantAdmins(token: string, signal?: AbortSignal) {
       `/tenants/current/users?pageNumber=${pageNumber}&pageSize=100`,
       { token, signal },
     )
-    admins.push(...page.items.filter((user) => user.role === 1 && user.status === 0))
+    admins.push(...page.items.filter((user) => {
+      const active = user.status === 0 || user.status === 'Active'
+      const member = user.role === 2 || user.role === 'Member'
+      const tenantAdmin = user.role === 1 || user.role === 'TenantAdmin'
+      return active && (member || (actorRole === 'OWNER' && tenantAdmin))
+    }))
     hasNextPage = page.hasNextPage
     pageNumber++
   }

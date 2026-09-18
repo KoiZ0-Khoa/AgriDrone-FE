@@ -386,19 +386,23 @@ a { color: inherit; }
 }
 .resource-panel-heading > div { display: grid; gap: 4px; }
 .resource-panel-heading strong { color: var(--ink); font-size: 16px; font-weight: 600; }
-.resource-panel-heading span { color: var(--muted); font-size: 12px; }
-.scope-note { padding: 6px 9px; background: var(--mint-soft); border-radius: 4px; }
+.resource-panel-heading > div > span { color: var(--muted); font-size: 12px; }
+.scope-note { padding: 6px 9px; color: var(--muted); background: var(--mint-soft); border-radius: 4px; font-size: 12px; }
 .resource-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .resource-card {
   display: flex;
   min-height: 260px;
   flex-direction: column;
   padding: 20px;
+  color: var(--ink);
   border: 1px solid var(--cloud);
   border-radius: 8px;
+  text-decoration: none;
   transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
 .resource-card:hover { border-color: #b9d9cd; box-shadow: 0 10px 26px rgba(18, 70, 51, .07); transform: translateY(-2px); }
+.resource-card:hover .resource-card-link { color: var(--mint); }
+.resource-card:focus-visible { outline: 3px solid rgba(12, 140, 94, .28); outline-offset: 3px; }
 .resource-card-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 22px; }
 .resource-icon { display: grid; width: 38px; height: 38px; place-items: center; color: var(--mint); background: var(--mint-soft); border-radius: 6px; font-size: 17px; }
 .resource-code { color: var(--mint); font-size: 10px; font-weight: 600; letter-spacing: 1.1px; text-transform: uppercase; }
@@ -409,7 +413,6 @@ a { color: inherit; }
 .resource-meta dt { color: #8a8d91; font-size: 10px; }
 .resource-meta dd { margin: 0; color: var(--ink); font-size: 12px; font-weight: 500; }
 .resource-card-link { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 14px; color: var(--ink); border-top: 1px solid var(--mist); font-size: 12px; font-weight: 500; text-decoration: none; }
-.resource-card-link:hover { color: var(--mint); }
 .resource-panel .ant-pagination { margin-top: 24px; text-align: right; }
 .form-two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-section-label { margin: 2px 0 12px; color: var(--ink); font-size: 13px; font-weight: 600; }
@@ -419,6 +422,9 @@ a { color: inherit; }
 .back-link.as-button { padding: 0; background: none; border: 0; cursor: pointer; }
 .primary-action-link { display: inline-flex; min-height: 42px; align-items: center; gap: 9px; padding: 0 16px; color: #fff; background: var(--mint); border-radius: 4px; font-size: 14px; font-weight: 500; text-decoration: none; }
 .primary-action-link:hover { color: #fff; background: #08774f; }
+.primary-action-link:focus-visible, .table-action-link:focus-visible { outline: 3px solid rgba(12, 140, 94, .28); outline-offset: 2px; }
+.table-action-link { display: inline-flex; min-height: 34px; align-items: center; gap: 7px; padding: 0 11px; color: var(--mint); background: var(--mint-soft); border: 1px solid #b9d9cd; border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none; }
+.table-action-link:hover { color: #fff; background: var(--mint); border-color: var(--mint); }
 .detail-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, .8fr); gap: 18px; }
 .detail-main-panel .resource-panel-heading { margin-bottom: 4px; }
 .farm-assignment-panel { margin-top: 18px; }

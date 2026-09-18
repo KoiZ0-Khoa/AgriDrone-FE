@@ -41,6 +41,7 @@ const activeNavigation = [
 ]
 
 function getPageTitle(pathname: string) {
+  if (pathname === '/my-farms') return 'Nông trại được giao'
   if (pathname === '/account') return 'Tài khoản'
   if (pathname === '/team') return 'Thành viên'
   if (pathname === '/system') return 'Quản trị hệ thống'
@@ -98,6 +99,7 @@ export function AppLayout() {
               <span>{item.label}</span>
             </span>
           ))}
+          {session.tenant ? <NavLink to="/my-farms" onClick={() => setMenuOpen(false)}><HomeOutlined /><span>Nông trại được giao</span></NavLink> : null}
           <NavLink to="/account" onClick={() => setMenuOpen(false)}><SafetyCertificateOutlined /><span>Tài khoản</span></NavLink>
           {session.role === 'OWNER' || session.role === 'TENANT_ADMIN' ? <NavLink to="/team" onClick={() => setMenuOpen(false)}><DeploymentUnitOutlined /><span>Thành viên</span></NavLink> : null}
           {session.role === 'SYSTEM_ADMIN' ? <NavLink to="/system" onClick={() => setMenuOpen(false)}><GlobalOutlined /><span>Quản trị hệ thống</span></NavLink> : null}

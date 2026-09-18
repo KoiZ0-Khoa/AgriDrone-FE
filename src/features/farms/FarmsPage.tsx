@@ -2,10 +2,11 @@ import {
   ArrowLeftOutlined,
   EnvironmentOutlined,
   HomeOutlined,
+  InboxOutlined,
   PlusOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App as AntApp, Button, Form, Input, InputNumber, Modal, Pagination, Tag } from 'antd'
+import { App as AntApp, Button, Form, Input, InputNumber, Modal, Pagination, Space, Tag } from 'antd'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
@@ -15,6 +16,8 @@ import { createFarm, getFarm, getFarms } from './farmsApi'
 import { FarmAssignmentPanel } from './FarmAssignmentPanel'
 import { FarmManagementActions } from './FarmManagementActions'
 import { FarmEditButton } from '../../management/FarmEditButton'
+import { FarmMembersPanel } from '../../management/FarmMembersPanel'
+import { MyFarmsPage } from '../../management/MyFarmsPage'
 import type { CreateFarmRequest, Farm, GeneralStatus } from './types'
 
 type FarmFormValues = {
@@ -40,7 +43,7 @@ function formatDate(value: string) {
 
 function FarmCard({ farm }: { farm: Farm }) {
   return (
-    <article className="resource-card">
+    <Link className="resource-card" to={`/farms/${farm.id}`}>
       <div className="resource-card-heading">
         <span className="resource-icon"><HomeOutlined aria-hidden="true" /></span>
         <Tag color={farm.status === 0 || farm.status === 'Active' ? 'success' : 'default'}>
@@ -56,14 +59,15 @@ function FarmCard({ farm }: { farm: Farm }) {
         <div><dt>Diện tích</dt><dd>{formatArea(farm.areaHectares)}</dd></div>
         <div><dt>Ngày tạo</dt><dd>{formatDate(farm.createdAt)}</dd></div>
       </dl>
-      <Link className="resource-card-link" to={`/farms/${farm.id}`}>
+      <span className="resource-card-link">
         Xem chi tiết <span aria-hidden="true">→</span>
-      </Link>
-    </article>
+      </span>
+    </Link>
   )
 }
 
 export function FarmsPage() {
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
   const [form] = Form.useForm<FarmFormValues>()
@@ -75,7 +79,7 @@ export function FarmsPage() {
   const farmsQuery = useQuery({
     queryKey: ['farms', session?.tenant?.id, page],
     queryFn: () => getFarms(session!.accessToken, page),
-    enabled: Boolean(session?.accessToken && session.tenant),
+    enabled: Boolean(session?.accessToken && session.tenant && canManageFarms),
   })
 
   const createMutation = useMutation({
@@ -113,6 +117,7 @@ export function FarmsPage() {
   if (!session?.tenant) {
     return <CommonState type="forbidden" description="Hãy đăng nhập trong một tenant để xem danh sách nông trại." />
   }
+  if (session.role === 'MEMBER') return <MyFarmsPage />
 
   return (
     <>
@@ -123,9 +128,16 @@ export function FarmsPage() {
           <p>Quản lý thông tin nền của từng nông trại trước khi thiết lập khu vực và nhiệm vụ bay.</p>
         </div>
         {canManageFarms ? (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-            Thêm nông trại
-          </Button>
+          <Space size={12} wrap>
+            {session.role === 'OWNER' ? (
+              <Button color="primary" variant="outlined" icon={<InboxOutlined />} onClick={() => navigate('/farms/archived')}>
+                Xem nông trại đã lưu trữ
+              </Button>
+            ) : null}
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+              Thêm nông trại
+            </Button>
+          </Space>
         ) : null}
       </section>
 
@@ -240,12 +252,14 @@ export function FarmDetailPage() {
           <h1>{farm.name}</h1>
           <p>{farm.address ?? 'Chưa cập nhật địa chỉ cho nông trại này.'}</p>
         </div>
-        <Link className="primary-action-link" to={`/zones?farmId=${farm.id}`}>
-          <EnvironmentOutlined /> Xem khu vực
-        </Link>
+        <Space size={12} wrap>
+          <FarmEditButton farm={farm} />
+          <Link className="primary-action-link" to={`/zones?farmId=${farm.id}`}>
+            <EnvironmentOutlined aria-hidden="true" /> Xem khu vực
+          </Link>
+        </Space>
       </section>
 
-      <FarmEditButton farm={farm} />
       <div className="detail-layout">
         <section className="resource-panel detail-main-panel">
           <div className="resource-panel-heading"><div><strong>Thông tin nông trại</strong><span>Dữ liệu chính thức từ backend</span></div></div>
@@ -265,7 +279,10 @@ export function FarmDetailPage() {
         </aside>
       </div>
       {session?.tenant && (session.role === 'OWNER' || session.role === 'TENANT_ADMIN') && (farm.status === 0 || farm.status === 'Active') ? (
-        <FarmAssignmentPanel key={`${session.tenant.id}:${farm.id}:${session.accessToken}`} farmId={farm.id} session={session} />
+        <>
+          <FarmMembersPanel key={`${session.tenant.id}:${farm.id}`} farmId={farm.id} />
+          <FarmAssignmentPanel key={`${session.tenant.id}:${farm.id}:${session.accessToken}`} farmId={farm.id} session={session} />
+        </>
       ) : null}
       {session?.role === 'OWNER' ? <FarmManagementActions key={farm.id} farmId={farm.id} name={farm.name} version={farm.version} onArchived={() => navigate('/farms', { replace: true })} /> : null}
     </>
