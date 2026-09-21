@@ -5,6 +5,12 @@ export type User = { id: string; email: string; fullName: string; phone: string 
 export type Tenant = { id: string; code: string; name: string; status: number }
 export type Membership = { id: string; tenantId: string; role: number; status: number }
 export type Profile = { fullName: string; phone: string | null }
+export type PlantConditionType = 'DISEASE' | 'ABIOTIC_DAMAGE' | 'MECHANICAL_DAMAGE' | 'OTHER'
+export type PlantCondition = { id: string; code: string; name: string; scientificName: string | null; conditionType: PlantConditionType; description: string | null; revisionNumber: number; version?: number }
+export type PlantConditionDetail = PlantCondition & { isActive: boolean; createdAt: string; retiredAt: string | null; version: number }
+export type HarvestQualityGrade = { id: string; code: string; name: string; displayOrder: number; revisionNumber: number; version?: number }
+export type HarvestQualityGradeDetail = HarvestQualityGrade & { supersedesId: string | null; isActive: boolean; createdAt: string; version: number }
+export type HealthLevel = { id: string; code: string; name: string; rank: number | null; isHealthy: boolean; description: string | null }
 export type FarmRole = 'MANAGER' | 'WORKER'
 export type FarmScope = 'ALL_ZONES' | 'SELECTED_ZONES'
 export type FarmMember = { farmMembershipId: string; farmId: string; userId: string; email: string; fullName: string; tenantRole: string; role: FarmRole; accessScope: FarmScope; zoneIds: string[]; status: 'ACTIVE' | 'INACTIVE'; version: number; joinedAt: string }
@@ -41,4 +47,13 @@ export const createTenant = (token: string, body: { tenantCode: string; tenantNa
 export const setTenantActive = (token: string, tenantId: string, active: boolean) => request<void>(`/api/system/tenants/${id(tenantId)}/${active ? 'activate' : 'deactivate'}`, { method: 'PUT', token })
 export const provisionOwner = (token: string, tenantId: string, email: string) => request(`/api/system/tenants/${id(tenantId)}/owner-provisionings`, { method: 'POST', token, body: { email } })
 export const setMembershipActive = (token: string, membershipId: string, active: boolean) => request<void>(`/api/system/tenant-memberships/${id(membershipId)}/${active ? 'activate' : 'deactivate'}`, { method: 'PUT', token })
+export const getPlantConditions = (token: string) => request<PlantCondition[]>('/api/catalog/plant-conditions', { token })
+export const createPlantCondition = (token: string, body: { code: string; name: string; scientificName: string | null; conditionType: PlantConditionType; description: string | null }) => request<PlantConditionDetail>('/api/system/plant-conditions', { method: 'POST', token, body })
+export const versionPlantCondition = (token: string, conditionId: string, body: { name: string; scientificName: string | null; description: string | null; expectedVersion: number }) => request<PlantConditionDetail>(`/api/system/plant-conditions/${id(conditionId)}/versions`, { method: 'POST', token, body })
+export const retirePlantCondition = (token: string, conditionId: string, expectedVersion: number) => request<void>(`/api/system/plant-conditions/${id(conditionId)}/retire`, { method: 'PUT', token, body: { expectedVersion } })
+export const getHarvestQualityGrades = (token: string) => request<HarvestQualityGrade[]>('/api/catalog/harvest-quality-grades', { token })
+export const createHarvestQualityGrade = (token: string, body: { code: string; name: string; displayOrder: number }) => request<HarvestQualityGradeDetail>('/api/system/harvest-quality-grades', { method: 'POST', token, body })
+export const versionHarvestQualityGrade = (token: string, gradeId: string, body: { name: string; displayOrder: number; expectedVersion: number }) => request<HarvestQualityGradeDetail>(`/api/system/harvest-quality-grades/${id(gradeId)}/versions`, { method: 'POST', token, body })
+export const retireHarvestQualityGrade = (token: string, gradeId: string, expectedVersion: number) => request<void>(`/api/system/harvest-quality-grades/${id(gradeId)}/retire`, { method: 'PUT', token, body: { expectedVersion } })
+export const getHealthLevels = (token: string) => request<HealthLevel[]>('/api/catalog/health-levels', { token })
 export type FarmUpdate = { name: string; address: string | null; areaHectares: number | null; boundary: { type: 'Polygon'; coordinates: number[][][] } | null; centerPoint: { type: 'Point'; coordinates: [number, number] } | null; expectedVersion: number }

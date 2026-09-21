@@ -2,9 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntApp, ConfigProvider } from 'antd'
 import viVN from 'antd/locale/vi_VN'
 import { lazy, Suspense, useState } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '../features/auth/AuthContext'
 import { ProtectedRoute } from '../features/auth/ProtectedRoute'
+import { AuthenticatedHome, SystemAdminRoute, TenantRoute } from '../features/auth/RoleRoutes'
 
 const LoginPage = lazy(() =>
   import('../features/auth/LoginPage').then((module) => ({ default: module.LoginPage })),
@@ -20,6 +21,9 @@ const ResetPasswordPage = lazy(() =>
 )
 const AppLayout = lazy(() =>
   import('../layouts/AppLayout').then((module) => ({ default: module.AppLayout })),
+)
+const SystemAdminLayout = lazy(() =>
+  import('../layouts/SystemAdminLayout').then((module) => ({ default: module.SystemAdminLayout })),
 )
 const DashboardPage = lazy(() =>
   import('../pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -42,6 +46,7 @@ const AccountPage = lazy(() => import('../management/AccountPage').then(m => ({ 
 const TeamPage = lazy(() => import('../management/TeamPage').then(m => ({ default: m.TeamPage })))
 const MyFarmsPage = lazy(() => import('../management/MyFarmsPage').then(m => ({ default: m.MyFarmsPage })))
 const SystemPage = lazy(() => import('../management/SystemPage').then(m => ({ default: m.SystemPage })))
+const SystemDashboardPage = lazy(() => import('../management/SystemDashboardPage').then(m => ({ default: m.SystemDashboardPage })))
 const InvitationPage = lazy(() => import('../management/InvitationPage').then(m => ({ default: m.InvitationPage })))
 
 export function App() {
@@ -90,18 +95,29 @@ export function App() {
                   <Route path="/invitation" element={<InvitationPage />} />
                   <Route path="/accept-invitation" element={<InvitationPage />} />
                   <Route element={<ProtectedRoute />}>
-                    <Route element={<AppLayout />}>
-                      <Route index element={<Navigate to="/dashboard" replace />} />
-                      <Route path="/dashboard" element={<DashboardPage />} />
-                      <Route path="/farms" element={<FarmsPage />} />
-                      <Route path="/farms/archived" element={<ArchivedFarmsPage />} />
-                      <Route path="/farms/archived/:farmId" element={<ArchivedFarmDetailPage />} />
-                      <Route path="/farms/:farmId" element={<FarmDetailPage />} />
-                      <Route path="/zones" element={<ZonesPage />} />
-                      <Route path="/account" element={<AccountPage />} />
-                      <Route path="/team" element={<TeamPage />} />
-                      <Route path="/my-farms" element={<MyFarmsPage />} />
-                      <Route path="/system" element={<SystemPage />} />
+                    <Route index element={<AuthenticatedHome />} />
+                    <Route element={<TenantRoute />}>
+                      <Route element={<AppLayout />}>
+                        <Route path="/dashboard" element={<DashboardPage />} />
+                        <Route path="/farms" element={<FarmsPage />} />
+                        <Route path="/farms/archived" element={<ArchivedFarmsPage />} />
+                        <Route path="/farms/archived/:farmId" element={<ArchivedFarmDetailPage />} />
+                        <Route path="/farms/:farmId" element={<FarmDetailPage />} />
+                        <Route path="/zones" element={<ZonesPage />} />
+                        <Route path="/account" element={<AccountPage />} />
+                        <Route path="/team" element={<TeamPage />} />
+                        <Route path="/my-farms" element={<MyFarmsPage />} />
+                      </Route>
+                    </Route>
+                    <Route element={<SystemAdminRoute />}>
+                      <Route element={<SystemAdminLayout />}>
+                        <Route path="/system" element={<SystemDashboardPage />} />
+                        <Route path="/system/tenants" element={<SystemPage section="tenants" />} />
+                        <Route path="/system/users" element={<SystemPage section="users" />} />
+                        <Route path="/system/plant-conditions" element={<SystemPage section="plant-conditions" />} />
+                        <Route path="/system/harvest-quality-grades" element={<SystemPage section="harvest-quality-grades" />} />
+                        <Route path="/system/account" element={<AccountPage />} />
+                      </Route>
                     </Route>
                   </Route>
                   <Route path="*" element={<NotFoundPage />} />

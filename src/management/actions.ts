@@ -1,6 +1,6 @@
 import * as api from './api'
 export type Values = Record<string, string>
-export type Field = { key: string; label: string; value?: string; optional?: boolean; max?: number; kind?: 'password' | 'email' | 'number' | 'multiline' }
+export type Field = { key: string; label: string; value?: string; optional?: boolean; max?: number; kind?: 'password' | 'email' | 'number' | 'multiline' | 'select'; options?: { label: string; value: string }[] }
 export type Action = { title: string; description?: string; fields: Field[]; danger?: boolean; success?: string; run: (values: Values) => Promise<unknown>; after?: () => void | Promise<void> }
 export const text = (v: Values, key: string) => (v[key] ?? '').trim()
 export function validate(fields: Field[], v: Values) {

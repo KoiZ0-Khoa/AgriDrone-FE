@@ -102,7 +102,6 @@ export function AppLayout() {
           {session.tenant ? <NavLink to="/my-farms" onClick={() => setMenuOpen(false)}><HomeOutlined /><span>Nông trại được giao</span></NavLink> : null}
           <NavLink to="/account" onClick={() => setMenuOpen(false)}><SafetyCertificateOutlined /><span>Tài khoản</span></NavLink>
           {session.role === 'OWNER' || session.role === 'TENANT_ADMIN' ? <NavLink to="/team" onClick={() => setMenuOpen(false)}><DeploymentUnitOutlined /><span>Thành viên</span></NavLink> : null}
-          {session.role === 'SYSTEM_ADMIN' ? <NavLink to="/system" onClick={() => setMenuOpen(false)}><GlobalOutlined /><span>Quản trị hệ thống</span></NavLink> : null}
         </nav>
 
         <div className="sidebar-footer">

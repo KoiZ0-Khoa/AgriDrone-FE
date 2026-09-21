@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Form, Input, Modal } from 'antd'
+import { Alert, App, Form, Input, Modal, Select } from 'antd'
 import { ApiError } from '../api/client'
 import { validate, type Action, type Values } from './actions'
 
@@ -22,7 +22,7 @@ export function ActionModal({ action, close }: { action: Action; close: () => vo
     {action.description ? <p>{action.description}</p> : null}
     <Form layout="vertical" disabled={mutation.isPending}>
       {action.fields.map(f => <Form.Item key={f.key} label={f.label} required={!f.optional}>
-        {f.kind === 'password' ? <Input.Password autoComplete="off" value={values[f.key]} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} /> : f.kind === 'multiline' ? <Input.TextArea rows={3} maxLength={f.max} value={values[f.key]} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} /> : <Input value={values[f.key]} maxLength={f.max} type={f.kind === 'email' ? 'email' : 'text'} inputMode={f.kind === 'number' ? 'decimal' : undefined} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />}
+        {f.kind === 'password' ? <Input.Password autoComplete="off" value={values[f.key]} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} /> : f.kind === 'multiline' ? <Input.TextArea rows={3} maxLength={f.max} value={values[f.key]} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} /> : f.kind === 'select' ? <Select className="action-field-select" value={values[f.key] || undefined} options={f.options} onChange={value => setValues(v => ({ ...v, [f.key]: value }))} /> : <Input value={values[f.key]} maxLength={f.max} type={f.kind === 'email' ? 'email' : 'text'} inputMode={f.kind === 'number' ? 'decimal' : undefined} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />}
       </Form.Item>)}
     </Form>
     {mutation.error ? <Alert type="error" showIcon title={conflict ? 'Dữ liệu đã thay đổi. Đóng form, chờ tải lại và mở chỉnh sửa để kiểm tra bản mới.' : forbidden ? 'Bạn không có quyền hoặc dữ liệu không còn trong phạm vi truy cập.' : mutation.error.message} /> : null}

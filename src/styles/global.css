@@ -355,6 +355,45 @@ a { color: inherit; }
 .panel-empty strong { font-size: 14px; font-weight: 600; }
 .panel-empty p { max-width: 470px; margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .dashboard-lower-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.system-admin-sidebar { background: #fbfdfc; }
+.system-workspace-context { background: #eef8f3; border-color: #dcefe6; }
+.system-dashboard-alert { margin-bottom: 18px; }
+.system-metrics .stat-card { position: relative; min-width: 0; }
+.system-metric-icon {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--mint);
+  background: var(--mint-soft);
+  border-radius: 6px;
+  font-size: 16px;
+}
+.system-shortcuts { margin-top: 18px; }
+.system-shortcut-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 22px; }
+.system-shortcut-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 104px;
+  padding: 18px;
+  color: var(--ink);
+  border: 1px solid var(--cloud);
+  border-radius: 8px;
+  text-decoration: none;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.system-shortcut-card:hover { color: var(--ink); border-color: #b9d9cd; box-shadow: 0 8px 24px rgba(18, 70, 51, .07); transform: translateY(-1px); }
+.system-shortcut-card:focus-visible { outline: 3px solid rgba(12, 140, 94, .28); outline-offset: 2px; }
+.system-shortcut-card > svg { color: var(--mint); font-size: 13px; }
+.system-shortcut-icon { display: grid; width: 42px; height: 42px; place-items: center; color: var(--mint); background: var(--mint-soft); border-radius: 7px; font-size: 19px; }
+.system-shortcut-copy { display: grid; gap: 6px; }
+.system-shortcut-copy strong { font-size: 14px; font-weight: 600; }
+.system-shortcut-copy small { color: var(--muted); font-size: 12px; line-height: 1.45; }
 
 /* Farm and zone catalog */
 .resource-page-heading {
@@ -414,6 +453,11 @@ a { color: inherit; }
 .resource-meta dd { margin: 0; color: var(--ink); font-size: 12px; font-weight: 500; }
 .resource-card-link { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 14px; color: var(--ink); border-top: 1px solid var(--mist); font-size: 12px; font-weight: 500; text-decoration: none; }
 .resource-panel .ant-pagination { margin-top: 24px; text-align: right; }
+.action-field-select { width: 100%; }
+.catalog-contract-alert { margin-bottom: 18px; }
+.catalog-name { display: grid; gap: 3px; }
+.catalog-name strong { color: var(--ink); font-weight: 600; }
+.catalog-name span { color: var(--muted); font-size: 12px; font-style: italic; }
 .form-two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-section-label { margin: 2px 0 12px; color: var(--ink); font-size: 13px; font-weight: 600; }
 .form-hint { margin: 0; padding: 12px; color: var(--muted); background: #fafafa; border-radius: 4px; font-size: 12px; line-height: 1.5; }
@@ -555,6 +599,7 @@ a { color: inherit; }
   .page-container { width: calc(100% - 32px); padding: 44px 0 64px; }
   .dashboard-intro { align-items: flex-start; flex-direction: column; }
   .dashboard-intro h1 { font-size: 34px; }
+  .system-shortcut-grid { grid-template-columns: 1fr; }
   .farm-metrics { grid-template-columns: 1fr; }
   .stat-card { border-right: 0; border-bottom: 1px solid var(--mist); }
   .stat-card:nth-child(3) { border-bottom: 1px solid var(--mist); }

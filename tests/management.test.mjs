@@ -122,6 +122,39 @@ test('revoke conflict and forbidden responses propagate without retry or success
     assert.equal(calls, 1)
   }
 })
+
+test('Long system catalog APIs use the current routes and concurrency bodies', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push([url, options.method ?? 'GET', options.body === undefined ? undefined : JSON.parse(options.body)])
+    assert.equal(options.headers.Authorization, 'Bearer token')
+    if ((options.method ?? 'GET') === 'GET') return Response.json([])
+    if (options.method === 'PUT') return new Response(null, { status: 204 })
+    return Response.json({ id: 'created', version: 1 })
+  }
+
+  await api.getPlantConditions('token')
+  await api.createPlantCondition('token', { code: 'BLAST', name: 'Đạo ôn', scientificName: null, conditionType: 'DISEASE', description: null })
+  await api.versionPlantCondition('token', 'condition/id', { name: 'Đạo ôn', scientificName: null, description: 'Mô tả', expectedVersion: 3 })
+  await api.retirePlantCondition('token', 'condition/id', 4)
+  await api.getHarvestQualityGrades('token')
+  await api.createHarvestQualityGrade('token', { code: 'GRADE_A', name: 'Loại A', displayOrder: 1 })
+  await api.versionHarvestQualityGrade('token', 'grade/id', { name: 'Loại A+', displayOrder: 0, expectedVersion: 5 })
+  await api.retireHarvestQualityGrade('token', 'grade/id', 6)
+  await api.getHealthLevels('token')
+
+  assert.deepEqual(calls, [
+    ['http://test.local/api/catalog/plant-conditions', 'GET', undefined],
+    ['http://test.local/api/system/plant-conditions', 'POST', { code: 'BLAST', name: 'Đạo ôn', scientificName: null, conditionType: 'DISEASE', description: null }],
+    ['http://test.local/api/system/plant-conditions/condition%2Fid/versions', 'POST', { name: 'Đạo ôn', scientificName: null, description: 'Mô tả', expectedVersion: 3 }],
+    ['http://test.local/api/system/plant-conditions/condition%2Fid/retire', 'PUT', { expectedVersion: 4 }],
+    ['http://test.local/api/catalog/harvest-quality-grades', 'GET', undefined],
+    ['http://test.local/api/system/harvest-quality-grades', 'POST', { code: 'GRADE_A', name: 'Loại A', displayOrder: 1 }],
+    ['http://test.local/api/system/harvest-quality-grades/grade%2Fid/versions', 'POST', { name: 'Loại A+', displayOrder: 0, expectedVersion: 5 }],
+    ['http://test.local/api/system/harvest-quality-grades/grade%2Fid/retire', 'PUT', { expectedVersion: 6 }],
+    ['http://test.local/api/catalog/health-levels', 'GET', undefined],
+  ])
+})
 afterEach(() => { globalThis.fetch = originalFetch })
 
 test('profile uses name/phone and preserves the returned fullName', async () => {

@@ -1,7 +1,7 @@
 import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
 import { Alert, Button, Form, Input } from 'antd'
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import { BrandMark } from '../../components/BrandMark'
 import { useAuth } from './AuthContext'
 import type { LoginCredentials } from './types'
@@ -21,22 +21,24 @@ const roleLabels: Record<string | number, string> = {
 
 export function LoginPage() {
   const auth = useAuth()
-  const navigate = useNavigate()
   const location = useLocation()
-  const destination = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+  const requestedDestination = (location.state as { from?: string } | null)?.from
 
   const loginMutation = useMutation({
     mutationFn: auth.login,
-    onSuccess: (outcome) => {
-      if (outcome === 'authenticated') navigate(destination, { replace: true })
-    },
   })
   const tenantMutation = useMutation({
     mutationFn: auth.selectTenant,
-    onSuccess: () => navigate(destination, { replace: true }),
   })
 
-  if (auth.session) return <Navigate to="/dashboard" replace />
+  if (auth.session) {
+    const systemAdmin = auth.session.role === 'SYSTEM_ADMIN'
+    const requestedSystemPage = requestedDestination?.startsWith('/system')
+    const destination = systemAdmin
+      ? requestedSystemPage && requestedDestination ? requestedDestination : '/system'
+      : requestedSystemPage ? '/dashboard' : requestedDestination ?? '/dashboard'
+    return <Navigate to={destination} replace />
+  }
 
   return (
     <main className="login-page">
