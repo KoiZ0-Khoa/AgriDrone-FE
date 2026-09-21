@@ -2,10 +2,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntApp, ConfigProvider } from 'antd'
 import viVN from 'antd/locale/vi_VN'
 import { lazy, Suspense, useState } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '../features/auth/AuthContext'
 import { ProtectedRoute } from '../features/auth/ProtectedRoute'
 
+const HomePage = lazy(() =>
+  import('../features/home/HomePage').then((module) => ({ default: module.HomePage })),
+)
 const LoginPage = lazy(() =>
   import('../features/auth/LoginPage').then((module) => ({ default: module.LoginPage })),
 )
@@ -83,6 +86,7 @@ export function App() {
             <AuthProvider>
               <Suspense fallback={<div className="route-loading">Đang tải giao diện…</div>}>
                 <Routes>
+                  <Route path="/" element={<HomePage />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -91,7 +95,6 @@ export function App() {
                   <Route path="/accept-invitation" element={<InvitationPage />} />
                   <Route element={<ProtectedRoute />}>
                     <Route element={<AppLayout />}>
-                      <Route index element={<Navigate to="/dashboard" replace />} />
                       <Route path="/dashboard" element={<DashboardPage />} />
                       <Route path="/farms" element={<FarmsPage />} />
                       <Route path="/farms/archived" element={<ArchivedFarmsPage />} />
