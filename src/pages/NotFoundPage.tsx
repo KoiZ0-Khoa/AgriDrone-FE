@@ -7,7 +7,7 @@ export function NotFoundPage() {
       status="404"
       title="Không tìm thấy trang"
       subTitle="Đường dẫn không tồn tại hoặc đã được thay đổi."
-      extra={<Link className="not-found-link" to="/">Về trang tổng quan</Link>}
+      extra={<Link className="not-found-link" to="/">Về trang chủ</Link>}
     />
   )
 }

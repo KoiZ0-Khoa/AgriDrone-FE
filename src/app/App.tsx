@@ -5,8 +5,11 @@ import { lazy, Suspense, useState } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '../features/auth/AuthContext'
 import { ProtectedRoute } from '../features/auth/ProtectedRoute'
-import { AuthenticatedHome, SystemAdminRoute, TenantRoute } from '../features/auth/RoleRoutes'
+import { SystemAdminRoute, TenantRoute } from '../features/auth/RoleRoutes'
 
+const HomePage = lazy(() =>
+  import('../features/home/HomePage').then((module) => ({ default: module.HomePage })),
+)
 const LoginPage = lazy(() =>
   import('../features/auth/LoginPage').then((module) => ({ default: module.LoginPage })),
 )
@@ -88,6 +91,7 @@ export function App() {
             <AuthProvider>
               <Suspense fallback={<div className="route-loading">Đang tải giao diện…</div>}>
                 <Routes>
+                  <Route path="/" element={<HomePage />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -95,7 +99,6 @@ export function App() {
                   <Route path="/invitation" element={<InvitationPage />} />
                   <Route path="/accept-invitation" element={<InvitationPage />} />
                   <Route element={<ProtectedRoute />}>
-                    <Route index element={<AuthenticatedHome />} />
                     <Route element={<TenantRoute />}>
                       <Route element={<AppLayout />}>
                         <Route path="/dashboard" element={<DashboardPage />} />
