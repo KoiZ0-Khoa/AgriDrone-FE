@@ -615,6 +615,28 @@ a { color: inherit; }
   .zone-card .ant-tag { display: none; }
 }
 
+.workflow-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 20px 0; }
+.workflow-toolbar .ant-select { min-width: 200px; }
+.workflow-detail-link { display: inline-flex; gap: 8px; align-items: center; color: var(--mint); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; }
+.workflow-notice { margin: 20px 0; }
+.workflow-section { margin-top: 24px; }
+.workflow-prewrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.workflow-review { padding: 18px 0; border-bottom: 1px solid var(--mist); }
+.workflow-review small { margin-left: 16px; color: var(--muted); }
+.workflow-checklist { border: 1px solid var(--cloud); border-radius: 4px; padding: 16px; margin: 0 0 20px; }
+.workflow-checklist legend { font-weight: 600; padding: 0 8px; }
+.workflow-checklist .ant-form-item:last-child { margin-bottom: 0; }
+.workflow-form-heading { margin: 28px 0 18px; font-size: 20px; }
+.workflow-mode { margin-bottom: 24px; }
+.workflow-service-summary { padding: 20px; margin-bottom: 24px; border: 1px solid var(--cloud); border-radius: 4px; }
+.workflow-service-summary strong { margin-right: 12px; }
+.survey-public-page { min-height: 100vh; background: #fff; }
+.survey-public-page > header { display: flex; justify-content: space-between; align-items: center; gap: 16px; max-width: 1100px; margin: auto; padding: 24px; border-bottom: 1px solid var(--mist); }
+.survey-public-content { max-width: 800px; margin: auto; padding: 36px 20px 80px; }
+.survey-public-content .resource-page-heading h1 { font-size: clamp(30px, 5vw, 40px); }
+.survey-public-content .resource-page-heading p { max-width: 620px; }
+.survey-public-content .ant-input-number, .resource-panel form .ant-input-number { width: 100%; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;

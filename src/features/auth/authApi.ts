@@ -3,8 +3,6 @@ import type {
   ForgotPasswordResponse,
   LoginCredentials,
   LoginUserResponse,
-  RegisterUserRequest,
-  RegisterUserResponse,
   ResetPasswordRequest,
   ResetPasswordResponse,
 } from './types'
@@ -20,13 +18,6 @@ export function selectTenant(selectionToken: string, tenantId: string) {
   return apiRequest<LoginUserResponse>('/api/auth/select-tenant', {
     method: 'POST',
     body: { selectionToken, tenantId },
-  })
-}
-
-export function registerUser(request: RegisterUserRequest) {
-  return apiRequest<RegisterUserResponse>('/api/auth/register', {
-    method: 'POST',
-    body: request,
   })
 }
 

@@ -1,5 +1,5 @@
 export type TenantRole = 'OWNER' | 'TENANT_ADMIN' | 'MEMBER'
-export type AppRole = 'SYSTEM_ADMIN' | TenantRole
+export type AppRole = 'SYSTEM_ADMIN' | 'SYSTEM_MANAGER' | TenantRole
 
 export type TenantOptionResponse = {
   id: string
@@ -29,25 +29,6 @@ export type LoginUserResponse = {
 }
 
 export type LoginCredentials = { email: string; password: string }
-
-export type RegisterUserRequest = {
-  email: string
-  password: string
-  fullName: string
-  phone: string
-  tenantCode: string
-  tenantName: string
-}
-
-export type RegisterUserResponse = {
-  id: string
-  email: string
-  fullName: string
-  phone: string | null
-  tenantCode: string
-  tenantName: string
-  createdAt: string
-}
 
 export type ForgotPasswordResponse = { message: string }
 export type ResetPasswordRequest = { token: string; newPassword: string; confirmPassword: string }

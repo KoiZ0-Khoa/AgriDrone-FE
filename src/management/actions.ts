@@ -1,6 +1,6 @@
 import * as api from './api'
 export type Values = Record<string, string>
-export type Field = { key: string; label: string; value?: string; optional?: boolean; max?: number; kind?: 'password' | 'email' | 'number' | 'multiline' | 'select'; options?: { label: string; value: string }[] }
+export type Field = { key: string; label: string; value?: string; optional?: boolean; max?: number; kind?: 'password' | 'email' | 'number' | 'multiline' | 'select' | 'datetime-local'; options?: { label: string; value: string }[] }
 export type Action = { title: string; description?: string; fields: Field[]; danger?: boolean; success?: string; run: (values: Values) => Promise<unknown>; after?: () => void | Promise<void> }
 export const text = (v: Values, key: string) => (v[key] ?? '').trim()
 export function validate(fields: Field[], v: Values) {
@@ -48,8 +48,10 @@ export function revokeFarmAction(token: string, member: api.FarmMember, actorRol
     success: 'Đã thu hồi phân công tại nông trại.',
   }
 }
-export function acceptAction(token: string, preview: api.InvitationPreview, onAccepted?: () => void): Action {
+export function acceptAction(token: string, preview: api.InvitationPreview | api.SystemManagerInvitationPreview, onAccepted?: () => void, kind: api.InvitationKind = 'tenant'): Action {
   const createAccount = preview.requiresAccountCreation
+  const context = kind === 'system-manager' ? 'Vai trò System Manager' : 'tenantName' in preview ? preview.tenantName : ''
+  const invitationPurpose = kind === 'system-manager' ? 'nhận vai trò System Manager' : 'tham gia đơn vị'
   const fields: Field[] = createAccount ? [
     { key: 'fullName', label: 'Họ và tên', max: 150 },
     { key: 'phone', label: 'Số điện thoại', optional: true, max: 30 },
@@ -58,16 +60,17 @@ export function acceptAction(token: string, preview: api.InvitationPreview, onAc
   ] : []
   return {
     title: createAccount ? 'Tạo tài khoản và nhận lời mời' : 'Chấp nhận lời mời',
-    description: preview.tenantName + ' · ' + preview.maskedEmail + '. ' + (createAccount ? 'Email này chưa có tài khoản. Điền thông tin để tạo tài khoản và tham gia đơn vị.' : 'Email này đã có tài khoản. Bạn chỉ cần xác nhận tham gia, không cần đăng ký hoặc đặt lại mật khẩu.'),
+    description: context + ' · ' + preview.maskedEmail + '. ' + (createAccount ? `Email này chưa có tài khoản. Điền thông tin để tạo tài khoản và ${invitationPurpose}.` : `Email này đã có tài khoản. Bạn chỉ cần xác nhận ${invitationPurpose}, không cần đăng ký hoặc đặt lại mật khẩu.`),
     fields,
     run: async v => {
       validate(fields, v)
       if (createAccount && v.password.length < 8) throw new Error('Mật khẩu cần ít nhất 8 ký tự.')
       if (createAccount && v.password !== v.confirm) throw new Error('Xác nhận mật khẩu chưa khớp.')
-      await api.acceptInvitation({ token: token.trim(), fullName: createAccount ? text(v, 'fullName') : null, phone: createAccount ? text(v, 'phone') || null : null, password: createAccount ? v.password : null })
+      const accept = kind === 'system-manager' ? api.acceptSystemManagerInvitation : api.acceptInvitation
+      await accept({ token: token.trim(), fullName: createAccount ? text(v, 'fullName') : null, phone: createAccount ? text(v, 'phone') || null : null, password: createAccount ? v.password : null })
       onAccepted?.()
     },
-    success: 'Đã chấp nhận lời mời. Đăng nhập bằng tài khoản của email được mời để chọn đơn vị.',
+    success: kind === 'system-manager' ? 'Đã chấp nhận lời mời System Manager.' : 'Đã chấp nhận lời mời. Đăng nhập bằng tài khoản của email được mời để chọn đơn vị.',
   }
 }
 export function confirmation(title: string, description: string, run: () => Promise<unknown>, after?: Action['after']): Action {
@@ -96,4 +99,7 @@ export function farmAction(token: string, farmId: string, farm: api.FarmUpdate):
     { key: 'latitude', label: 'Vĩ độ', value: String(farm.centerPoint?.coordinates[1] ?? ''), optional: true, kind: 'number' },
   ], run: v => api.updateFarm(token, farmId, farmBody(v, farm)) }
 }
-export const roleLabel = (role?: number) => role === 0 ? 'Owner' : role === 1 ? 'Quản trị viên' : 'Thành viên'
+export const isActive = (status: api.Status) => status === 0 || status === 'ACTIVE' || status === 'Active'
+export const isOwnerRole = (role?: api.MemberRole) => role === 0 || role === 'OWNER' || role === 'Owner'
+export const isAdminRole = (role?: api.MemberRole) => role === 1 || role === 'TENANT_ADMIN' || role === 'TenantAdmin'
+export const roleLabel = (role?: api.MemberRole) => isOwnerRole(role) ? 'Owner' : isAdminRole(role) ? 'Quản trị viên' : role === 2 || role === 'MEMBER' || role === 'Member' ? 'Thành viên' : 'Chưa xác định'

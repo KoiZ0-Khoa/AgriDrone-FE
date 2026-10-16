@@ -23,7 +23,7 @@ type ZoneFormValues = {
 }
 
 function formatStatus(status: GeneralStatus) {
-  return status === 0 || status === 'Active' ? 'Đang hoạt động' : 'Ngừng hoạt động'
+  return status === 0 || status === 'Active' || status === 'ACTIVE' ? 'Đang hoạt động' : 'Ngừng hoạt động'
 }
 
 function formatArea(area: number | null) {
@@ -39,7 +39,7 @@ function ZoneCard({ zone, onOpen }: { zone: Zone; onOpen: () => void }) {
         <strong>{zone.name}</strong>
         <small>{formatArea(zone.areaHectares)}</small>
       </span>
-      <Tag color={zone.status === 0 || zone.status === 'Active' ? 'success' : 'default'}>
+      <Tag color={zone.status === 0 || zone.status === 'Active' || zone.status === 'ACTIVE' ? 'success' : 'default'}>
         {formatStatus(zone.status)}
       </Tag>
       <RightOutlined className="zone-card-arrow" aria-hidden="true" />
@@ -159,11 +159,9 @@ export function ZonesPage() {
         <div>
           <span className="page-kicker">KHU VỰC CANH TÁC</span>
           <h1>{farmQuery.data?.name ?? 'Đang tải nông trại'}</h1>
-          <p>Thiết lập các khu vực vận hành độc lập trong phạm vi nông trại.</p>
+          <p>Xem các khu vực canh tác đã được Manager thiết lập.</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          Thêm khu vực
-        </Button>
+        {session.role === 'SYSTEM_MANAGER' ? <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>Thêm khu vực</Button> : null}
       </section>
 
       <section className="resource-panel" aria-label="Danh sách khu vực">
@@ -181,8 +179,8 @@ export function ZonesPage() {
           <CommonState
             type="empty"
             title="Chưa có khu vực"
-            description="Tạo khu vực đầu tiên để phân chia phạm vi canh tác và nhiệm vụ bay."
-            action={() => setCreateOpen(true)}
+            description="Manager phụ trách sẽ thiết lập khu vực canh tác cho nông trại."
+            action={session.role === 'SYSTEM_MANAGER' ? () => setCreateOpen(true) : undefined}
             actionLabel="Thêm khu vực"
           />
         ) : null}
@@ -235,7 +233,7 @@ export function ZonesPage() {
             <span className="resource-icon"><EnvironmentOutlined aria-hidden="true" /></span>
             <span className="resource-code">{zoneQuery.data.code}</span>
             <h2>{zoneQuery.data.name}</h2>
-            <Tag color={zoneQuery.data.status === 0 || zoneQuery.data.status === 'Active' ? 'success' : 'default'}>
+            <Tag color={zoneQuery.data.status === 0 || zoneQuery.data.status === 'Active' || zoneQuery.data.status === 'ACTIVE' ? 'success' : 'default'}>
               {formatStatus(zoneQuery.data.status)}
             </Tag>
             <dl className="detail-list">
@@ -244,7 +242,7 @@ export function ZonesPage() {
               <div><dt>Ranh giới</dt><dd>{zoneQuery.data.boundary ? 'Đã thiết lập' : 'Chưa thiết lập'}</dd></div>
               <div><dt>Cập nhật</dt><dd>{zoneQuery.data.updatedAt ? new Date(zoneQuery.data.updatedAt).toLocaleString('vi-VN') : 'Chưa cập nhật'}</dd></div>
             </dl>
-            <FarmManagementActions key={`${selectedFarmId}:${zoneQuery.data.zoneId}`} farmId={selectedFarmId} name={zoneQuery.data.name} version={zoneQuery.data.version} zone={zoneQuery.data} onArchived={() => setSelectedZoneId('')} />
+            {session.role === 'SYSTEM_MANAGER' ? <FarmManagementActions key={`${selectedFarmId}:${zoneQuery.data.zoneId}`} farmId={selectedFarmId} name={zoneQuery.data.name} version={zoneQuery.data.version} zone={zoneQuery.data} onArchived={() => setSelectedZoneId('')} /> : null}
           </div>
         ) : null}
       </Drawer>

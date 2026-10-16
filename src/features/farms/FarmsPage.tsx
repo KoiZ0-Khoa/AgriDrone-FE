@@ -3,34 +3,22 @@ import {
   EnvironmentOutlined,
   HomeOutlined,
   InboxOutlined,
-  PlusOutlined,
 } from '@ant-design/icons'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App as AntApp, Button, Form, Input, InputNumber, Modal, Pagination, Space, Tag } from 'antd'
+import { useQuery } from '@tanstack/react-query'
+import { Button, Pagination, Space, Tag } from 'antd'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
-import { createFarm, getFarm, getFarms } from './farmsApi'
+import { getFarm, getFarms } from './farmsApi'
 import { FarmAssignmentPanel } from './FarmAssignmentPanel'
-import { FarmManagementActions } from './FarmManagementActions'
-import { FarmEditButton } from '../../management/FarmEditButton'
 import { FarmMembersPanel } from '../../management/FarmMembersPanel'
 import { MyFarmsPage } from '../../management/MyFarmsPage'
-import type { CreateFarmRequest, Farm, GeneralStatus } from './types'
-
-type FarmFormValues = {
-  code: string
-  name: string
-  address?: string
-  areaHectares?: number
-  longitude?: number
-  latitude?: number
-}
+import type { Farm, GeneralStatus } from './types'
 
 function statusLabel(status: GeneralStatus) {
-  return status === 0 || status === 'Active' ? 'Đang hoạt động' : 'Ngừng hoạt động'
+  return status === 0 || status === 'Active' || status === 'ACTIVE' ? 'Đang hoạt động' : 'Ngừng hoạt động'
 }
 
 function formatArea(area: number | null) {
@@ -46,7 +34,7 @@ function FarmCard({ farm }: { farm: Farm }) {
     <Link className="resource-card" to={`/farms/${farm.id}`}>
       <div className="resource-card-heading">
         <span className="resource-icon"><HomeOutlined aria-hidden="true" /></span>
-        <Tag color={farm.status === 0 || farm.status === 'Active' ? 'success' : 'default'}>
+        <Tag color={farm.status === 0 || farm.status === 'Active' || farm.status === 'ACTIVE' ? 'success' : 'default'}>
           {statusLabel(farm.status)}
         </Tag>
       </div>
@@ -69,11 +57,7 @@ function FarmCard({ farm }: { farm: Farm }) {
 export function FarmsPage() {
   const navigate = useNavigate()
   const [page, setPage] = useState(1)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [form] = Form.useForm<FarmFormValues>()
-  const { message } = AntApp.useApp()
   const { session } = useAuth()
-  const queryClient = useQueryClient()
   const canManageFarms = session?.role === 'OWNER' || session?.role === 'TENANT_ADMIN'
 
   const farmsQuery = useQuery({
@@ -81,38 +65,6 @@ export function FarmsPage() {
     queryFn: () => getFarms(session!.accessToken, page),
     enabled: Boolean(session?.accessToken && session.tenant && canManageFarms),
   })
-
-  const createMutation = useMutation({
-    mutationFn: (request: CreateFarmRequest) => createFarm(session!.accessToken, request),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['farms', session?.tenant?.id] })
-      form.resetFields()
-      setCreateOpen(false)
-      message.success('Đã tạo nông trại')
-    },
-    onError: (error) => message.error(error instanceof Error ? error.message : 'Không thể tạo nông trại.'),
-  })
-
-  function submitFarm(values: FarmFormValues) {
-    const hasLongitude = typeof values.longitude === 'number'
-    const hasLatitude = typeof values.latitude === 'number'
-
-    if (hasLongitude !== hasLatitude) {
-      message.error('Hãy nhập đủ cả kinh độ và vĩ độ, hoặc để trống cả hai.')
-      return
-    }
-
-    createMutation.mutate({
-      code: values.code.trim(),
-      name: values.name.trim(),
-      address: values.address?.trim() || null,
-      areaHectares: values.areaHectares ?? null,
-      centerPoint: hasLongitude && hasLatitude
-        ? { type: 'Point', coordinates: [values.longitude!, values.latitude!] }
-        : null,
-      boundary: null,
-    })
-  }
 
   if (!session?.tenant) {
     return <CommonState type="forbidden" description="Hãy đăng nhập trong một tenant để xem danh sách nông trại." />
@@ -125,7 +77,7 @@ export function FarmsPage() {
         <div>
           <span className="page-kicker">NÔNG TRẠI</span>
           <h1>Không gian canh tác</h1>
-          <p>Quản lý thông tin nền của từng nông trại trước khi thiết lập khu vực và nhiệm vụ bay.</p>
+          <p>Xem thông tin nông trại và gửi yêu cầu khảo sát cho đội ngũ vận hành.</p>
         </div>
         {canManageFarms ? (
           <Space size={12} wrap>
@@ -134,9 +86,7 @@ export function FarmsPage() {
                 Xem nông trại đã lưu trữ
               </Button>
             ) : null}
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-              Thêm nông trại
-            </Button>
+            {session.role === 'OWNER' ? <Button type="primary" onClick={() => navigate('/survey-requests/new')}>Đăng ký nông trại mới</Button> : null}
           </Space>
         ) : null}
       </section>
@@ -160,9 +110,9 @@ export function FarmsPage() {
           <CommonState
             type="empty"
             title="Chưa có nông trại"
-            description="Tạo nông trại đầu tiên để tiếp tục thiết lập khu vực canh tác."
-            action={canManageFarms ? () => setCreateOpen(true) : undefined}
-            actionLabel="Thêm nông trại"
+            description="Chủ đơn vị gửi yêu cầu khảo sát nông trại mới để được xét duyệt."
+            action={session.role === 'OWNER' ? () => navigate('/survey-requests/new') : undefined}
+            actionLabel="Đăng ký khảo sát"
           />
         ) : null}
         {farmsQuery.isSuccess && farmsQuery.data.items.length > 0 ? (
@@ -183,48 +133,12 @@ export function FarmsPage() {
         ) : null}
       </section>
 
-      <Modal
-        title="Thêm nông trại"
-        open={createOpen}
-        okText="Tạo nông trại"
-        cancelText="Hủy"
-        confirmLoading={createMutation.isPending}
-        onOk={() => form.submit()}
-        onCancel={() => setCreateOpen(false)}
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical" onFinish={submitFarm} requiredMark={false}>
-          <div className="form-two-columns">
-            <Form.Item label="Mã nông trại" name="code" rules={[{ required: true, message: 'Nhập mã nông trại' }, { max: 30 }]}>
-              <Input placeholder="VD: FARM_BT_01" />
-            </Form.Item>
-            <Form.Item label="Tên nông trại" name="name" rules={[{ required: true, message: 'Nhập tên nông trại' }, { max: 150 }]}>
-              <Input placeholder="VD: Nông trại Bình Thuận" />
-            </Form.Item>
-          </div>
-          <Form.Item label="Địa chỉ" name="address" rules={[{ max: 200 }]}>
-            <Input placeholder="Địa chỉ hoặc mô tả vị trí" />
-          </Form.Item>
-          <Form.Item label="Diện tích (ha)" name="areaHectares">
-            <InputNumber min={0} precision={2} placeholder="0" style={{ width: '100%' }} />
-          </Form.Item>
-          <div className="form-section-label">Tọa độ tâm (không bắt buộc)</div>
-          <div className="form-two-columns">
-            <Form.Item label="Kinh độ" name="longitude">
-              <InputNumber min={-180} max={180} precision={7} placeholder="108.1234567" style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item label="Vĩ độ" name="latitude">
-              <InputNumber min={-90} max={90} precision={7} placeholder="10.1234567" style={{ width: '100%' }} />
-            </Form.Item>
-          </div>
-        </Form>
-      </Modal>
+
     </>
   )
 }
 
 export function FarmDetailPage() {
-  const navigate = useNavigate()
   const { farmId = '' } = useParams()
   const { session } = useAuth()
   const farmQuery = useQuery({
@@ -253,7 +167,7 @@ export function FarmDetailPage() {
           <p>{farm.address ?? 'Chưa cập nhật địa chỉ cho nông trại này.'}</p>
         </div>
         <Space size={12} wrap>
-          <FarmEditButton farm={farm} />
+          {session?.role === 'OWNER' ? <Link className="primary-action-link" to={`/survey-requests/new?farmId=${farm.id}`}>Đăng ký khảo sát</Link> : null}
           <Link className="primary-action-link" to={`/zones?farmId=${farm.id}`}>
             <EnvironmentOutlined aria-hidden="true" /> Xem khu vực
           </Link>
@@ -278,13 +192,12 @@ export function FarmDetailPage() {
           <p>{farm.boundary ? `Đã lưu ${farm.boundary.coordinates[0]?.length ?? 0} điểm ranh giới.` : 'Chưa thiết lập polygon ranh giới.'}</p>
         </aside>
       </div>
-      {session?.tenant && (session.role === 'OWNER' || session.role === 'TENANT_ADMIN') && (farm.status === 0 || farm.status === 'Active') ? (
+      {session?.tenant && (session.role === 'OWNER' || session.role === 'TENANT_ADMIN') && (farm.status === 0 || farm.status === 'Active' || farm.status === 'ACTIVE') ? (
         <>
           <FarmMembersPanel key={`${session.tenant.id}:${farm.id}`} farmId={farm.id} />
           <FarmAssignmentPanel key={`${session.tenant.id}:${farm.id}:${session.accessToken}`} farmId={farm.id} session={session} />
         </>
       ) : null}
-      {session?.role === 'OWNER' ? <FarmManagementActions key={farm.id} farmId={farm.id} name={farm.name} version={farm.version} onArchived={() => navigate('/farms', { replace: true })} /> : null}
     </>
   )
 }

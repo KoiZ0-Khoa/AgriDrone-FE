@@ -2,19 +2,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntApp, ConfigProvider } from 'antd'
 import viVN from 'antd/locale/vi_VN'
 import { lazy, Suspense, useState } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '../features/auth/AuthContext'
 import { ProtectedRoute } from '../features/auth/ProtectedRoute'
-import { SystemAdminRoute, TenantRoute } from '../features/auth/RoleRoutes'
+import { SystemAdminRoute, SystemManagerRoute, TenantRoute } from '../features/auth/RoleRoutes'
 
 const HomePage = lazy(() =>
   import('../features/home/HomePage').then((module) => ({ default: module.HomePage })),
 )
 const LoginPage = lazy(() =>
   import('../features/auth/LoginPage').then((module) => ({ default: module.LoginPage })),
-)
-const RegisterPage = lazy(() =>
-  import('../features/auth/AuthActionPages').then((module) => ({ default: module.RegisterPage })),
 )
 const ForgotPasswordPage = lazy(() =>
   import('../features/auth/AuthActionPages').then((module) => ({ default: module.ForgotPasswordPage })),
@@ -51,6 +48,13 @@ const MyFarmsPage = lazy(() => import('../management/MyFarmsPage').then(m => ({ 
 const SystemPage = lazy(() => import('../management/SystemPage').then(m => ({ default: m.SystemPage })))
 const SystemDashboardPage = lazy(() => import('../management/SystemDashboardPage').then(m => ({ default: m.SystemDashboardPage })))
 const InvitationPage = lazy(() => import('../management/InvitationPage').then(m => ({ default: m.InvitationPage })))
+const ManagersPage = lazy(() => import('../features/surveys/ManagersPage').then(m => ({ default: m.ManagersPage })))
+const ServicesPage = lazy(() => import('../features/surveys/ServicesPage').then(m => ({ default: m.ServicesPage })))
+const RequestsPage = lazy(() => import('../features/surveys/RequestsPage').then(m => ({ default: m.RequestsPage })))
+const RequestDetailPage = lazy(() => import('../features/surveys/RequestsPage').then(m => ({ default: m.RequestDetailPage })))
+const SurveyIntakePage = lazy(() => import('../features/surveys/SurveyIntakePage').then(m => ({ default: m.SurveyIntakePage })))
+const SystemManagerLayout = lazy(() => import('../layouts/SystemManagerLayout').then(m => ({ default: m.SystemManagerLayout })))
+const ManagerFarmsPage = lazy(() => import('../features/surveys/ManagerFarmsPage').then(m => ({ default: m.ManagerFarmsPage })))
 
 export function App() {
   const [queryClient] = useState(
@@ -93,11 +97,13 @@ export function App() {
                 <Routes>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/login" element={<LoginPage />} />
-                  <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/register" element={<Navigate to="/request-survey" replace />} />
+                  <Route path="/request-survey" element={<SurveyIntakePage />} />
                   <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
                   <Route path="/invitation" element={<InvitationPage />} />
                   <Route path="/accept-invitation" element={<InvitationPage />} />
+                  <Route path="/accept-system-manager-invitation" element={<InvitationPage kind="system-manager" />} />
                   <Route element={<ProtectedRoute />}>
                     <Route element={<TenantRoute />}>
                       <Route element={<AppLayout />}>
@@ -110,6 +116,7 @@ export function App() {
                         <Route path="/account" element={<AccountPage />} />
                         <Route path="/team" element={<TeamPage />} />
                         <Route path="/my-farms" element={<MyFarmsPage />} />
+                        <Route path="/survey-requests/new" element={<SurveyIntakePage owner />} />
                       </Route>
                     </Route>
                     <Route element={<SystemAdminRoute />}>
@@ -120,6 +127,16 @@ export function App() {
                         <Route path="/system/plant-conditions" element={<SystemPage section="plant-conditions" />} />
                         <Route path="/system/harvest-quality-grades" element={<SystemPage section="harvest-quality-grades" />} />
                         <Route path="/system/account" element={<AccountPage />} />
+                        <Route path="/system/managers" element={<ManagersPage />} />
+                        <Route path="/system/survey-services" element={<ServicesPage />} />
+                        <Route path="/system/survey-requests" element={<RequestsPage />} />
+                        <Route path="/system/survey-requests/:requestId" element={<RequestDetailPage />} />
+                      </Route>
+                    </Route>
+                    <Route element={<SystemManagerRoute />}>
+                      <Route element={<SystemManagerLayout />}>
+                        <Route path="/manager" element={<ManagerFarmsPage />} />
+                        <Route path="/manager/account" element={<AccountPage />} />
                       </Route>
                     </Route>
                   </Route>

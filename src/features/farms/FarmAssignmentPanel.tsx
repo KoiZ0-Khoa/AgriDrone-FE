@@ -119,8 +119,8 @@ function AssignmentEditor({ farmId, user, session }: { farmId: string; user: Ten
 function AssignmentForm({ user, assignment, zones, busy, disabled, submit }: { user: TenantUser; assignment: FarmAssignment | null; zones: Zone[]; busy: boolean; disabled: boolean; submit: (body: AssignFarmMemberRequest) => void }) {
   const [form] = Form.useForm<AssignFarmMemberRequest>()
   const scope = Form.useWatch('accessScope', form) ?? assignment?.accessScope ?? 'ALL_ZONES'
-  const activeZones = zones.filter(zone => zone.status === 0 || zone.status === 'Active')
-  const tenantAdmin = user.role === 1 || user.role === 'TenantAdmin'
+  const activeZones = zones.filter(zone => zone.status === 0 || zone.status === 'Active' || zone.status === 'ACTIVE')
+  const tenantAdmin = user.role === 1 || user.role === 'TenantAdmin' || user.role === 'TENANT_ADMIN'
   return <Form form={form} layout="vertical" disabled={busy || disabled} initialValues={{ role: tenantAdmin ? 'MANAGER' : assignment?.role ?? 'WORKER', accessScope: assignment?.accessScope ?? 'ALL_ZONES', zoneIds: assignment?.zoneIds ?? [] }} onFinish={values => {
     if (busy || disabled) return
     submit({ role: tenantAdmin ? 'MANAGER' : values.role, accessScope: values.accessScope, zoneIds: values.accessScope === 'ALL_ZONES' ? [] : values.zoneIds, expectedVersion: assignment?.version ?? null, reason: values.reason?.trim() || null })

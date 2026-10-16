@@ -21,6 +21,7 @@ import { useAuth } from '../features/auth/AuthContext'
 
 const roleLabels = {
   SYSTEM_ADMIN: 'Quản trị hệ thống',
+  SYSTEM_MANAGER: 'Quản lý vận hành hệ thống',
   OWNER: 'Chủ tenant',
   TENANT_ADMIN: 'Quản trị tenant',
   MEMBER: 'Thành viên',
@@ -41,6 +42,7 @@ const activeNavigation = [
 ]
 
 function getPageTitle(pathname: string) {
+  if (pathname === '/survey-requests/new') return 'Đăng ký khảo sát'
   if (pathname === '/my-farms') return 'Nông trại được giao'
   if (pathname === '/account') return 'Tài khoản'
   if (pathname === '/team') return 'Thành viên'
@@ -100,6 +102,7 @@ export function AppLayout() {
             </span>
           ))}
           {session.tenant ? <NavLink to="/my-farms" onClick={() => setMenuOpen(false)}><HomeOutlined /><span>Nông trại được giao</span></NavLink> : null}
+          {session.role === 'OWNER' ? <NavLink to="/survey-requests/new" onClick={() => setMenuOpen(false)}><RocketOutlined /><span>Đăng ký khảo sát</span></NavLink> : null}
           <NavLink to="/account" onClick={() => setMenuOpen(false)}><SafetyCertificateOutlined /><span>Tài khoản</span></NavLink>
           {session.role === 'OWNER' || session.role === 'TENANT_ADMIN' ? <NavLink to="/team" onClick={() => setMenuOpen(false)}><DeploymentUnitOutlined /><span>Thành viên</span></NavLink> : null}
         </nav>

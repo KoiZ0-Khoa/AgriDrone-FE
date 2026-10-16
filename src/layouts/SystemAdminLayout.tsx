@@ -18,6 +18,9 @@ import { useAuth } from '../features/auth/AuthContext'
 
 const navigation = [
   { to: '/system', end: true, label: 'Tổng quan hệ thống', icon: <DashboardOutlined aria-hidden="true" /> },
+  { to: '/system/survey-requests', label: 'Yêu cầu khảo sát', icon: <BankOutlined aria-hidden="true" /> },
+  { to: '/system/managers', label: 'System Manager', icon: <TeamOutlined aria-hidden="true" /> },
+  { to: '/system/survey-services', label: 'Dịch vụ & đơn giá', icon: <MedicineBoxOutlined aria-hidden="true" /> },
   { to: '/system/tenants', label: 'Đơn vị', icon: <BankOutlined aria-hidden="true" /> },
   { to: '/system/users', label: 'Người dùng', icon: <TeamOutlined aria-hidden="true" /> },
   { to: '/system/plant-conditions', label: 'Tình trạng cây', icon: <MedicineBoxOutlined aria-hidden="true" /> },
@@ -25,6 +28,9 @@ const navigation = [
 ]
 
 function pageTitle(pathname: string) {
+  if (pathname.startsWith('/system/survey-requests')) return 'Yêu cầu khảo sát'
+  if (pathname === '/system/managers') return 'System Manager'
+  if (pathname === '/system/survey-services') return 'Dịch vụ & đơn giá'
   if (pathname === '/system/tenants') return 'Quản lý đơn vị'
   if (pathname === '/system/users') return 'Quản lý người dùng'
   if (pathname === '/system/plant-conditions') return 'Danh mục tình trạng cây'

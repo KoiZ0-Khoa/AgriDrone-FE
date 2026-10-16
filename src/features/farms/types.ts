@@ -1,4 +1,4 @@
-export type GeneralStatus = 'Active' | 'Inactive' | 0 | 1
+export type GeneralStatus = 'ACTIVE' | 'INACTIVE' | 'Active' | 'Inactive' | 0 | 1
 
 export type GeoJsonPoint = {
   type: 'Point'
@@ -76,8 +76,8 @@ export type TenantUser = {
   id: string
   email: string
   fullName: string
-  status: 0 | 1 | 2 | 'Active' | 'Inactive' | 'Locked'
-  role: 0 | 1 | 2 | 'Owner' | 'TenantAdmin' | 'Member'
+  status: 0 | 1 | 2 | 'Active' | 'Inactive' | 'Locked' | 'ACTIVE' | 'INACTIVE' | 'LOCKED'
+  role: 0 | 1 | 2 | 'Owner' | 'TenantAdmin' | 'Member' | 'OWNER' | 'TENANT_ADMIN' | 'MEMBER'
 }
 
 export type FarmAssignment = {

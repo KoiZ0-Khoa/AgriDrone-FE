@@ -6,6 +6,7 @@ import { BrandMark } from '../../components/BrandMark'
 import { useAuth } from './AuthContext'
 import type { LoginCredentials } from './types'
 import { getAuthErrorMessage, requiresFreshTenantLogin } from './authErrors'
+import { loginDestination } from './navigation'
 
 const roleLabels: Record<string | number, string> = {
   0: 'Chủ tenant',
@@ -32,12 +33,7 @@ export function LoginPage() {
   })
 
   if (auth.session) {
-    const systemAdmin = auth.session.role === 'SYSTEM_ADMIN'
-    const requestedSystemPage = requestedDestination?.startsWith('/system')
-    const destination = systemAdmin
-      ? requestedSystemPage && requestedDestination ? requestedDestination : '/system'
-      : requestedSystemPage ? '/dashboard' : requestedDestination ?? '/dashboard'
-    return <Navigate to={destination} replace />
+    return <Navigate to={loginDestination(auth.session.role, requestedDestination)} replace />
   }
 
   return (
@@ -137,7 +133,7 @@ export function LoginPage() {
           )}
           <div className="login-card-footer">
             <span>Chưa có tài khoản?</span>
-            <Link to="/register">Đăng ký</Link>
+            <Link to="/request-survey">Đăng ký khảo sát</Link>
             <Link to="/invitation">Có lời mời?</Link>
           </div>
         </div>

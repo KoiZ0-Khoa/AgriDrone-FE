@@ -1,9 +1,11 @@
 import { apiRequest as request } from '../api/client'
 
 export type Page<T> = { items: T[]; pageNumber: number; pageSize: number; totalCount: number; hasNextPage: boolean }
-export type User = { id: string; email: string; fullName: string; phone: string | null; status: number; role?: number }
-export type Tenant = { id: string; code: string; name: string; status: number }
-export type Membership = { id: string; tenantId: string; role: number; status: number }
+export type Status = number | 'ACTIVE' | 'INACTIVE' | 'LOCKED' | 'Active' | 'Inactive' | 'Locked'
+export type MemberRole = number | 'OWNER' | 'TENANT_ADMIN' | 'MEMBER' | 'Owner' | 'TenantAdmin' | 'Member'
+export type User = { id: string; email: string; fullName: string; phone: string | null; status: Status; role?: MemberRole }
+export type Tenant = { id: string; code: string; name: string; status: Status }
+export type Membership = { id: string; tenantId: string; role: MemberRole; status: Status }
 export type Profile = { fullName: string; phone: string | null }
 export type PlantConditionType = 'DISEASE' | 'ABIOTIC_DAMAGE' | 'MECHANICAL_DAMAGE' | 'OTHER'
 export type PlantCondition = { id: string; code: string; name: string; scientificName: string | null; conditionType: PlantConditionType; description: string | null; revisionNumber: number; version?: number }
@@ -40,9 +42,14 @@ export function getMyFarmAssignments(token: string, page: number, role = '', sig
   return request<Page<MyFarmAssignment>>(`/api/users/me/farm-assignments?${params}`, { token, signal })
 }
 export const revokeFarmAssignment = (token: string, farmId: string, userId: string, body: { expectedVersion: number; reason: string | null }) => request<void>(`/api/farms/${id(farmId)}/members/${id(userId)}/assignment`, { method: 'DELETE', token, body })
-export type InvitationPreview = { maskedEmail: string; tenantName: string; role: number; expiresAt: string; requiresAccountCreation: boolean }
+export type InvitationPreview = { maskedEmail: string; tenantName: string; role: MemberRole; expiresAt: string; requiresAccountCreation: boolean }
+export type InvitationKind = 'tenant' | 'system-manager'
+export type SystemManagerInvitationPreview = Omit<InvitationPreview, 'tenantName' | 'role'> & { role: 'SYSTEM_MANAGER' }
+export type AcceptInvitationRequest = { token: string; password: string | null; fullName: string | null; phone: string | null }
 export const previewInvitation = (token: string, signal?: AbortSignal) => request<InvitationPreview>('/api/auth/invitations/preview', { method: 'POST', body: { token }, signal })
-export const acceptInvitation = (body: { token: string; password: string | null; fullName: string | null; phone: string | null }) => request('/invitations/accept', { method: 'POST', body })
+export const acceptInvitation = (body: AcceptInvitationRequest) => request('/invitations/accept', { method: 'POST', body })
+export const previewSystemManagerInvitation = (token: string, signal?: AbortSignal) => request<SystemManagerInvitationPreview>('/api/auth/system-manager-invitations/preview', { method: 'POST', body: { token }, signal })
+export const acceptSystemManagerInvitation = (body: AcceptInvitationRequest) => request<{ userId: string; profileId: string; accountCreated: boolean }>('/api/auth/system-manager-invitations/accept', { method: 'POST', body })
 export const createTenant = (token: string, body: { tenantCode: string; tenantName: string }) => request('/api/system/tenants', { method: 'POST', token, body })
 export const setTenantActive = (token: string, tenantId: string, active: boolean) => request<void>(`/api/system/tenants/${id(tenantId)}/${active ? 'activate' : 'deactivate'}`, { method: 'PUT', token })
 export const provisionOwner = (token: string, tenantId: string, email: string) => request(`/api/system/tenants/${id(tenantId)}/owner-provisionings`, { method: 'POST', token, body: { email } })

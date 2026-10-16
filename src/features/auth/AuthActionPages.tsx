@@ -4,10 +4,8 @@ import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { BrandMark } from '../../components/BrandMark'
-import { forgotPassword, registerUser, resetPassword } from './authApi'
-import type { RegisterUserRequest } from './types'
+import { forgotPassword, resetPassword } from './authApi'
 
-type RegistrationForm = RegisterUserRequest & { confirmPassword: string }
 
 function getErrorMessage(error: Error) {
   if (error instanceof ApiError && error.status === 409) return 'Email hoặc mã đơn vị đã được sử dụng.'
@@ -26,64 +24,6 @@ function AuthPageShell({ children, wide = false }: { children: ReactNode; wide?:
         </div>
       </section>
     </main>
-  )
-}
-
-export function RegisterPage() {
-  const mutation = useMutation({
-    mutationFn: ({ confirmPassword: _confirmPassword, ...request }: RegistrationForm) => registerUser(request),
-  })
-
-  return (
-    <AuthPageShell wide>
-      <div className="form-heading">
-        <span className="step-label">TẠO KHÔNG GIAN LÀM VIỆC</span>
-        <h1>Đăng ký AgriDrone</h1>
-        <p>Tạo tài khoản chủ sở hữu và đơn vị đầu tiên của bạn.</p>
-      </div>
-
-      {mutation.isSuccess ? (
-        <div className="auth-success" aria-live="polite">
-          <Alert type="success" showIcon title="Đăng ký thành công" description="Tài khoản và đơn vị đã được tạo. Bạn có thể đăng nhập ngay." />
-          <Link className="auth-primary-link" to="/login">Đi đến đăng nhập</Link>
-        </div>
-      ) : (
-        <>
-          {mutation.error ? <Alert type="error" showIcon title={getErrorMessage(mutation.error)} /> : null}
-          <Form<RegistrationForm> layout="vertical" requiredMark={false} onFinish={(values) => mutation.mutate(values)}>
-            <div className="auth-form-grid">
-              <Form.Item label="Họ và tên" name="fullName" rules={[{ required: true, message: 'Vui lòng nhập họ và tên.' }, { max: 150, message: 'Họ và tên tối đa 150 ký tự.' }]}>
-                <Input placeholder="Nguyễn Văn An…" autoComplete="name" />
-              </Form.Item>
-              <Form.Item label="Số điện thoại" name="phone" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại.' }, { max: 11, message: 'Số điện thoại tối đa 11 số.' }]}>
-                <Input type="tel" inputMode="tel" placeholder="0901234567…" autoComplete="tel" />
-              </Form.Item>
-              <Form.Item label="Email" name="email" rules={[{ required: true, message: 'Vui lòng nhập email.' }, { type: 'email', message: 'Email chưa đúng định dạng.' }]}>
-                <Input type="email" placeholder="ten@nongtrai.vn…" autoComplete="email" spellCheck={false} />
-              </Form.Item>
-              <Form.Item label="Mã đơn vị" name="tenantCode" rules={[{ required: true, message: 'Vui lòng nhập mã đơn vị.' }, { max: 30, message: 'Mã đơn vị tối đa 30 ký tự.' }]}>
-                <Input placeholder="ANPHU…" autoComplete="off" spellCheck={false} />
-              </Form.Item>
-              <Form.Item label="Tên đơn vị" name="tenantName" className="auth-grid-full" rules={[{ required: true, message: 'Vui lòng nhập tên đơn vị.' }, { max: 150, message: 'Tên đơn vị tối đa 150 ký tự.' }]}>
-                <Input placeholder="Nông trại An Phú…" autoComplete="organization" />
-              </Form.Item>
-              <Form.Item label="Mật khẩu" name="password" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu.' }, { min: 8, message: 'Mật khẩu cần ít nhất 8 ký tự.' }]}>
-                <Input.Password placeholder="Ít nhất 8 ký tự…" autoComplete="new-password" />
-              </Form.Item>
-              <Form.Item label="Xác nhận mật khẩu" name="confirmPassword" dependencies={['password']} rules={[{ required: true, message: 'Vui lòng nhập lại mật khẩu.' }, ({ getFieldValue }) => ({ validator(_, value) { return !value || getFieldValue('password') === value ? Promise.resolve() : Promise.reject(new Error('Mật khẩu xác nhận chưa khớp.')) } })]}>
-                <Input.Password placeholder="Nhập lại mật khẩu…" autoComplete="new-password" />
-              </Form.Item>
-            </div>
-            <Button type="primary" htmlType="submit" loading={mutation.isPending} block>Đăng ký</Button>
-          </Form>
-        </>
-      )}
-
-      <div className="login-card-footer">
-        <span>Đã có tài khoản?</span>
-        <Link to="/login">Đăng nhập</Link>
-      </div>
-    </AuthPageShell>
   )
 }
 

@@ -27,6 +27,24 @@ test('assignment candidates accept BE string enums and legacy numbers; Tenant Ad
   }
 })
 
+test('uppercase BE enums keep active assignment candidates and protect Owner/Admin roles', async () => {
+  globalThis.fetch = async () => Response.json({ items: [
+    { id: 'owner', role: 'OWNER', status: 'ACTIVE' },
+    { id: 'admin', role: 'TENANT_ADMIN', status: 'ACTIVE' },
+    { id: 'member', role: 'MEMBER', status: 'ACTIVE' },
+    { id: 'inactive', role: 'MEMBER', status: 'INACTIVE' },
+  ], hasNextPage: false })
+  assert.deepEqual((await assignmentApi.getAssignableUsers('token', 'OWNER')).map(user => user.id), ['admin', 'member'])
+  assert.deepEqual((await assignmentApi.getAssignableUsers('token', 'TENANT_ADMIN')).map(user => user.id), ['member'])
+  assert.equal(actions.roleLabel('OWNER'), 'Owner')
+  assert.equal(actions.roleLabel('TENANT_ADMIN'), 'Quản trị viên')
+  assert.equal(actions.roleLabel('MEMBER'), 'Thành viên')
+  assert.equal(actions.isActive('ACTIVE'), true)
+  assert.equal(actions.isActive('LOCKED'), false)
+  assert.equal(actions.isOwnerRole('OWNER'), true)
+  assert.equal(actions.isAdminRole('TENANT_ADMIN'), true)
+})
+
 test('assignment PUT supports both roles/scopes and preserves reviewed version', async () => {
   for (const [role, accessScope, zoneIds, expectedVersion] of [['WORKER', 'SELECTED_ZONES', ['zone'], null], ['MANAGER', 'ALL_ZONES', [], 4]]) {
     const body = { role, accessScope, zoneIds, expectedVersion, reason: null }
@@ -269,6 +287,56 @@ test('invalid preview and failed acceptance remain errors, never successful onbo
   await assert.rejects(() => api.previewInvitation('expired'), /Invitation expired/)
   const action = actions.acceptAction('expired', { requiresAccountCreation: false, tenantName: 'An Phú', maskedEmail: 'a***@example.test' }, () => { accepted = true })
   await assert.rejects(() => action.run({}), /Invitation expired/)
+  assert.equal(accepted, false)
+})
+
+test('System Manager preview uses its anonymous endpoint and preserves cancellation', async () => {
+  const controller = new AbortController()
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'http://test.local/api/auth/system-manager-invitations/preview')
+    assert.equal(options.method, 'POST')
+    assert.equal(options.headers.Authorization, undefined)
+    assert.equal(options.signal, controller.signal)
+    assert.deepEqual(JSON.parse(options.body), { token: 'manager-token' })
+    return Response.json({ role: 'SYSTEM_MANAGER', maskedEmail: 'm***@example.test', requiresAccountCreation: false })
+  }
+  const preview = await api.previewSystemManagerInvitation('manager-token', controller.signal)
+  assert.equal(preview.role, 'SYSTEM_MANAGER')
+  assert.equal(preview.tenantName, undefined)
+})
+
+test('System Manager acceptance creates only new accounts and never changes existing credentials', async () => {
+  for (const requiresAccountCreation of [true, false]) {
+    let accepted = false
+    const values = { fullName: ' New Manager ', phone: ' 0900000000 ', password: ' password123 ', confirm: ' password123 ' }
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, 'http://test.local/api/auth/system-manager-invitations/accept')
+      assert.equal(options.method, 'POST')
+      assert.equal(options.headers.Authorization, undefined)
+      assert.deepEqual(JSON.parse(options.body), {
+        token: 'manager-token',
+        fullName: requiresAccountCreation ? 'New Manager' : null,
+        phone: requiresAccountCreation ? '0900000000' : null,
+        password: requiresAccountCreation ? ' password123 ' : null,
+      })
+      return Response.json({ userId: 'user', profileId: 'profile', accountCreated: requiresAccountCreation })
+    }
+    const action = actions.acceptAction(' manager-token ', { role: 'SYSTEM_MANAGER', maskedEmail: 'm***@example.test', requiresAccountCreation }, () => { accepted = true }, 'system-manager')
+    assert.equal(action.fields.some(field => field.key === 'password'), requiresAccountCreation)
+    assert.match(action.description, /System Manager/)
+    assert.doesNotMatch(action.description, /undefined/)
+    await action.run(values)
+    assert.equal(accepted, true)
+    assert.doesNotMatch(action.success, /chọn đơn vị/)
+  }
+})
+
+test('invalid or used System Manager invitations never report successful acceptance', async () => {
+  let accepted = false
+  globalThis.fetch = async () => Response.json({ detail: 'Invitation invalid, expired or used.', errorCode: 'SystemManagerInvitation.InvalidOrExpired' }, { status: 400 })
+  await assert.rejects(() => api.previewSystemManagerInvitation('expired'), error => error.code === 'SystemManagerInvitation.InvalidOrExpired')
+  const action = actions.acceptAction('expired', { role: 'SYSTEM_MANAGER', maskedEmail: 'm***@example.test', requiresAccountCreation: false }, () => { accepted = true }, 'system-manager')
+  await assert.rejects(() => action.run({}), error => error.code === 'SystemManagerInvitation.InvalidOrExpired')
   assert.equal(accepted, false)
 })
 

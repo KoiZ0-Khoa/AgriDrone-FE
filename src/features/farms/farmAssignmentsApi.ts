@@ -12,9 +12,9 @@ export async function getAssignableUsers(token: string, actorRole: string, signa
       { token, signal },
     )
     admins.push(...page.items.filter((user) => {
-      const active = user.status === 0 || user.status === 'Active'
-      const member = user.role === 2 || user.role === 'Member'
-      const tenantAdmin = user.role === 1 || user.role === 'TenantAdmin'
+      const active = user.status === 0 || user.status === 'Active' || user.status === 'ACTIVE'
+      const member = user.role === 2 || user.role === 'Member' || user.role === 'MEMBER'
+      const tenantAdmin = user.role === 1 || user.role === 'TenantAdmin' || user.role === 'TENANT_ADMIN'
       return active && (member || (actorRole === 'OWNER' && tenantAdmin))
     }))
     hasNextPage = page.hasNextPage

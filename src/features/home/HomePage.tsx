@@ -178,7 +178,7 @@ export function HomePage() {
               <Link className="hp-btn hp-btn-white" to="/dashboard">Vào bảng điều khiển</Link>
             ) : (
               <>
-                <Link className="hp-btn hp-btn-ghost-light" to="/register">Đăng ký</Link>
+                <Link className="hp-btn hp-btn-ghost-light" to="/request-survey">Đăng ký khảo sát</Link>
                 <Link className="hp-btn hp-btn-white" to="/login">Đăng nhập</Link>
               </>
             )}
@@ -322,7 +322,7 @@ export function HomePage() {
               <p>Nền tảng quản lý nông trại và nhiệm vụ bay, xây dựng cho đội ngũ vận hành thực tế.</p>
             </div>
             <div><h4>Sản phẩm</h4><ul><li><a href="#giai-phap">Giải pháp</a></li><li><a href="#xem-thu">Xem thử</a></li><li><a href="#quy-trinh">Quy trình</a></li></ul></div>
-            <div><h4>Tài khoản</h4><ul><li><Link to="/login">Đăng nhập</Link></li><li><Link to="/register">Đăng ký</Link></li><li><Link to="/forgot-password">Quên mật khẩu</Link></li><li><Link to="/invitation">Nhận lời mời</Link></li></ul></div>
+            <div><h4>Tài khoản</h4><ul><li><Link to="/login">Đăng nhập</Link></li><li><Link to="/request-survey">Đăng ký khảo sát</Link></li><li><Link to="/forgot-password">Quên mật khẩu</Link></li><li><Link to="/invitation">Nhận lời mời</Link></li></ul></div>
             <div><h4>Vai trò</h4><ul><li><a href="#vai-tro">Chủ đơn vị</a></li><li><a href="#vai-tro">Quản trị đơn vị</a></li><li><a href="#vai-tro">Thành viên</a></li></ul></div>
           </div>
           <div className="hp-footer-bottom">

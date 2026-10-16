@@ -30,6 +30,7 @@ function readJwtRole(token: string): AppRole | undefined {
       : [payload.system_role]
 
     if (systemRoles.includes('SYSTEM_ADMIN')) return 'SYSTEM_ADMIN'
+    if (systemRoles.includes('SYSTEM_MANAGER')) return 'SYSTEM_MANAGER'
     if (payload.tenant_role) return tenantRoleMap[payload.tenant_role]
     return undefined
   } catch {
