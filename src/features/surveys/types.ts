@@ -17,21 +17,23 @@ export type RequestStatus = 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTE
 export type SurveyRequest = {
   id: string; requestNumber: string; kind: RequestKind; status: RequestStatus
   surveyServiceId: string; surveyServiceCode: string; tenantId: string | null; farmId: string | null
-  applicantName: string; farmName: string; approximateAreaHa: number; estimatedPoleCount: number | null
+  tenantCode: string | null; tenantName: string | null; farmName: string; approximateAreaHa: number; estimatedPoleCount: number | null
   createdAt: string; updatedAt: string; version: number
 }
 export type RequestDetail = SurveyRequest & {
-  surveyServiceName: string; applicantEmail: string; applicantPhone: string; farmAddress: string
+  surveyServiceName: string; applicantName: string; applicantEmail: string; applicantPhone: string; farmAddress: string
   candidateLocation: { longitude: number; latitude: number; isApprovedFarmBoundary: boolean }
   preferredStartAt: string | null; preferredEndAt: string | null; notes: string | null
   checklistVersion: string; checklistItems: { code: string; description: string }[]
   reviews: { id: string; decision: string; reason: string; reviewedAt: string; checklistSnapshot: unknown }[]
 }
-export type ReviewChecklist = { version: string; contactValid: boolean; isServiceAreaSupported: boolean; isPreliminaryLegalAndFlightFeasible: boolean; notes: string | null }
+export type ReviewCode = 'contact-valid' | 'dragon-fruit-farm-confirmed' | 'service-area-supported' | 'candidate-location-sufficient' | 'consent-feasibility' | 'flight-permission-feasibility' | 'eligible-manager-available'
+export type ReviewChecklist = Record<ReviewCode, boolean> & { notes: string | null }
 export type ReviewDecision = { expectedVersion: number; reason: string; checklist: ReviewChecklist }
 export type Approval = { surveyRequestId: string; requestNumber: string; surveyOrderId: string; orderNumber: string; orderStatus: string; tenantId: string; farmId: string; requiresBaselineMapping: boolean }
-export type RequestReceipt = { id: string; requestNumber: string; kind: RequestKind; status: RequestStatus; createdAt: string }
+export type RequestReceipt = { id: string; requestNumber: string; tenantCode: string | null; tenantName: string | null; kind: RequestKind; status: RequestStatus; createdAt: string }
 export type ExistingFarmIntake = { surveyServiceId: string; estimatedPoleCount: number | null; preferredStartAt: string | null; preferredEndAt: string | null; notes: string | null }
 export type NewFarmIntake = ExistingFarmIntake & { farmName: string; farmAddress: string; approximateAreaHa: number; longitude: number; latitude: number }
-export type PublicIntake = NewFarmIntake & { applicantName: string; applicantEmail: string; applicantPhone: string }
+export type PublicIntake = NewFarmIntake & { tenantCode: string; tenantName: string; applicantName: string; applicantEmail: string; applicantPhone: string }
 export type AssignedFarm = { tenantId: string; farmId: string; code: string; name: string; address: string | null; areaHectares: number | null; assignedAt: string }
+export type FarmManagerAssignment = { assignmentId: string; tenantId: string; farmId: string; systemManagerProfileId: string; managerUserId: string; assignedAt: string; version: number }

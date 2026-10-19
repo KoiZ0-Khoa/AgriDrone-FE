@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Checkbox, Form, Input, Modal, Pagination, Select, Space, Table, Tag } from 'antd'
 import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import * as api from './api'
 import type { Approval, RequestDetail, ReviewChecklist, SurveyRequest } from './types'
-import { assertApprovalChecklist, dateTime, isEligibleManager, operationFor, requestKindLabels, requestStatusLabels, workflowError } from './workflow'
+import { checklistVersion, dateTime, isEligibleManager, operationFor, requestKindLabels, requestStatusLabels, reviewChecklist, reviewLabels, workflowError } from './workflow'
 
 export function RequestsPage() {
   const token = useAuth().session!.accessToken
@@ -24,7 +25,7 @@ export function RequestsPage() {
       {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /> : <>
         <Table<SurveyRequest> rowKey="id" loading={query.isPending} dataSource={query.data?.items ?? []} pagination={false} scroll={{ x: 850 }} locale={{ emptyText: 'Chưa có yêu cầu phù hợp với bộ lọc.' }} columns={[
           { title: 'Yêu cầu', render: (_, item) => <><strong>{item.requestNumber}</strong><div className="form-hint">{requestKindLabels[item.kind]}</div></> },
-          { title: 'Khách hàng / Nông trại', render: (_, item) => <><strong>{item.farmName}</strong><div>{item.applicantName}</div></> },
+          { title: 'Đơn vị / Nông trại', render: (_, item) => <><strong>{item.farmName}</strong><div>{item.tenantName ?? 'Chưa có tên đơn vị'}{item.tenantCode ? ` · ${item.tenantCode}` : ''}</div></> },
           { title: 'Dịch vụ', dataIndex: 'surveyServiceCode' },
           { title: 'Trạng thái', render: (_, item) => <Tag color={item.status === 'APPROVED' ? 'success' : 'default'}>{requestStatusLabels[item.status]}</Tag> },
           { title: 'Ngày gửi', render: (_, item) => dateTime(item.createdAt) },
@@ -55,6 +56,7 @@ export function RequestDetailPage() {
     <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>Thông tin tiếp nhận</strong><span>Gửi lúc {dateTime(request.createdAt)}</span></div><Button icon={<ReloadOutlined />} onClick={() => { start.reset(); void query.refetch() }}>Tải lại</Button></div>
       <dl className="detail-list">
+        <div><dt>Đơn vị</dt><dd>{request.tenantName ?? 'Chưa có'}{request.tenantCode ? ` · ${request.tenantCode}` : ''}</dd></div>
         <div><dt>Người liên hệ</dt><dd>{request.applicantName}</dd></div><div><dt>Email</dt><dd>{request.applicantEmail}</dd></div><div><dt>Điện thoại</dt><dd>{request.applicantPhone}</dd></div>
         <div><dt>Nông trại</dt><dd>{request.farmName}</dd></div><div><dt>Địa chỉ</dt><dd>{request.farmAddress}</dd></div><div><dt>Diện tích ước tính</dt><dd>{request.approximateAreaHa.toLocaleString('vi-VN')} ha</dd></div>
         <div><dt>Số trụ ước tính</dt><dd>{request.estimatedPoleCount?.toLocaleString('vi-VN') ?? 'Chưa có'}</dd></div>
@@ -75,7 +77,7 @@ export function RequestDetailPage() {
   </>
 }
 
-type ReviewValues = Omit<ReviewChecklist, 'version'> & { reason: string; managerId?: string }
+type ReviewValues = ReviewChecklist & { reason: string; managerId?: string }
 function ReviewModal({ token, type, request, close, done }: { token: string; type: 'approve' | 'reject'; request: RequestDetail; close: () => void; done: (result?: Approval) => Promise<void> }) {
   const [form] = Form.useForm<ReviewValues>()
   const [managerPage, setManagerPage] = useState(1)
@@ -83,10 +85,9 @@ function ReviewModal({ token, type, request, close, done }: { token: string; typ
   const needsManager = type === 'approve' && request.kind !== 'EXISTING_FARM_SURVEY'
   const managers = useQuery({ queryKey: ['eligible-system-managers', managerPage], queryFn: ({ signal }) => api.getManagers(token, managerPage, { status: 'ACTIVE', availability: 'AVAILABLE', qualificationStatus: 'QUALIFIED' }, signal), enabled: needsManager })
   const mutation = useMutation({ mutationFn: async (values: ReviewValues) => {
-    const checklist: ReviewChecklist = { version: request.checklistVersion, contactValid: Boolean(values.contactValid), isServiceAreaSupported: Boolean(values.isServiceAreaSupported), isPreliminaryLegalAndFlightFeasible: Boolean(values.isPreliminaryLegalAndFlightFeasible), notes: values.notes?.trim() || null }
+    const checklist = reviewChecklist(request.checklistVersion, values, type === 'approve')
     const body = { expectedVersion: request.version, reason: values.reason.trim(), checklist }
     if (type === 'reject') { await api.rejectRequest(token, request.id, body); return undefined }
-    assertApprovalChecklist(checklist)
     if (needsManager && !values.managerId) throw new Error('Hãy chọn Manager phụ trách.')
     const approvalBody = { ...body, selectedSystemManagerProfileId: needsManager ? values.managerId! : null }
     operation.current = operationFor(operation.current, approvalBody)
@@ -94,14 +95,15 @@ function ReviewModal({ token, type, request, close, done }: { token: string; typ
   }, onSuccess: done })
   const conflict = mutation.error && 'status' in mutation.error && mutation.error.status === 409
   const eligible = managers.data?.items.filter(manager => isEligibleManager(manager)) ?? []
-  return <Modal open width={620} title={type === 'approve' ? 'Phê duyệt yêu cầu khảo sát' : 'Từ chối yêu cầu khảo sát'} okText={type === 'approve' ? 'Xác nhận phê duyệt' : 'Xác nhận từ chối'} cancelText={conflict ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ danger: type === 'reject', disabled: Boolean(conflict) || (needsManager && !managers.isSuccess) }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
+  const unsupportedChecklist = request.checklistVersion !== checklistVersion
+  return <Modal open width={620} title={type === 'approve' ? 'Phê duyệt yêu cầu khảo sát' : 'Từ chối yêu cầu khảo sát'} okText={type === 'approve' ? 'Xác nhận phê duyệt' : 'Xác nhận từ chối'} cancelText={conflict ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ danger: type === 'reject', disabled: Boolean(conflict) || unsupportedChecklist || (needsManager && !managers.isSuccess) }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     <p>{request.requestNumber} · {request.farmName}</p>
     <Form form={form} layout="vertical" disabled={mutation.isPending} onFinish={values => { if (!mutation.isPending && !conflict) mutation.mutate(values) }}>
       <fieldset className="workflow-checklist"><legend>Kiểm tra trước khi quyết định</legend>
-        <Form.Item name="contactValid" valuePropName="checked"><Checkbox>Thông tin liên hệ hợp lệ</Checkbox></Form.Item>
-        <Form.Item name="isServiceAreaSupported" valuePropName="checked"><Checkbox>Nông trại thuộc khu vực hỗ trợ</Checkbox></Form.Item>
-        <Form.Item name="isPreliminaryLegalAndFlightFeasible" valuePropName="checked"><Checkbox>Đã kiểm tra sơ bộ tính khả thi pháp lý và chuyến bay</Checkbox></Form.Item>
+        {Object.entries(reviewLabels).map(([code, label]) => <Form.Item key={code} name={code} valuePropName="checked"><Checkbox>{label}</Checkbox></Form.Item>)}
       </fieldset>
+      <p className="form-hint">Đánh giá khả thi chưa phải xác nhận đã có văn bản đồng ý sử dụng dữ liệu hoặc giấy phép bay.</p>
+      {unsupportedChecklist ? <Alert showIcon type="error" title="Phiên bản checklist không được hỗ trợ. Đóng và tải lại yêu cầu trước khi xét duyệt." /> : null}
       {needsManager ? <><Form.Item name="managerId" label="Manager phụ trách" rules={[{ required: true, message: 'Chọn Manager phụ trách' }]}><Select showSearch optionFilterProp="label" loading={managers.isPending} options={eligible.map(manager => ({ value: manager.id, label: `${manager.fullName} · ${manager.email}` }))} placeholder="Chọn Manager đủ điều kiện" /></Form.Item>
         <Pagination size="small" current={managerPage} pageSize={20} total={managers.data?.totalCount ?? 0} showSizeChanger={false} onChange={page => { form.setFieldValue('managerId', undefined); setManagerPage(page) }} />
         {managers.isError ? <Alert type="error" title={workflowError(managers.error)} action={<Button onClick={() => { void managers.refetch() }}>Thử lại</Button>} /> : managers.isSuccess && !eligible.length ? <Alert type="info" title="Trang này chưa có Manager đủ điều kiện. Kiểm tra hồ sơ/chứng chỉ hoặc chuyển trang." /> : null}
@@ -109,6 +111,10 @@ function ReviewModal({ token, type, request, close, done }: { token: string; typ
       <Form.Item label={type === 'approve' ? 'Lý do phê duyệt' : 'Lý do từ chối'} name="reason" rules={[{ required: true, whitespace: true, message: 'Nhập lý do quyết định' }, { max: 4000 }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
       <Form.Item label="Ghi chú kiểm tra" name="notes"><Input.TextArea rows={2} maxLength={4000} /></Form.Item>
     </Form>
-    {mutation.isError ? <Alert showIcon type="error" title={workflowError(mutation.error)} /> : null}
+    {mutation.isError ? <Alert showIcon type="error" title={workflowError(mutation.error)} description={mutation.error instanceof ApiError ? <div className="workflow-prewrap">
+      {workflowError(mutation.error) !== mutation.error.message ? <p>Lý do từ máy chủ: {mutation.error.message}</p> : null}
+      <p>Mã lỗi: <code>{mutation.error.code ?? `HTTP ${mutation.error.status}`}</code></p>
+      {mutation.error.traceId ? <p>Mã tra cứu: <code>{mutation.error.traceId}</code></p> : null}
+    </div> : undefined} /> : null}
   </Modal>
 }

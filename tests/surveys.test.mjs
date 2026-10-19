@@ -68,6 +68,38 @@ test('Manager mutations use stable string enums, reviewed version and correct me
   }
 })
 
+test('manual Farm assignment uses the profile ID and a null assignment version for first assignment only', async () => {
+  const receipt = { assignmentId: 'assignment', tenantId: 'tenant', farmId: 'farm/id', systemManagerProfileId: 'profile', managerUserId: 'user', assignedAt: '2026-10-17T00:00:00Z', version: 31 }
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'http://test.local/api/system/farms/farm%2Fid/primary-manager')
+    assert.equal(options.method, 'PUT')
+    assert.equal(options.headers.Authorization, 'Bearer admin')
+    assert.deepEqual(JSON.parse(options.body), { systemManagerProfileId: 'profile', reason: 'Assign the existing Farm', expectedCurrentAssignmentVersion: null })
+    return Response.json(receipt)
+  }
+  assert.deepEqual(await api.assignFarmManager('admin', 'farm/id', { systemManagerProfileId: 'profile', reason: 'Assign the existing Farm' }), receipt)
+})
+
+test('manual assignment never retries with a guessed version or overwrites an existing Manager after conflict', async () => {
+  for (const code of ['SystemManager.ConcurrentUpdate', 'SystemManager.ActiveAssignmentConflict']) {
+    let calls = 0
+    globalThis.fetch = async (_url, options) => {
+      calls++
+      assert.equal(JSON.parse(options.body).expectedCurrentAssignmentVersion, null)
+      return Response.json({ detail: 'An assignment already exists.', errorCode: code, traceId: 'assignment-trace' }, { status: 409 })
+    }
+    await assert.rejects(api.assignFarmManager('admin', 'farm', { systemManagerProfileId: 'profile', reason: 'First assignment' }), error => error.status === 409 && error.code === code && error.traceId === 'assignment-trace')
+    assert.equal(calls, 1)
+  }
+})
+
+test('manual assignment preserves missing Farm, ineligible Manager and permission failures', async () => {
+  for (const [status, code] of [[404, 'SystemManager.FarmNotFound'], [409, 'SystemManager.NotAssignable'], [403, 'Authorization.Forbidden']]) {
+    globalThis.fetch = async () => Response.json({ detail: 'Assignment refused.', errorCode: code }, { status })
+    await assert.rejects(api.assignFarmManager('admin', 'farm', { systemManagerProfileId: 'profile', reason: 'First assignment' }), error => error.status === status && error.code === code)
+  }
+})
+
 test('service pricing sends only the current per-pole VND contract and server version', async () => {
   globalThis.fetch = async (url, options) => {
     assert.equal(url, 'http://test.local/api/system-admin/survey-services/s%2F1/prices')
@@ -92,15 +124,21 @@ test('survey inbox uses server filters/paging and detail keeps checklist version
   const controller = new AbortController()
   globalThis.fetch = async (url, options) => { const parsed = new URL(url); assert.equal(parsed.pathname, '/api/system-admin/survey-requests'); assert.equal(parsed.searchParams.get('status'), 'UNDER_REVIEW'); assert.equal(parsed.searchParams.get('kind'), 'NEW_CUSTOMER'); assert.equal(parsed.searchParams.get('pageNumber'), '2'); assert.equal(options.signal, controller.signal); return Response.json({ items: [], totalCount: 21 }) }
   await api.getRequests('admin', 2, { status: 'UNDER_REVIEW', kind: 'NEW_CUSTOMER' }, controller.signal)
-  globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system-admin/survey-requests/r%2F1'); assert.equal(options.headers.Authorization, 'Bearer admin'); return Response.json({ checklistVersion: 'survey-request-review.v3', version: 513 }) }
+  globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system-admin/survey-requests/r%2F1'); assert.equal(options.headers.Authorization, 'Bearer admin'); return Response.json({ checklistVersion: 'survey-request-review.v5', version: 513 }) }
   assert.equal((await api.getRequest('admin', 'r/1')).version, 513)
 })
 
-const checklist = { version: 'survey-request-review.v3', contactValid: true, isServiceAreaSupported: true, isPreliminaryLegalAndFlightFeasible: true, notes: null }
-test('approval requires the v3 checklist; rejection can record failed conditions', () => {
-  assert.doesNotThrow(() => workflow.assertApprovalChecklist(checklist))
-  assert.throws(() => workflow.assertApprovalChecklist({ ...checklist, contactValid: false }), /ba điều kiện/)
-  assert.throws(() => workflow.assertApprovalChecklist({ ...checklist, version: 'v2' }), /Checklist/)
+const checklist = { 'contact-valid': true, 'dragon-fruit-farm-confirmed': true, 'service-area-supported': true, 'candidate-location-sufficient': true, 'consent-feasibility': true, 'flight-permission-feasibility': true, 'eligible-manager-available': true, notes: null }
+test('v5 review sends exactly seven hyphenated answers; rejection can record failed conditions', () => {
+  assert.deepEqual(workflow.reviewChecklist('survey-request-review.v5', { ...checklist, notes: '  Reviewed  ', contactValid: true, version: 'old' }, true), { ...checklist, notes: 'Reviewed' })
+  for (const code of Object.keys(checklist).filter(key => key !== 'notes')) {
+    assert.throws(() => workflow.reviewChecklist('survey-request-review.v5', { ...checklist, [code]: false }, true), /bảy điều kiện/)
+    assert.equal(workflow.reviewChecklist('survey-request-review.v5', { ...checklist, [code]: false }, false)[code], false)
+    const missing = { ...checklist }; delete missing[code]
+    assert.throws(() => workflow.reviewChecklist('survey-request-review.v5', missing, true), /bảy điều kiện/)
+  }
+  assert.throws(() => workflow.reviewChecklist('survey-request-review.v3', checklist, true), /Checklist/)
+  assert.throws(() => workflow.reviewChecklist('survey-request-review.v6', checklist, false), /Checklist/)
 })
 
 test('request review sends actual checklist/version and approval idempotency key', async () => {
@@ -109,7 +147,7 @@ test('request review sends actual checklist/version and approval idempotency key
   assert.equal((await api.approveRequest('admin', 'r/1', body, 'same-operation')).orderNumber, 'SO-1')
   globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system-admin/survey-requests/r%2F1/start-review'); assert.deepEqual(JSON.parse(options.body), { expectedVersion: 418 }); return Response.json({ version: 419 }) }
   await api.startReview('admin', 'r/1', 418)
-  const rejected = { expectedVersion: 419, reason: 'Outside service area', checklist: { ...checklist, isServiceAreaSupported: false } }
+  const rejected = { expectedVersion: 419, reason: 'Outside service area', checklist: { ...checklist, 'service-area-supported': false } }
   globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system-admin/survey-requests/r%2F1/reject'); assert.deepEqual(JSON.parse(options.body), rejected); assert.equal(options.headers['Idempotency-Key'], undefined); return Response.json({ status: 'REJECTED' }) }
   await api.rejectRequest('admin', 'r/1', rejected)
 })
@@ -121,7 +159,7 @@ test('retries keep the operation key, edits create a new key', () => {
 })
 
 test('public intake includes the caller cookie without bearer auth', async () => {
-  const body = { surveyServiceId: 'service', applicantName: 'Customer', applicantEmail: 'customer@example.test', applicantPhone: '0901234567', farmName: 'Farm', farmAddress: 'Address', approximateAreaHa: 1, longitude: 108, latitude: 10, estimatedPoleCount: 100, preferredStartAt: null, preferredEndAt: null, notes: null }
+  const body = { surveyServiceId: 'service', tenantCode: 'ANPHU', tenantName: 'An Phu', applicantName: 'Customer', applicantEmail: 'customer@example.test', applicantPhone: '0901234567', farmName: 'Farm', farmAddress: 'Address', approximateAreaHa: 1, longitude: 108, latitude: 10, estimatedPoleCount: 100, preferredStartAt: null, preferredEndAt: null, notes: null }
   globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/public/survey-requests'); assert.equal(options.credentials, 'include'); assert.equal(options.headers.Authorization, undefined); assert.equal(options.headers['Idempotency-Key'], 'intake-1'); assert.deepEqual(JSON.parse(options.body), body); return Response.json({ requestNumber: 'SR-1' }) }
   assert.equal((await api.submitPublicRequest(body, 'intake-1')).requestNumber, 'SR-1')
 })
@@ -137,6 +175,13 @@ test('intake rejects invalid coordinates, pole count and incomplete/reversed tim
   const body = { longitude: 108, latitude: 10, approximateAreaHa: 1, estimatedPoleCount: null, preferredStartAt: null, preferredEndAt: null }
   assert.doesNotThrow(() => workflow.validateIntake(body))
   for (const change of [{ longitude: NaN }, { latitude: 91 }, { approximateAreaHa: 0 }, { estimatedPoleCount: 1.5 }, { estimatedPoleCount: 2147483648 }, { preferredStartAt: '2026-10-17T00:00:00Z' }, { preferredStartAt: 'invalid', preferredEndAt: 'invalid' }, { preferredStartAt: '2026-10-18T00:00:00Z', preferredEndAt: '2026-10-17T00:00:00Z' }]) assert.throws(() => workflow.validateIntake({ ...body, ...change }))
+})
+
+test('public intake requires both tenant fields and preserves an actionable duplicate-code error', async () => {
+  assert.doesNotThrow(() => workflow.validatePublicTenant({ tenantCode: 'ANPHU', tenantName: 'An Phu' }))
+  for (const body of [{ tenantCode: ' ', tenantName: 'Name' }, { tenantCode: 'CODE', tenantName: '' }, { tenantCode: 'A'.repeat(51), tenantName: 'Name' }, { tenantCode: 'CODE', tenantName: 'A'.repeat(151) }]) assert.throws(() => workflow.validatePublicTenant(body))
+  globalThis.fetch = async () => Response.json({ errorCode: 'SurveyRequest.TenantCodeUnavailable' }, { status: 409 })
+  await assert.rejects(api.submitPublicRequest({}, 'key'), error => /Mã đơn vị/.test(workflow.workflowError(error)))
 })
 
 test('conflict responses propagate without retry or false approval success', async () => {

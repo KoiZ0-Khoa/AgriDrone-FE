@@ -1,5 +1,5 @@
 import { apiRequest } from '../../api/client'
-import type { Approval, AssignedFarm, ExistingFarmIntake, Manager, NewFarmIntake, Page, PriceHistory, PublicIntake, PublicService, RequestDetail, RequestReceipt, ReviewDecision, SurveyRequest, SurveyService } from './types'
+import type { Approval, AssignedFarm, ExistingFarmIntake, FarmManagerAssignment, Manager, NewFarmIntake, Page, PriceHistory, PublicIntake, PublicService, RequestDetail, RequestReceipt, ReviewDecision, SurveyRequest, SurveyService } from './types'
 
 const id = encodeURIComponent
 const adminServices = '/api/system-admin/survey-services'
@@ -34,3 +34,5 @@ export const submitPublicRequest = (body: PublicIntake, key: string) => apiReque
 export const submitNewFarmRequest = (token: string, body: NewFarmIntake, key: string) => apiRequest<RequestReceipt>('/api/tenant-owner/survey-requests/new-farm', { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
 export const submitExistingFarmRequest = (token: string, farmId: string, body: ExistingFarmIntake, key: string) => apiRequest<RequestReceipt>(`/api/tenant-owner/farms/${id(farmId)}/survey-requests`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
 export const getAssignedFarms = (token: string, signal?: AbortSignal) => apiRequest<AssignedFarm[]>('/api/system-manager/farms', { token, signal })
+// A missing assignment version only permits an initial assignment; BE rejects replacements.
+export const assignFarmManager = (token: string, farmId: string, body: { systemManagerProfileId: string; reason: string }) => apiRequest<FarmManagerAssignment>(`/api/system/farms/${id(farmId)}/primary-manager`, { method: 'PUT', token, body: { ...body, expectedCurrentAssignmentVersion: null } })

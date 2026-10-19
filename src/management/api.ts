@@ -8,7 +8,9 @@ export type Tenant = { id: string; code: string; name: string; status: Status }
 export type Membership = { id: string; tenantId: string; role: MemberRole; status: Status }
 export type Profile = { fullName: string; phone: string | null }
 export type PlantConditionType = 'DISEASE' | 'ABIOTIC_DAMAGE' | 'MECHANICAL_DAMAGE' | 'OTHER'
-export type PlantCondition = { id: string; code: string; name: string; scientificName: string | null; conditionType: PlantConditionType; description: string | null; revisionNumber: number; version?: number }
+export type PlantHealthMetadata = { datasetVersion?: string | null; annotationRuleVersion?: string | null; teamLabelLimitation?: string | null }
+export type PlantHealthLabelKind = 'SUSPECTED_DISEASE' | 'CONFUSING_NON_DISEASE'
+export type PlantCondition = PlantHealthMetadata & { id: string; code: string; name: string; scientificName: string | null; conditionType: PlantConditionType; description: string | null; revisionNumber: number; version?: number; plantHealthLabelKind?: PlantHealthLabelKind | null }
 export type PlantConditionDetail = PlantCondition & { isActive: boolean; createdAt: string; retiredAt: string | null; version: number }
 export type HarvestQualityGrade = { id: string; code: string; name: string; displayOrder: number; revisionNumber: number; version?: number }
 export type HarvestQualityGradeDetail = HarvestQualityGrade & { supersedesId: string | null; isActive: boolean; createdAt: string; version: number }
@@ -55,8 +57,8 @@ export const setTenantActive = (token: string, tenantId: string, active: boolean
 export const provisionOwner = (token: string, tenantId: string, email: string) => request(`/api/system/tenants/${id(tenantId)}/owner-provisionings`, { method: 'POST', token, body: { email } })
 export const setMembershipActive = (token: string, membershipId: string, active: boolean) => request<void>(`/api/system/tenant-memberships/${id(membershipId)}/${active ? 'activate' : 'deactivate'}`, { method: 'PUT', token })
 export const getPlantConditions = (token: string) => request<PlantCondition[]>('/api/catalog/plant-conditions', { token })
-export const createPlantCondition = (token: string, body: { code: string; name: string; scientificName: string | null; conditionType: PlantConditionType; description: string | null }) => request<PlantConditionDetail>('/api/system/plant-conditions', { method: 'POST', token, body })
-export const versionPlantCondition = (token: string, conditionId: string, body: { name: string; scientificName: string | null; description: string | null; expectedVersion: number }) => request<PlantConditionDetail>(`/api/system/plant-conditions/${id(conditionId)}/versions`, { method: 'POST', token, body })
+export const createPlantCondition = (token: string, body: PlantHealthMetadata & { code: string; name: string; scientificName: string | null; conditionType: PlantConditionType; description: string | null; plantHealthLabelKind?: PlantHealthLabelKind | null }) => request<PlantConditionDetail>('/api/system/plant-conditions', { method: 'POST', token, body })
+export const versionPlantCondition = (token: string, conditionId: string, body: PlantHealthMetadata & { name: string; scientificName: string | null; description: string | null; expectedVersion: number }) => request<PlantConditionDetail>(`/api/system/plant-conditions/${id(conditionId)}/versions`, { method: 'POST', token, body })
 export const retirePlantCondition = (token: string, conditionId: string, expectedVersion: number) => request<void>(`/api/system/plant-conditions/${id(conditionId)}/retire`, { method: 'PUT', token, body: { expectedVersion } })
 export const getHarvestQualityGrades = (token: string) => request<HarvestQualityGrade[]>('/api/catalog/harvest-quality-grades', { token })
 export const createHarvestQualityGrade = (token: string, body: { code: string; name: string; displayOrder: number }) => request<HarvestQualityGradeDetail>('/api/system/harvest-quality-grades', { method: 'POST', token, body })

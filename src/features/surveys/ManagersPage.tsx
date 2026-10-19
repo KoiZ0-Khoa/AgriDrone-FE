@@ -10,6 +10,7 @@ import { getUsers } from '../../management/api'
 import * as api from './api'
 import type { Manager } from './types'
 import { dateTime, isEligibleManager, managerLabels, workflowError } from './workflow'
+import { FarmManagerAssignmentModal } from './FarmManagerAssignmentModal'
 
 const reason: Field = { key: 'reason', label: 'Lý do thay đổi', kind: 'multiline', max: 2000 }
 const options = (values: string[]) => values.map(value => ({ value, label: managerLabels[value] }))
@@ -21,6 +22,7 @@ export function ManagersPage() {
   const [selectedId, setSelectedId] = useState('')
   const [action, setAction] = useState<Action | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [assignmentOpen, setAssignmentOpen] = useState(false)
   const query = useQuery({ queryKey: ['system-managers', page, filters], queryFn: ({ signal }) => api.getManagers(token, page, filters, signal) })
   const detail = useQuery({ queryKey: ['system-manager', selectedId], queryFn: ({ signal }) => api.getManager(token, selectedId, signal), enabled: Boolean(selectedId) })
   function filter(key: keyof typeof filters, value: string) { setPage(1); setFilters(previous => ({ ...previous, [key]: value })) }
@@ -43,7 +45,7 @@ export function ManagersPage() {
   const manager = detail.data
   return <>
     <section className="resource-page-heading"><div><span className="page-kicker">NHÂN SỰ VẬN HÀNH</span><h1>System Manager</h1><p>Quản lý hồ sơ, chứng chỉ bay và khả năng nhận công việc khảo sát.</p></div>
-      <Space wrap><Button onClick={() => setCreateOpen(true)}>Tạo hồ sơ từ tài khoản</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => setAction({ title: 'Mời System Manager', description: 'Gửi lời mời qua email. Người đã có tài khoản sử dụng tài khoản hiện tại để chấp nhận.', fields: [emailField], success: 'Đã tạo lời mời System Manager', run: values => api.inviteManager(token, text(values, 'email')) })}>Mời System Manager</Button></Space>
+      <Space wrap><Button onClick={() => setAssignmentOpen(true)}>Phân công nông trại</Button><Button onClick={() => setCreateOpen(true)}>Tạo hồ sơ từ tài khoản</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => setAction({ title: 'Mời System Manager', description: 'Gửi lời mời qua email. Người đã có tài khoản sử dụng tài khoản hiện tại để chấp nhận.', fields: [emailField], success: 'Đã tạo lời mời System Manager', run: values => api.inviteManager(token, text(values, 'email')) })}>Mời System Manager</Button></Space>
     </section>
     <section className="resource-panel">
       <div className="workflow-toolbar">
@@ -74,6 +76,7 @@ export function ManagersPage() {
       </> : null}
     </Drawer>
     {createOpen ? <CreateManager token={token} close={() => setCreateOpen(false)} /> : null}
+    {assignmentOpen ? <FarmManagerAssignmentModal token={token} close={() => setAssignmentOpen(false)} /> : null}
     {action ? <ActionModal action={action} close={() => setAction(null)} /> : null}
   </>
 }

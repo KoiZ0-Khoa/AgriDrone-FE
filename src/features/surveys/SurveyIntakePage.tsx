@@ -9,7 +9,7 @@ import { useAuth } from '../auth/AuthContext'
 import { getFarms } from '../farms/farmsApi'
 import * as api from './api'
 import type { PublicIntake } from './types'
-import { operationFor, priceLabel, validateIntake, validateRequestWindow, workflowError } from './workflow'
+import { operationFor, priceLabel, validateIntake, validatePublicTenant, validateRequestWindow, workflowError } from './workflow'
 
 type IntakeValues = PublicIntake & { farmId?: string }
 export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
@@ -33,7 +33,8 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
     }
     const newFarm = { ...common, farmName: values.farmName.trim(), farmAddress: values.farmAddress.trim(), approximateAreaHa: values.approximateAreaHa, longitude: values.longitude, latitude: values.latitude }
     validateIntake(newFarm)
-    const body = owner ? newFarm : { ...newFarm, applicantName: values.applicantName.trim(), applicantEmail: values.applicantEmail.trim(), applicantPhone: values.applicantPhone.trim() }
+    const body = owner ? newFarm : { ...newFarm, tenantCode: values.tenantCode.trim(), tenantName: values.tenantName.trim(), applicantName: values.applicantName.trim(), applicantEmail: values.applicantEmail.trim(), applicantPhone: values.applicantPhone.trim() }
+    if (!owner) validatePublicTenant(body as PublicIntake)
     operation.current = operationFor(operation.current, body)
     return owner ? api.submitNewFarmRequest(session!.accessToken, newFarm, operation.current.key) : api.submitPublicRequest(body as PublicIntake, operation.current.key)
   } })
@@ -45,6 +46,7 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
       {services.isPending ? <CommonState type="loading" title="Đang tải dịch vụ" /> : services.isError ? <CommonState type="error" description={workflowError(services.error)} retry={() => services.refetch()} /> : services.data.length === 0 ? <CommonState type="empty" title="Chưa có dịch vụ nhận yêu cầu" description="Vui lòng quay lại khi dịch vụ được mở đăng ký." /> : <>
         {owner ? <Radio.Group className="workflow-mode" value={mode} disabled={mutation.isPending} onChange={event => { setMode(event.target.value); mutation.reset() }} options={[{ value: 'new', label: 'Nông trại mới' }, { value: 'existing', label: 'Nông trại hiện có' }]} /> : null}
         <Form form={form} layout="vertical" initialValues={{ farmId: params.get('farmId') ?? undefined }} disabled={mutation.isPending} onFinish={values => { if (!mutation.isPending) mutation.mutate(values) }}>
+          {!owner ? <><h2 className="workflow-form-heading">Đơn vị đăng ký</h2><div className="form-two-columns"><Form.Item name="tenantName" label="Tên đơn vị" rules={[{ required: true, whitespace: true }, { max: 150 }]}><Input maxLength={150} autoComplete="organization" /></Form.Item><Form.Item name="tenantCode" label="Mã đơn vị" extra="Mã đề xuất cho đơn vị, ví dụ ANPHU. Đơn vị chỉ được tạo khi yêu cầu được duyệt." rules={[{ required: true, whitespace: true }, { max: 50 }]}><Input maxLength={50} placeholder="ANPHU" /></Form.Item></div></> : null}
           <Form.Item name="surveyServiceId" label="Dịch vụ khảo sát" rules={[{ required: true, message: 'Chọn dịch vụ khảo sát' }]}><Select placeholder="Chọn dịch vụ" options={services.data.map(service => ({ value: service.surveyServiceId, label: `${service.name}${service.isExperimental ? ' · Thử nghiệm' : ''}` }))} /></Form.Item>
           {selectedService ? <div className="workflow-service-summary"><strong>{priceLabel(selectedService.indicativePrice.amountPerPole, selectedService.indicativePrice.currency)}</strong>{selectedService.isExperimental ? <Tag>Thử nghiệm</Tag> : null}<p>{selectedService.description}</p><small>Giá tham khảo theo trụ. Tổng giá được xác nhận sau khi xác minh số trụ chính thức.</small></div> : null}
           {!owner ? <><h2 className="workflow-form-heading">Thông tin liên hệ</h2><div className="form-two-columns"><Form.Item name="applicantName" label="Họ và tên" rules={[{ required: true, whitespace: true }, { max: 150 }]}><Input autoComplete="name" maxLength={150} /></Form.Item><Form.Item name="applicantPhone" label="Số điện thoại" rules={[{ required: true }, { validator: (_, value: string) => !value || (/^\+?[\d ().-]+$/.test(value) && value.replace(/\D/g, '').length >= 7 && value.replace(/\D/g, '').length <= 15) ? Promise.resolve() : Promise.reject(new Error('Nhập số điện thoại từ 7 đến 15 chữ số.')) }]}><Input type="tel" autoComplete="tel" maxLength={30} /></Form.Item></div><Form.Item name="applicantEmail" label="Email nhận thông báo" rules={[{ required: true }, { type: 'email' }, { max: 320 }]}><Input type="email" autoComplete="email" /></Form.Item></> : null}

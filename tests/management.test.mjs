@@ -173,6 +173,16 @@ test('Long system catalog APIs use the current routes and concurrency bodies', a
     ['http://test.local/api/catalog/health-levels', 'GET', undefined],
   ])
 })
+
+test('Plant Health label create/version preserve dataset semantics and the reviewed entity version', async () => {
+  const metadata = { datasetVersion: 'DATASET_V1', annotationRuleVersion: 'RULES_V1', teamLabelLimitation: 'A preliminary team label, not an expert diagnosis.' }
+  const body = { code: 'SUSPECT_1', name: 'Suspected disease', scientificName: null, conditionType: 'DISEASE', description: null, plantHealthLabelKind: 'SUSPECTED_DISEASE', ...metadata }
+  globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system/plant-conditions'); assert.equal(options.method, 'POST'); assert.deepEqual(JSON.parse(options.body), body); return Response.json({ version: 61 }) }
+  assert.equal((await api.createPlantCondition('admin', body)).version, 61)
+  const revision = { name: body.name, scientificName: null, description: 'Reviewed', expectedVersion: 61, ...metadata }
+  globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system/plant-conditions/c%2F1/versions'); assert.deepEqual(JSON.parse(options.body), revision); return Response.json({ version: 62 }) }
+  assert.equal((await api.versionPlantCondition('admin', 'c/1', revision)).version, 62)
+})
 afterEach(() => { globalThis.fetch = originalFetch })
 
 test('profile uses name/phone and preserves the returned fullName', async () => {
@@ -209,6 +219,23 @@ test('farm edit preserves polygon and reviewed version, handles zero and nullabl
   for (const change of [{ longitude: '1', latitude: '' }, { longitude: '181', latitude: '1' }, { area: '-1' }, { area: 'Infinity' }]) {
     assert.throws(() => actions.farmBody({ name: 'F', area: '', longitude: '', latitude: '', ...change }, farm))
   }
+})
+
+test('Manager Farm editor pre-fills the saved location and preserves boundary/version when updating area and coordinates', async () => {
+  const snapshot = { name: 'Farm One', address: 'Long An', areaHectares: 2.5, centerPoint: { type: 'Point', coordinates: [108.1, 10.9] }, boundary: { type: 'Polygon', coordinates: [[[108, 10], [109, 10], [109, 11], [108, 10]]] }, expectedVersion: 413 }
+  const action = actions.farmAction('manager', 'farm/id', snapshot)
+  const initial = Object.fromEntries(action.fields.map(field => [field.key, field.value]))
+  assert.equal(initial.area, '2.5')
+  assert.equal(initial.longitude, '108.1')
+  assert.equal(initial.latitude, '10.9')
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'http://test.local/api/farms/farm%2Fid')
+    assert.equal(options.headers.Authorization, 'Bearer manager')
+    assert.equal(options.method, 'PUT')
+    assert.deepEqual(JSON.parse(options.body), { name: snapshot.name, address: snapshot.address, areaHectares: 3.2, boundary: snapshot.boundary, centerPoint: { type: 'Point', coordinates: [108.12, 10.92] }, expectedVersion: 413 })
+    return Response.json({ version: 414 })
+  }
+  await action.run({ ...initial, area: '3,2', longitude: '108.12', latitude: '10.92' })
 })
 test('farm update uses PUT and propagates concurrency without retry', async () => {
   let count = 0

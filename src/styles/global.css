@@ -627,6 +627,7 @@ a { color: inherit; }
 .workflow-checklist legend { font-weight: 600; padding: 0 8px; }
 .workflow-checklist .ant-form-item:last-child { margin-bottom: 0; }
 .workflow-form-heading { margin: 28px 0 18px; font-size: 20px; }
+.workflow-coordinate-fields .ant-input-number { width: 100%; }
 .workflow-mode { margin-bottom: 24px; }
 .workflow-service-summary { padding: 20px; margin-bottom: 24px; border: 1px solid var(--cloud); border-radius: 4px; }
 .workflow-service-summary strong { margin-right: 12px; }

@@ -22,8 +22,8 @@ export function getFarms(token: string, pageNumber = 1, pageSize = 20) {
   return apiRequest<PagedResult<Farm>>(`/api/farms?${params}`, { token })
 }
 
-export function getFarm(token: string, farmId: string) {
-  return apiRequest<FarmDetail>(`/api/farms/${encodeURIComponent(farmId)}`, { token })
+export function getFarm(token: string, farmId: string, signal?: AbortSignal) {
+  return apiRequest<FarmDetail>(`/api/farms/${encodeURIComponent(farmId)}`, { token, signal })
 }
 
 export function getArchivedFarms(token: string, pageNumber = 1, signal?: AbortSignal) {

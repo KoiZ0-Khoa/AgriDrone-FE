@@ -1,4 +1,6 @@
-# Đối chiếu FE với BE của Long
+# Đối chiếu FE với BE của Long — mốc 16–17/10/2026
+
+> Đây là tài liệu mốc cũ. Trạng thái tích hợp hiện tại theo BE `902362c`, checklist v5 và API Manager Order nằm trong [cập nhật ngày 19/10/2026](./long-api-update-2026-10-19.md). Không dùng các ghi chú lỗi validation/phê duyệt cũ bên dưới để kết luận về BE mới.
 
 Mốc BE: `0ce91b6`, kiểm tra ngày 16/10/2026. Phạm vi lần cập nhật này là web; không sửa BE hoặc Mobile.
 
@@ -10,9 +12,11 @@ Mốc BE: `0ce91b6`, kiểm tra ngày 16/10/2026. Phạm vi lần cập nhật n
 | `/survey-requests/new` | POST `/api/tenant-owner/survey-requests/new-farm`, POST `/api/tenant-owner/farms/{farmId}/survey-requests` | Owner gửi yêu cầu cho nông trại mới hoặc hiện có. |
 | `/system/survey-services` | GET `/api/system-admin/survey-services`, PUT `/{serviceId}`, GET/POST `/{serviceId}/prices`, POST `/{serviceId}/activate`, `/experimental`, `/retire` | Danh mục, chỉnh mô tả, giá theo trụ VND, lịch sử giá và trạng thái. Không cho kích hoạt lại dịch vụ RETIRED. |
 | `/system/managers` | GET/POST `/api/system/managers`, GET `/{profileId}`, POST `/invitations`, PUT `/{profileId}/activate`, `/suspend`, `/availability`, `/qualification` | Mời Manager hoặc tạo hồ sơ cho tài khoản có sẵn; quản lý trạng thái, nhận việc và chứng chỉ. |
+| `/system/managers` → Phân công nông trại | PUT `/api/system/farms/{farmId}/primary-manager` | Phân công lần đầu cho Farm hiện có bằng Farm ID, Manager đủ điều kiện và lý do. Gửi `expectedCurrentAssignmentVersion: null`; không thay thế Manager đã được phân công. |
 | `/system/survey-requests` và `/:requestId` | GET inbox/chi tiết, POST `/{requestId}/start-review`, `/reject`, `/approve` | Phân trang, lọc, xem lịch sử, checklist v3, chọn Manager đủ điều kiện và duyệt/từ chối. |
 | `/accept-system-manager-invitation` | POST `/api/auth/system-manager-invitations/preview`, `/accept` | Giữ phần lời mời đã triển khai: chỉ tạo tài khoản khi BE yêu cầu. |
 | `/manager` | GET `/api/system-manager/farms` | System Manager đăng nhập được và xem danh sách nông trại được phân công trong layout riêng. Chưa có màn vận hành Order/Mission. |
+| `/manager/farms/:farmId` | GET `/api/farms/{farmId}`, PUT `/api/farms/{farmId}` | Đã thêm màn chi tiết và form sửa tên, địa chỉ, diện tích, tọa độ tâm. Giữ nguyên boundary và dùng version đã đọc. BE hiện chặn GET cho phiên Manager không có tenant, nên form khóa lưu và báo rõ lỗi quyền đọc. |
 
 POST intake và approve giữ `Idempotency-Key` khi thử lại cùng payload; sửa payload tạo key mới. Version gửi lên lấy từ dữ liệu người dùng đã xem, không tự tăng hoặc tự gửi lại khi có 409. Chỉ có Plant Health được mở thao tác bán dịch vụ.
 
@@ -48,5 +52,24 @@ POST intake và approve giữ `Idempotency-Key` khi thử lại cùng payload; s
 8. Owner đăng nhập và gửi hai loại yêu cầu trong mục Đăng ký khảo sát. System Manager phải được đưa đến `/manager`, không vào layout tenant.
 
 Build production không dùng proxy Vite. Khi deploy cần cấu hình API/reverse proxy cùng site phù hợp với cookie `SameSite=Lax` của BE; `VITE_API_BASE_URL` là cấu hình build cho API thật.
+
+### Kiểm thử phân công thủ công (17/10/2026)
+
+1. Với Owner, mở chi tiết Farm đang hoạt động và sao chép UUID sau `/farms/` trong URL (không dùng mã Farm như `TAN AN`). BE chưa có API danh sách Farm cho Admin, nên form hiện nhập Farm ID.
+2. Với System Admin, mở **System Manager → Phân công nông trại**, dán Farm ID, chọn Manager hoạt động/sẵn sàng/có chứng chỉ chưa hết hạn, nhập lý do rồi xác nhận.
+3. Chỉ khi BE trả thành công mới hiện thông báo đã phân công. Đăng nhập Manager, mở **Nông trại phụ trách → Tải lại** để kiểm tra Farm.
+4. Nếu Farm đã có primary Manager, BE trả conflict; form giữ lỗi và không đoán version/gửi lại để thay thế người hiện tại. Đây là chức năng phân công lần đầu, không phải phân công lại.
+5. Kiểm tra Farm ID sai/đã lưu trữ, Manager không còn đủ điều kiện và lỗi quyền. Mã lỗi và mã tra cứu được giữ lại khi BE cung cấp.
+
+Thao tác này không tạo hoặc phê duyệt Survey Request/Survey Order.
+
+### Chi tiết và chỉnh sửa Farm cho Manager (17/10/2026)
+
+- Manager mở **Nông trại phụ trách**, bấm cả ô Farm để vào `/manager/farms/:farmId`.
+- FE kiểm tra Farm nằm trong danh sách được phân công trước khi đọc chi tiết. GET dùng chính token Manager, không lấy token Owner hoặc giả tenant header.
+- Khi đọc được dữ liệu đầy đủ, nút **Chỉnh sửa nông trại** mở form có sẵn tên, địa chỉ, diện tích ha, kinh độ và vĩ độ. PUT giữ boundary, dùng `expectedVersion` của Farm, không dùng version phân công. Thành công tải lại dữ liệu; conflict không tự gửi lại version mới.
+- Nếu thiếu version, thiếu dữ liệu vị trí/ranh giới, không khớp Farm/tenant hoặc Farm ngừng hoạt động, không cho sửa. Không hiển thị tọa độ mặc định khi GET bị từ chối.
+- **Điểm chặn BE còn nguyên:** `FarmController.GetFarmById` yêu cầu `TenantMember`; handler còn yêu cầu tenant context và kiểm tra quyền tenant/Farm. Phiên System Manager hoạt động toàn hệ thống không đọc được qua luồng này, trong khi PUT yêu cầu System Manager được phân công. Danh sách `/api/system-manager/farms` không có centerPoint, boundary hoặc version. Cần Long mở quyền đọc theo primary-manager assignment hoặc cung cấp endpoint chi tiết Manager trả các trường đó. Hiện FE dùng GET có thật, chưa tự đặt endpoint mới.
+- Kiểm thử form/chuyển trang bằng mock/fixture không xác nhận đã sửa thành công trên BE đang chạy. Chưa thực hiện PUT trên database thật.
 
 Các test FE kiểm tra hợp đồng request bằng fetch mock, role/điều hướng, điều kiện Manager, checklist, validation intake và chống gửi trùng. Chưa thay thế kiểm thử end-to-end trên database và dịch vụ mail/payment thật.

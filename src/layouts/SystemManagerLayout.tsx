@@ -1,4 +1,4 @@
-import { CloseOutlined, EnvironmentOutlined, LogoutOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons'
+import { CloseOutlined, EnvironmentOutlined, LogoutOutlined, MenuOutlined, ScheduleOutlined, UserOutlined } from '@ant-design/icons'
 import { Button } from 'antd'
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
@@ -13,7 +13,7 @@ export function SystemManagerLayout() {
     <aside className={`app-sidebar ${menuOpen ? 'is-open' : ''}`} id="manager-sidebar">
       <div className="sidebar-brand"><NavLink to="/manager" onClick={() => setMenuOpen(false)}><BrandMark /></NavLink><button className="sidebar-close" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)}><CloseOutlined /></button></div>
       <div className="workspace-context"><span>PHẠM VI LÀM VIỆC</span><strong>Nông trại được phân công</strong><small>SYSTEM MANAGER</small></div>
-      <nav className="sidebar-navigation" aria-label="Điều hướng System Manager"><span className="sidebar-group-label">VẬN HÀNH</span><NavLink to="/manager" end onClick={() => setMenuOpen(false)}><EnvironmentOutlined />Nông trại phụ trách</NavLink><NavLink to="/manager/account" onClick={() => setMenuOpen(false)}><UserOutlined />Tài khoản</NavLink></nav>
+      <nav className="sidebar-navigation" aria-label="Điều hướng System Manager"><span className="sidebar-group-label">VẬN HÀNH</span><NavLink to="/manager" end onClick={() => setMenuOpen(false)}><EnvironmentOutlined />Nông trại phụ trách</NavLink><NavLink to="/manager/orders" onClick={() => setMenuOpen(false)}><ScheduleOutlined />Đơn khảo sát được giao</NavLink><NavLink to="/manager/account" onClick={() => setMenuOpen(false)}><UserOutlined />Tài khoản</NavLink></nav>
       <div className="sidebar-footer"><p><strong>{session?.fullName}</strong></p><Button icon={<LogoutOutlined />} onClick={logout}>Đăng xuất</Button></div>
     </aside>
     {menuOpen ? <button className="sidebar-backdrop" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)} /> : null}

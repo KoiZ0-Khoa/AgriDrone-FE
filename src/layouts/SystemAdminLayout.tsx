@@ -24,6 +24,7 @@ const navigation = [
   { to: '/system/tenants', label: 'Đơn vị', icon: <BankOutlined aria-hidden="true" /> },
   { to: '/system/users', label: 'Người dùng', icon: <TeamOutlined aria-hidden="true" /> },
   { to: '/system/plant-conditions', label: 'Tình trạng cây', icon: <MedicineBoxOutlined aria-hidden="true" /> },
+  { to: '/system/plant-health', label: 'Nhãn & hướng dẫn', icon: <MedicineBoxOutlined aria-hidden="true" /> },
   { to: '/system/harvest-quality-grades', label: 'Chất lượng thu hoạch', icon: <TrophyOutlined aria-hidden="true" /> },
 ]
 
@@ -34,6 +35,7 @@ function pageTitle(pathname: string) {
   if (pathname === '/system/tenants') return 'Quản lý đơn vị'
   if (pathname === '/system/users') return 'Quản lý người dùng'
   if (pathname === '/system/plant-conditions') return 'Danh mục tình trạng cây'
+  if (pathname === '/system/plant-health') return 'Nhãn và hướng dẫn Plant Health'
   if (pathname === '/system/harvest-quality-grades') return 'Danh mục chất lượng thu hoạch'
   if (pathname === '/system/account') return 'Tài khoản quản trị'
   return 'Tổng quan hệ thống'

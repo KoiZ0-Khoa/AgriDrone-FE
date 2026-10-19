@@ -12,6 +12,27 @@ const errors = await import(dataUrl(compile('../src/features/farms/managementErr
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
+test('Manager Farm detail uses the Manager bearer token and cancellation without inventing tenant context', async () => {
+  const controller = new AbortController()
+  const detail = { id: 'farm/id', tenantId: 'tenant', version: 413, areaHectares: 2.5, centerPoint: { type: 'Point', coordinates: [108.1, 10.9] }, boundary: null }
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'http://test.local/api/farms/farm%2Fid')
+    assert.equal(options.headers.Authorization, 'Bearer manager')
+    assert.equal(options.signal, controller.signal)
+    assert.equal(options.body, undefined)
+    assert.equal(Object.keys(options.headers).some(key => /tenant/i.test(key)), false)
+    return Response.json(detail)
+  }
+  assert.deepEqual(await api.getFarm('manager', 'farm/id', controller.signal), detail)
+})
+
+test('Manager Farm read failures preserve the BE access prerequisite and trace ID', async () => {
+  for (const [status, code] of [[403, 'Authorization.Forbidden'], [401, 'Tenant.ContextRequired']]) {
+    globalThis.fetch = async () => Response.json({ errorCode: code, detail: 'Cannot read Farm in this context.', traceId: 'read-trace' }, { status })
+    await assert.rejects(api.getFarm('manager', 'farm'), error => error.status === status && error.code === code && error.traceId === 'read-trace')
+  }
+})
+
 test('archived farm list uses tenant auth, paging and preserves archive metadata', async () => {
   const archived = { id: 'farm', code: 'F01', archivedAt: '2026-09-15T08:00:00Z', version: 6 }
   const controller = new AbortController()

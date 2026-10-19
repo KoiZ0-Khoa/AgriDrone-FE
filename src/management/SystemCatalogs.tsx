@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Alert, Button, Space, Table, Tag } from 'antd'
 import { CommonState } from '../components/CommonState'
 import * as api from './api'
-import { confirmation, text, type Action, type Values } from './actions'
+import { confirmation, text, type Action, type Field, type Values } from './actions'
 
 const conditionTypeOptions: { label: string; value: api.PlantConditionType }[] = [
   { label: 'Bệnh cây', value: 'DISEASE' },
@@ -13,6 +13,16 @@ const conditionTypeOptions: { label: string; value: api.PlantConditionType }[] =
 
 const conditionTypeLabels = Object.fromEntries(conditionTypeOptions.map(item => [item.value, item.label])) as Record<api.PlantConditionType, string>
 const versionUnavailable = 'BE chưa trả version trong API danh sách nên chưa thể gửi expectedVersion an toàn.'
+const metadataFields: Field[] = [
+  { key: 'datasetVersion', label: 'Phiên bản bộ dữ liệu (bắt buộc với nhãn Plant Health)', max: 100, optional: true },
+  { key: 'annotationRuleVersion', label: 'Phiên bản quy tắc gán nhãn', max: 100, optional: true },
+  { key: 'teamLabelLimitation', label: 'Giới hạn diễn giải của nhãn', max: 1000, optional: true, kind: 'multiline' },
+]
+function labelMetadata(values: Values, kind?: api.PlantHealthLabelKind | null) {
+  const metadata = { datasetVersion: text(values, 'datasetVersion') || null, annotationRuleVersion: text(values, 'annotationRuleVersion') || null, teamLabelLimitation: text(values, 'teamLabelLimitation') || null }
+  if (kind && Object.values(metadata).some(value => !value)) throw new Error('Nhãn Plant Health cần đủ phiên bản bộ dữ liệu, quy tắc gán nhãn và giới hạn diễn giải.')
+  return metadata
+}
 
 function nullableText(values: Values, key: string) {
   return text(values, key) || null
@@ -37,15 +47,19 @@ function displayOrder(values: Values) {
 function createPlantConditionAction(token: string): Action {
   return {
     title: 'Thêm tình trạng cây',
-    description: 'Tạo mục mới trong danh mục dùng chung của toàn hệ thống.',
+    description: 'Tạo mục mới trong danh mục dùng chung. Nếu chọn nhãn Plant Health, cần điền đủ bộ dữ liệu, quy tắc gán nhãn và giới hạn diễn giải.',
     fields: [
       { key: 'code', label: 'Mã tình trạng', max: 50 },
       { key: 'name', label: 'Tên tình trạng', max: 150 },
       { key: 'scientificName', label: 'Tên khoa học', optional: true, max: 150 },
       { key: 'conditionType', label: 'Loại tình trạng', kind: 'select', value: 'DISEASE', options: conditionTypeOptions },
+      { key: 'plantHealthLabelKind', label: 'Phân loại nhãn Plant Health', kind: 'select', value: 'NONE', options: [{ value: 'NONE', label: 'Không phải nhãn Plant Health' }, { value: 'SUSPECTED_DISEASE', label: 'Nghi ngờ bệnh' }, { value: 'CONFUSING_NON_DISEASE', label: 'Dễ nhầm, không phải bệnh' }] },
+      ...metadataFields,
       { key: 'description', label: 'Mô tả', optional: true, max: 2000, kind: 'multiline' },
     ],
     run: values => api.createPlantCondition(token, {
+      ...labelMetadata(values, values.plantHealthLabelKind === 'NONE' ? null : values.plantHealthLabelKind as api.PlantHealthLabelKind),
+      plantHealthLabelKind: values.plantHealthLabelKind === 'NONE' ? null : values.plantHealthLabelKind as api.PlantHealthLabelKind,
       code: validateCode(text(values, 'code'), 50),
       name: text(values, 'name'),
       scientificName: nullableText(values, 'scientificName'),
@@ -64,8 +78,10 @@ function versionPlantConditionAction(token: string, item: api.PlantCondition): A
       { key: 'name', label: 'Tên tình trạng', value: item.name, max: 150 },
       { key: 'scientificName', label: 'Tên khoa học', value: item.scientificName ?? '', optional: true, max: 150 },
       { key: 'description', label: 'Mô tả', value: item.description ?? '', optional: true, max: 2000, kind: 'multiline' },
+      ...metadataFields.map(field => ({ ...field, value: item[field.key as keyof api.PlantHealthMetadata] ?? '' })),
     ],
     run: values => api.versionPlantCondition(token, item.id, {
+      ...labelMetadata(values, item.plantHealthLabelKind),
       name: text(values, 'name'),
       scientificName: nullableText(values, 'scientificName'),
       description: nullableText(values, 'description'),
