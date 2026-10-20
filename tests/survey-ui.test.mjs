@@ -65,30 +65,32 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(farms, /href="\/manager\/farms\/farm"/)
     assert.match(farms, /Xem chi tiết/)
     const assignment = { farmId: 'farm', tenantId: 'tenant', code: 'FARM', name: 'Farm One', address: 'Long An', areaHectares: 2.5, assignedAt: '2026-10-16T00:00:00Z' }
-    const detail = { id: 'farm', tenantId: 'tenant', code: 'FARM', name: 'Farm One', address: 'Long An', areaHectares: 2.5, centerPoint: { type: 'Point', coordinates: [108.1, 10.9] }, boundary: null, version: 413, status: 'ACTIVE', updatedAt: '2026-10-17T00:00:00Z' }
-    const renderDetail = (value, assignments = [assignment]) => render(ManagerFarmDetailPage, 'SYSTEM_MANAGER', [[['manager-assigned-farms'], assignments], [['manager-farm', 'farm'], value]], {}, '/manager/farms/farm')
+    const detail = { farmId: 'farm', tenantId: 'tenant', code: 'FARM', name: 'Farm One', address: 'Long An', areaHectares: 2.5, centerPoint: { type: 'Point', coordinates: [108.1, 10.9] }, approvedBoundary: null, zones: [], publishedBaseMap: null, version: 413, status: 'ACTIVE' }
+    const renderDetail = (value, assignments = [assignment]) => render(ManagerFarmDetailPage, 'SYSTEM_MANAGER', [[['manager-assigned-farms'], assignments], [['manager-farm-context', 'farm'], value], [['farm-boundary-exceptions', 'farm', ''], []]], {}, '/manager/farms/farm')
     const farmDetail = renderDetail(detail)
     assert.match(farmDetail, /Kinh độ/)
     assert.match(farmDetail, /108,1/)
     assert.match(farmDetail, /10,9/)
     assert.match(farmDetail, /Chỉnh sửa nông trại/)
-    assert.doesNotMatch(farmDetail, /disabled=""/)
+    assert.doesNotMatch(farmDetail, /Chưa thể sửa thông tin chung/)
     for (const error of [new ApiError(403, 'Forbidden', undefined, 'read-trace'), new ApiError(401, 'Tenant context required', 'Tenant.ContextRequired', 'read-trace')]) {
       const blocked = renderDetail(error)
-      assert.match(blocked, /Chưa được cấp quyền đọc chi tiết nông trại/)
       assert.match(blocked, /read-trace/)
-      assert.match(blocked, /disabled=""/)
-      assert.match(blocked, /Chưa tải được thông tin ranh giới/)
+      assert.doesNotMatch(blocked, /Chỉnh sửa nông trại/)
     }
-    for (const changes of [{ version: undefined }, { boundary: undefined }, { centerPoint: undefined }, { tenantId: 'other' }]) {
+    for (const changes of [{ version: undefined }, { centerPoint: undefined }, { tenantId: 'other' }]) {
       const incomplete = renderDetail({ ...detail, ...changes })
-      assert.match(incomplete, /Chưa đủ dữ liệu để chỉnh sửa/)
-      assert.match(incomplete, /disabled=""/)
+      assert.match(incomplete, /Thiếu phiên bản nông trại|Chưa thể sửa thông tin chung|không khớp phân công/)
     }
     const unassigned = renderDetail(detail, [])
     assert.match(unassigned, /không có trong danh sách bạn đang được phân công/)
     assert.doesNotMatch(unassigned, /Chỉnh sửa nông trại/)
     assert.match(renderDetail({ ...detail, status: 'INACTIVE' }), /disabled=""/)
+    const mappedFarm = renderDetail({ ...detail, centerPoint: undefined, approvedBoundary: { id: 'boundary', versionNumber: 8, version: 3, geometry: { type: 'Polygon', coordinates: [[[108, 10], [109, 10], [109, 11], [108, 10]]] }, reviewedAt: null }, publishedBaseMap: { versionNumber: 2, publishedAt: null }, zones: [{ id: 'zone', code: 'ZONE-A', name: 'Zone A', status: 'ACTIVE', areaHectares: 1 }] })
+    assert.match(mappedFarm, /Chưa thể sửa thông tin chung/)
+    assert.match(mappedFarm, /Cập nhật ranh giới/)
+    assert.match(mappedFarm, /Zone A/)
+    assert.match(mappedFarm, /Bản đồ đã công bố: phiên bản 2/)
     const order = { surveyOrderId: 'order', orderNumber: 'SO-TEST', tenantId: 'tenant', farmId: 'farm', farmCode: 'FARM', farmName: 'Farm One', surveyServiceName: 'Plant Health', status: 'AWAITING_BASELINE_APPOINTMENT', orderVersion: 51, requiresBaselineMapping: true, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null, createdAt: '2026-10-19T00:00:00Z', updatedAt: '2026-10-19T00:00:00Z' }
     const orders = render(ManagerOrdersPage, 'SYSTEM_MANAGER', [[['manager-orders', 1, ''], { items: [order], totalCount: 1 }]])
     assert.match(orders, /SO-TEST/)
@@ -105,6 +107,12 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(staleOrder, /Dữ liệu đơn vừa thay đổi/)
     assert.doesNotMatch(staleOrder, /Đề xuất lịch/)
     assert.match(renderOrder(null, scope), /Đơn không còn thuộc/)
+    const renderStatus = status => renderOrder({ ...order, status }, { ...scope, orderStatus: status })
+    assert.match(renderStatus('AWAITING_BASELINE_DEPOSIT'), /Chờ Owner thanh toán cọc bản đồ nền/)
+    assert.doesNotMatch(renderStatus('AWAITING_BASELINE_DEPOSIT'), /Bắt đầu thu thập GPS/)
+    assert.match(renderStatus('BASELINE_READY'), /Đơn chưa có phiên thu thập ranh giới/)
+    assert.match(renderStatus('AWAITING_BASELINE_REVIEW'), /Đánh dấu 4 góc trên ảnh trực giao/)
+    assert.doesNotMatch(renderStatus('AWAITING_BASELINE_APPOINTMENT'), /Đánh dấu 4 góc trên ảnh trực giao/)
     const health = render(PlantHealthPage, 'SYSTEM_ADMIN', [[['plant-health-master-data'], { labels: [{ id: 'label', code: 'SUSPECT', name: 'Suspected label', labelKind: 'SUSPECTED_DISEASE', datasetVersion: 'DATASET_V1', annotationRuleVersion: 'RULES_V1', teamLabelLimitation: 'Preliminary only' }], guidance: [], resultNature: 'PRELIMINARY', claimBoundary: 'Not a diagnosis' }], [['plant-health-guidance-history'], [{ id: 'guidance', code: 'GUIDE-1', versionNumber: 2, suspectedClassCode: 'SUSPECT', sourceTitle: 'Field reference', status: 'DRAFT', effectiveFrom: '2026-10-19T00:00:00Z', version: 31 }]]])
     assert.match(health, /Suspected label/)
     assert.match(health, /GUIDE-1/)

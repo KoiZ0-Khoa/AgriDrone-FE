@@ -10,6 +10,8 @@ import type { Appointment, AssignedOrder } from './orderTypes'
 import { appointmentStatusLabels, matchingOrderSnapshot, orderStatusLabels } from './orderWorkflow'
 import { dateTime, workflowError } from './workflow'
 import { AppointmentModal, BoundaryVerificationModal } from './OrderActionModals'
+import { BoundaryCapturePanel } from './BoundaryCapturePanel'
+import { OrthophotoCornersModal } from './BaselineModals'
 
 export function ManagerOrdersPage() {
   const token = useAuth().session!.accessToken
@@ -38,7 +40,7 @@ export function ManagerOrderDetailPage() {
   const token = useAuth().session!.accessToken
   const { orderId = '' } = useParams()
   const client = useQueryClient()
-  const [action, setAction] = useState<'appointment' | 'boundary' | null>(null)
+  const [action, setAction] = useState<'appointment' | 'boundary' | 'corners' | null>(null)
   const [appointment, setAppointment] = useState<Appointment | null>(null)
   const context = useQuery({ queryKey: ['manager-order-context', orderId], queryFn: ({ signal }) => getAssignedOrder(token, orderId, signal), retry: false })
   const query = useQuery({ queryKey: ['manager-order-scope', orderId], queryFn: ({ signal }) => getOrderScope(token, orderId, signal), retry: false })
@@ -58,13 +60,15 @@ export function ManagerOrderDetailPage() {
     <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Tiến độ khảo sát</strong><span>{orderStatusLabels[scope.orderStatus] ?? scope.orderStatus}</span></div><Tag>{scope.requiresBaselineMapping ? 'Cần bản đồ nền' : 'Đã có bản đồ nền'}</Tag></div>
       <dl className="detail-list"><div><dt>Nông trại</dt><dd><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}`}>{order.farmName}</Link></dd></div><div><dt>Lịch hẹn</dt><dd>{order.currentAppointmentStatus ? appointmentStatusLabels[order.currentAppointmentStatus] ?? order.currentAppointmentStatus : 'Chưa có lịch hiện tại'}</dd></div><div><dt>Ranh giới đã xác minh</dt><dd>{scope.currentApprovedBoundary ? `Phiên bản ${scope.currentApprovedBoundary.versionNumber}` : 'Chưa có'}</dd></div><div><dt>Cập nhật</dt><dd>{dateTime(order.updatedAt)}</dd></div></dl>
       <Space wrap>{canPropose ? <Button type="primary" disabled={busy} onClick={() => setAction('appointment')}>Đề xuất lịch {scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' ? 'khảo sát bản đồ' : 'dịch vụ'}</Button> : null}
-        {consistent && !scope.requiresBaselineMapping && scope.orderStatus === 'PENDING_BOUNDARY_VERIFICATION' ? <Button type="primary" disabled={busy} onClick={() => setAction('boundary')}>Xác minh ranh giới</Button> : null}</Space>
-      {scope.requiresBaselineMapping ? <p className="form-hint">Chốt lịch khảo sát bản đồ trước. Sau khi Owner xác nhận, Manager thu thập ranh giới tại buổi khảo sát; không xác minh bằng cách nhập polygon trực tiếp cho Farm chưa có bản đồ.</p> : null}
-      {scope.orderStatus === 'AWAITING_BOUNDARY_CAPTURE' ? <Alert className="workflow-notice" showIcon type="info" title="Bước tiếp theo: thu thập ranh giới tại hiện trường" description="Phiên thu thập GPS và kế hoạch đường bay chưa được tích hợp trên web. Không thể dùng nút xác minh ranh giới để thay thế bước này." /> : null}
+        {consistent && !scope.requiresBaselineMapping && scope.orderStatus === 'PENDING_BOUNDARY_VERIFICATION' ? <Button type="primary" disabled={busy} onClick={() => setAction('boundary')}>Xác minh ranh giới</Button> : null}
+        {consistent && scope.requiresBaselineMapping && scope.orderStatus === 'AWAITING_BASELINE_REVIEW' ? <Button type="primary" disabled={busy} onClick={() => setAction('corners')}>Đánh dấu 4 góc trên ảnh trực giao</Button> : null}</Space>
+      {scope.requiresBaselineMapping ? <p className="form-hint">Chốt lịch khảo sát bản đồ trước. Owner xác nhận lịch và thanh toán cọc trước khi thực hiện. Sau khi có ảnh trực giao, đối chiếu bốn góc ranh giới trước khi duyệt bản đồ nền.</p> : null}
       {appointment?.surveyOrderId === orderId ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch, chờ Owner xác nhận" description={`${dateTime(appointment.proposedStartAt)} – ${dateTime(appointment.proposedEndAt)}`} /> : null}
     </section>
+    {scope.requiresBaselineMapping ? <BoundaryCapturePanel key={orderId} token={token} order={order} scope={scope} disabled={busy || !consistent || action !== null} refresh={refresh} /> : null}
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Phạm vi khu vực</strong><span>Các khu vực được trả về trong phạm vi đơn khảo sát</span></div></div><Table rowKey="zoneId" dataSource={scope.zones} pagination={false} scroll={{ x: 500 }} locale={{ emptyText: 'Chưa có khu vực trong phạm vi đơn.' }} columns={[{ title: 'Mã', dataIndex: 'code' }, { title: 'Khu vực', dataIndex: 'name' }, { title: 'Trạng thái', render: (_, zone) => zone.status === 'ACTIVE' ? 'Đang hoạt động' : zone.status }]} /></section>
     {action === 'appointment' ? <AppointmentModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setAppointment(result); setAction(null); await refresh() }} /> : null}
     {action === 'boundary' ? <BoundaryVerificationModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
+    {action === 'corners' ? <OrthophotoCornersModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
   </>
 }

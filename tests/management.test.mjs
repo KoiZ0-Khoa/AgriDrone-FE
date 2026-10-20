@@ -221,7 +221,7 @@ test('farm edit preserves polygon and reviewed version, handles zero and nullabl
   }
 })
 
-test('Manager Farm editor pre-fills the saved location and preserves boundary/version when updating area and coordinates', async () => {
+test('Manager Farm editor preserves saved location/version and omits boundary from the new update contract', async () => {
   const snapshot = { name: 'Farm One', address: 'Long An', areaHectares: 2.5, centerPoint: { type: 'Point', coordinates: [108.1, 10.9] }, boundary: { type: 'Polygon', coordinates: [[[108, 10], [109, 10], [109, 11], [108, 10]]] }, expectedVersion: 413 }
   const action = actions.farmAction('manager', 'farm/id', snapshot)
   const initial = Object.fromEntries(action.fields.map(field => [field.key, field.value]))
@@ -232,7 +232,7 @@ test('Manager Farm editor pre-fills the saved location and preserves boundary/ve
     assert.equal(url, 'http://test.local/api/farms/farm%2Fid')
     assert.equal(options.headers.Authorization, 'Bearer manager')
     assert.equal(options.method, 'PUT')
-    assert.deepEqual(JSON.parse(options.body), { name: snapshot.name, address: snapshot.address, areaHectares: 3.2, boundary: snapshot.boundary, centerPoint: { type: 'Point', coordinates: [108.12, 10.92] }, expectedVersion: 413 })
+    assert.deepEqual(JSON.parse(options.body), { name: snapshot.name, address: snapshot.address, areaHectares: 3.2, centerPoint: { type: 'Point', coordinates: [108.12, 10.92] }, expectedVersion: 413 })
     return Response.json({ version: 414 })
   }
   await action.run({ ...initial, area: '3,2', longitude: '108.12', latitude: '10.92' })

@@ -1,59 +1,59 @@
 import { ArrowLeftOutlined, EditOutlined, EnvironmentOutlined, ReloadOutlined } from '@ant-design/icons'
-import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Space } from 'antd'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Alert, Button, Space, Table } from 'antd'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { ActionModal } from '../../management/ActionModal'
 import { farmAction, isActive, type Action } from '../../management/actions'
 import { useAuth } from '../auth/AuthContext'
-import { getFarm } from '../farms/farmsApi'
 import { getAssignedFarms } from './api'
+import { FarmBoundaryExceptions } from './FarmBoundaryExceptions'
+import { FarmBoundaryModal } from './FarmBoundaryModals'
+import { getFarmContext } from './farmOperationsApi'
+import { SurveyMutationError } from './SurveyMutationError'
 import { dateTime, workflowError } from './workflow'
 
 export function ManagerFarmDetailPage() {
   const { farmId = '' } = useParams()
   const token = useAuth().session!.accessToken
+  const client = useQueryClient()
   const [action, setAction] = useState<Action | null>(null)
+  const [boundaryOpen, setBoundaryOpen] = useState(false)
   const assigned = useQuery({ queryKey: ['manager-assigned-farms'], queryFn: ({ signal }) => getAssignedFarms(token, signal) })
   const assignment = assigned.data?.find(farm => farm.farmId === farmId)
-  const detail = useQuery({ queryKey: ['manager-farm', farmId], queryFn: ({ signal }) => getFarm(token, farmId, signal), enabled: Boolean(assignment), retry: false })
-
+  const detail = useQuery({ queryKey: ['manager-farm-context', farmId], queryFn: ({ signal }) => getFarmContext(token, farmId, signal), enabled: Boolean(assignment), retry: false })
+  async function refresh() { await Promise.all([client.invalidateQueries({ queryKey: ['manager-farm-context', farmId] }), client.invalidateQueries({ queryKey: ['manager-assigned-farms'] }), client.invalidateQueries({ queryKey: ['farm-boundary-exceptions', farmId] }), client.invalidateQueries({ queryKey: ['manager-order-scope'] })]) }
+  const back = <Link className="back-link" to="/manager"><ArrowLeftOutlined /> Nông trại phụ trách</Link>
   if (assigned.isPending) return <CommonState type="loading" title="Đang kiểm tra phân công nông trại" />
   if (assigned.isError) return <CommonState type="error" description={workflowError(assigned.error)} retry={() => assigned.refetch()} />
-  if (!assignment) return <><Link className="back-link" to="/manager"><ArrowLeftOutlined /> Nông trại phụ trách</Link><CommonState type="forbidden" description="Nông trại không có trong danh sách bạn đang được phân công. Kiểm tra lại với quản trị hệ thống." /></>
-
-  const farm = detail.data?.id === assignment.farmId && detail.data.tenantId === assignment.tenantId ? detail.data : undefined
-  const hasSnapshot = Boolean(farm && Number.isSafeInteger(farm.version) && farm.version > 0 && farm.address !== undefined && farm.areaHectares !== undefined && farm.boundary !== undefined && farm.centerPoint !== undefined)
-  const canEdit = detail.isSuccess && hasSnapshot && farm && isActive(farm.status)
-  const coordinates = farm?.centerPoint?.coordinates
-  const area = farm ? farm.areaHectares : assignment.areaHectares
-  const accessBlocked = detail.error instanceof ApiError && (detail.error.status === 403 || detail.error.code === 'Tenant.ContextRequired')
-  const pointLabel = (index: number) => coordinates ? coordinates[index].toLocaleString('vi-VN', { maximumFractionDigits: 7 }) : farm ? 'Chưa cập nhật' : 'Chưa tải được'
-
+  if (!assignment) return <>{back}<CommonState type="forbidden" description="Nông trại không có trong danh sách bạn đang được phân công." /></>
+  if (detail.isPending) return <>{back}<CommonState type="loading" title="Đang tải nông trại" /></>
+  if (detail.isError) return <>{back}<SurveyMutationError error={detail.error} /><Button onClick={() => { void refresh() }}>Tải lại nông trại</Button></>
+  const farm = detail.data
+  if (farm.farmId !== farmId || farm.tenantId !== assignment.tenantId) return <>{back}<CommonState type="error" description="Thông tin nông trại không khớp phân công hiện tại." retry={refresh} /></>
+  const validVersion = Number.isSafeInteger(farm.version) && farm.version > 0
+  const busy = detail.isFetching || assigned.isFetching
+  const active = isActive(farm.status)
+  const canEdit = validVersion && active && farm.centerPoint !== undefined
+  const coordinates = farm.centerPoint?.coordinates
+  const boundary = farm.approvedBoundary
   return <>
-    <Link className="back-link" to="/manager"><ArrowLeftOutlined /> Nông trại phụ trách</Link>
-    <section className="resource-page-heading detail-heading">
-      <div><span className="page-kicker">{assignment.code}</span><h1>{farm?.name ?? assignment.name}</h1><p>{(farm ? farm.address : assignment.address) ?? 'Chưa cập nhật địa chỉ'}</p></div>
-      <Space wrap><Button icon={<ReloadOutlined />} loading={detail.isFetching || assigned.isFetching} onClick={() => { void assigned.refetch(); void detail.refetch() }}>Tải lại</Button><Button type="primary" icon={<EditOutlined />} disabled={!canEdit || detail.isFetching || assigned.isFetching} onClick={() => {
-        if (!canEdit || !farm) return
-        setAction({ ...farmAction(token, farm.id, { name: farm.name, address: farm.address, areaHectares: farm.areaHectares, boundary: farm.boundary, centerPoint: farm.centerPoint, expectedVersion: farm.version }), success: 'Đã cập nhật thông tin nông trại' })
+    {back}
+    <section className="resource-page-heading detail-heading"><div><span className="page-kicker">{farm.code}</span><h1>{farm.name}</h1><p>{farm.address ?? 'Chưa cập nhật địa chỉ'}</p></div>
+      <Space wrap><Button icon={<ReloadOutlined />} loading={busy} onClick={() => { void refresh() }}>Tải lại</Button><Button type="primary" icon={<EditOutlined />} disabled={!canEdit || busy} onClick={() => {
+        if (!canEdit) return
+        setAction({ ...farmAction(token, farm.farmId, { name: farm.name, address: farm.address, areaHectares: farm.areaHectares, boundary: boundary?.geometry ?? null, centerPoint: farm.centerPoint!, expectedVersion: farm.version }), after: refresh })
       }}>Chỉnh sửa nông trại</Button></Space>
     </section>
-    {detail.isPending ? <CommonState type="loading" title="Đang tải chi tiết nông trại" /> : null}
-    {detail.isError ? <Alert className="workflow-notice" showIcon type="error" title={accessBlocked ? 'Chưa được cấp quyền đọc chi tiết nông trại' : 'Không thể tải chi tiết nông trại'} description={<>
-      <p>{accessBlocked ? 'Chưa thể đọc chi tiết bằng phiên System Manager. Hãy tải lại để kiểm tra phân công; nếu lỗi vẫn còn, liên hệ quản trị viên kiểm tra quyền truy cập. Chỉnh sửa tạm khóa đến khi tải được dữ liệu đầy đủ.' : workflowError(detail.error)}</p>
-      {detail.error instanceof ApiError ? <><p>Lý do từ máy chủ: {detail.error.message}</p><p>Mã lỗi: <code>{detail.error.code ?? `HTTP ${detail.error.status}`}</code></p>{detail.error.traceId ? <p>Mã tra cứu: <code>{detail.error.traceId}</code></p> : null}</> : null}
-    </>} /> : null}
-    {detail.isSuccess && !hasSnapshot ? <Alert className="workflow-notice" showIcon type="error" title="Chưa đủ dữ liệu để chỉnh sửa" description="Thông tin trả về thiếu version, dữ liệu vị trí hoặc không khớp Farm được phân công. Hãy tải lại và liên hệ nhóm BE nếu lỗi vẫn còn." /> : null}
-    <div className="detail-layout">
-      <section className="resource-panel detail-main-panel">
-        <div className="resource-panel-heading"><div><strong>Thông tin nông trại</strong><span>{farm ? 'Thông tin chi tiết hiện tại' : 'Thông tin từ danh sách được phân công'}</span></div></div>
-        <dl className="detail-list"><div><dt>Mã nông trại</dt><dd>{assignment.code}</dd></div><div><dt>Diện tích</dt><dd>{area == null ? 'Chưa cập nhật' : `${area.toLocaleString('vi-VN')} ha`}</dd></div><div><dt>Kinh độ</dt><dd>{pointLabel(0)}</dd></div><div><dt>Vĩ độ</dt><dd>{pointLabel(1)}</dd></div><div><dt>Phân công từ</dt><dd>{dateTime(assignment.assignedAt)}</dd></div>{farm ? <div><dt>Cập nhật lần cuối</dt><dd>{dateTime(farm.updatedAt)}</dd></div> : null}</dl>
-      </section>
-      <aside className="resource-panel boundary-panel"><span className="resource-icon"><EnvironmentOutlined aria-hidden="true" /></span><strong>Ranh giới canh tác</strong><p>{!farm ? 'Chưa tải được thông tin ranh giới.' : farm.boundary ? `Đã lưu ${farm.boundary.coordinates[0]?.length ?? 0} điểm ranh giới.` : 'Chưa thiết lập ranh giới.'}</p><p>Biểu mẫu chỉnh sửa giữ nguyên ranh giới đã lưu. Diện tích nhập theo ha; kinh độ và vĩ độ xác định vị trí tâm nông trại.</p></aside>
-    </div>
-    {action ? <ActionModal action={action} close={() => setAction(null)} /> : null}
+    {!validVersion ? <Alert className="workflow-notice" showIcon type="warning" title="Thiếu phiên bản nông trại. Tải lại trước khi cập nhật." /> : null}
+    {farm.centerPoint === undefined ? <Alert className="workflow-notice" showIcon type="info" title="Chưa thể sửa thông tin chung" description="Thông tin vị trí tâm chưa được cung cấp đầy đủ. Chức năng chỉnh sửa tạm khóa để tránh làm mất tọa độ đã lưu. Bạn vẫn có thể xem và xử lý ranh giới bên dưới." /> : null}
+    <div className="detail-layout"><section className="resource-panel detail-main-panel"><div className="resource-panel-heading"><div><strong>Thông tin nông trại</strong><span>Thông tin hiện tại của nông trại được phân công</span></div></div>
+      <dl className="detail-list"><div><dt>Mã nông trại</dt><dd>{farm.code}</dd></div><div><dt>Trạng thái</dt><dd>{active ? 'Đang hoạt động' : farm.status}</dd></div><div><dt>Diện tích</dt><dd>{farm.areaHectares == null ? 'Chưa cập nhật' : `${farm.areaHectares.toLocaleString('vi-VN')} ha`}</dd></div><div><dt>Kinh độ</dt><dd>{coordinates ? coordinates[0].toLocaleString('vi-VN', { maximumFractionDigits: 7 }) : farm.centerPoint === undefined ? 'Chưa có dữ liệu vị trí tâm' : 'Chưa cập nhật'}</dd></div><div><dt>Vĩ độ</dt><dd>{coordinates ? coordinates[1].toLocaleString('vi-VN', { maximumFractionDigits: 7 }) : farm.centerPoint === undefined ? 'Chưa có dữ liệu vị trí tâm' : 'Chưa cập nhật'}</dd></div><div><dt>Phân công từ</dt><dd>{dateTime(assignment.assignedAt)}</dd></div></dl>
+    </section><aside className="resource-panel boundary-panel"><span className="resource-icon"><EnvironmentOutlined aria-hidden="true" /></span><strong>Ranh giới đã duyệt</strong><p>{boundary ? `Phiên bản ${boundary.versionNumber} · ${boundary.geometry?.coordinates[0]?.length ?? 0} điểm` : 'Chưa xác lập ranh giới. Thu thập tại buổi khảo sát bản đồ nền.'}</p>{boundary ? <><p>{boundary.reviewReason}</p><p>{dateTime(boundary.reviewedAt)}</p><Button icon={<EditOutlined />} disabled={busy || !active || !validVersion || !boundary.geometry || !Number.isSafeInteger(boundary.versionNumber) || boundary.versionNumber < 1} onClick={() => setBoundaryOpen(true)}>Cập nhật ranh giới</Button></> : <Link className="workflow-detail-link" to="/manager/orders">Mở công việc khảo sát →</Link>}</aside></div>
+    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Khu vực và bản đồ nền</strong><span>{farm.publishedBaseMap ? `Bản đồ đã công bố: phiên bản ${farm.publishedBaseMap.versionNumber} · ${dateTime(farm.publishedBaseMap.publishedAt)}` : 'Chưa có bản đồ nền đã công bố'}</span></div></div><Table rowKey="id" dataSource={farm.zones} pagination={false} locale={{ emptyText: 'Chưa có khu vực.' }} columns={[{ title: 'Mã', dataIndex: 'code' }, { title: 'Khu vực', dataIndex: 'name' }, { title: 'Diện tích', render: (_, zone) => zone.areaHectares == null ? 'Chưa cập nhật' : `${zone.areaHectares} ha` }, { title: 'Trạng thái', render: (_, zone) => isActive(zone.status) ? 'Đang hoạt động' : zone.status }]} /></section>
+    <FarmBoundaryExceptions key={farmId} token={token} farm={farm} disabled={busy || !active || !validVersion} />
+    {boundaryOpen ? <FarmBoundaryModal token={token} farm={farm} close={() => { setBoundaryOpen(false); void refresh() }} done={async () => { setBoundaryOpen(false); await refresh() }} /> : null}
+    {action ? <ActionModal action={action} close={() => { setAction(null); void refresh() }} /> : null}
   </>
 }

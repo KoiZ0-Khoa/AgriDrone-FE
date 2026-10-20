@@ -86,7 +86,7 @@ export function FarmManagementActions({ farmId, name, version, zone, onArchived 
           <Form.Item name="areaHectares" label="Diện tích (ha)" rules={[{ validator: (_, value: number | null | undefined) => value == null || (Number.isFinite(value) && value >= 0) ? Promise.resolve() : Promise.reject(new Error('Diện tích phải là số không âm.')) }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
           <p className="form-hint">Mã khu vực và ranh giới hiện có được giữ nguyên.</p>
         </> : <>
-          <p>{zone ? 'Khu vực' : 'Nông trại'} sẽ được đưa khỏi danh sách sử dụng. Lịch sử được giữ lại. {zone ? 'Cần hoàn tất các nhiệm vụ bay và công việc đang mở trước.' : 'Cần lưu trữ các khu vực còn lại và hoàn tất nhiệm vụ bay, công việc đang mở trước.'}</p>
+          <p>{zone ? 'Khu vực' : 'Nông trại'} sẽ được đưa khỏi danh sách sử dụng. Lịch sử được giữ lại. {zone ? 'Cần hoàn tất các nhiệm vụ bay và công việc đang mở trước.' : 'Cần lưu trữ các khu vực còn lại và hoàn tất hoặc hủy các đơn khảo sát, nhiệm vụ bay và công việc đang mở trước.'}</p>
           <Form.Item name="reason" label="Lý do lưu trữ" rules={[{ required: true, whitespace: true, message: 'Nhập lý do lưu trữ' }, { max: 500 }]}><Input.TextArea rows={3} maxLength={500} showCount /></Form.Item>
         </>}
         {mutation.error || reloadError ? <Alert type="error" showIcon title={managementError(reloadError ?? mutation.error)} /> : null}

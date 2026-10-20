@@ -1,5 +1,7 @@
 # FE tích hợp API của Long — 19/10/2026
 
+> Mốc lịch sử. Xem [cập nhật 20/10/2026](./long-api-update-2026-10-20.md) theo BE `8f93bf2`, có API Manager Farm, phiên GPS, ranh giới và cọc Baseline mới. Các thiếu hụt BE bên dưới chỉ đúng tại mốc `902362c`.
+
 BE đối chiếu: `902362c`. Chỉ sửa web FE; giữ nguyên BE và Mobile.
 
 ## Màn hình và hợp đồng đã cập nhật

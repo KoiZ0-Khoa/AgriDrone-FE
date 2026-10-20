@@ -1,5 +1,7 @@
 # Kiểm thử FE tích hợp API Long — 19/10/2026
 
+> Báo cáo lịch sử theo BE `902362c`. Kết quả mới: [92/92 test FE và các giới hạn tại mốc 20/10/2026](./long-api-update-2026-10-20.md#kiểm-thử).
+
 BE đối chiếu: `902362c`. Không sửa BE, Mobile, cấu hình, database hoặc tài khoản thật.
 
 ## Kết quả
