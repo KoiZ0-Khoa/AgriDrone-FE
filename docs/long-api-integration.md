@@ -1,6 +1,6 @@
 # Đối chiếu FE với BE của Long — mốc 16–17/10/2026
 
-> Đây là tài liệu mốc cũ. Trạng thái tích hợp theo BE `8f93bf2` nằm trong [cập nhật ngày 20/10/2026](./long-api-update-2026-10-20.md). Không dùng các ghi chú lỗi validation/phê duyệt cũ bên dưới để kết luận về BE mới.
+> Đây là tài liệu mốc cũ. Xem [cập nhật Baseline ngày 22/10/2026](./long-api-update-2026-10-22.md) theo Long `0cd18cd` và [Order, giấy tờ, checklist v6](./long-api-authorizations-2026-10-22.md) theo Long `9277c45`. Không dùng các ghi chú lỗi validation/phê duyệt cũ bên dưới để kết luận về BE mới.
 
 Mốc BE: `0ce91b6`, kiểm tra ngày 16/10/2026. Phạm vi lần cập nhật này là web; không sửa BE hoặc Mobile.
 

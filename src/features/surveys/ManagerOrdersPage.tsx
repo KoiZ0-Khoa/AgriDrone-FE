@@ -7,7 +7,7 @@ import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { getAssignedOrder, getAssignedOrders, getOrderScope } from './orderApi'
 import type { Appointment, AssignedOrder } from './orderTypes'
-import { appointmentStatusLabels, matchingOrderSnapshot, orderStatusLabels } from './orderWorkflow'
+import { appointmentStatusLabels, baselineStageNotices, matchingOrderSnapshot, orderStatusLabels } from './orderWorkflow'
 import { dateTime, workflowError } from './workflow'
 import { AppointmentModal, BoundaryVerificationModal } from './OrderActionModals'
 import { BoundaryCapturePanel } from './BoundaryCapturePanel'
@@ -51,6 +51,7 @@ export function ManagerOrderDetailPage() {
   if (!context.data) return <>{back}<CommonState type="forbidden" description="Đơn không còn thuộc các nông trại bạn đang được phân công." /></>
   const scope = query.data, order = context.data
   const consistent = matchingOrderSnapshot(order, scope)
+  const stage = consistent && scope.requiresBaselineMapping ? baselineStageNotices[scope.orderStatus] : undefined
   const busy = query.isFetching || context.isFetching
   const canPropose = consistent && (scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' || scope.orderStatus === 'AWAITING_PAID_APPOINTMENT') && (!order.currentAppointmentId || order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED')
   return <>
@@ -65,7 +66,8 @@ export function ManagerOrderDetailPage() {
       {scope.requiresBaselineMapping ? <p className="form-hint">Chốt lịch khảo sát bản đồ trước. Owner xác nhận lịch và thanh toán cọc trước khi thực hiện. Sau khi có ảnh trực giao, đối chiếu bốn góc ranh giới trước khi duyệt bản đồ nền.</p> : null}
       {appointment?.surveyOrderId === orderId ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch, chờ Owner xác nhận" description={`${dateTime(appointment.proposedStartAt)} – ${dateTime(appointment.proposedEndAt)}`} /> : null}
     </section>
-    {scope.requiresBaselineMapping ? <BoundaryCapturePanel key={orderId} token={token} order={order} scope={scope} disabled={busy || !consistent || action !== null} refresh={refresh} /> : null}
+    {stage ? <Alert className="workflow-notice" type={stage.type} showIcon title={stage.title} description={stage.description} /> : null}
+    {consistent && order.boundaryCaptureSessionId ? <BoundaryCapturePanel key={orderId} token={token} orderId={orderId} farmId={order.farmId} sessionId={order.boundaryCaptureSessionId} /> : null}
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Phạm vi khu vực</strong><span>Các khu vực được trả về trong phạm vi đơn khảo sát</span></div></div><Table rowKey="zoneId" dataSource={scope.zones} pagination={false} scroll={{ x: 500 }} locale={{ emptyText: 'Chưa có khu vực trong phạm vi đơn.' }} columns={[{ title: 'Mã', dataIndex: 'code' }, { title: 'Khu vực', dataIndex: 'name' }, { title: 'Trạng thái', render: (_, zone) => zone.status === 'ACTIVE' ? 'Đang hoạt động' : zone.status }]} /></section>
     {action === 'appointment' ? <AppointmentModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setAppointment(result); setAction(null); await refresh() }} /> : null}
     {action === 'boundary' ? <BoundaryVerificationModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}

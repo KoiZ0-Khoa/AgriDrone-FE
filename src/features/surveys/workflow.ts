@@ -27,7 +27,7 @@ export function workflowError(error: unknown) {
   if (error instanceof TypeError) return 'Không kết nối được máy chủ. Hãy kiểm tra kết nối và thử lại.'
   return error instanceof Error ? error.message : 'Không thể xử lý yêu cầu.'
 }
-export const checklistVersion = 'survey-request-review.v5'
+export const checklistVersion = 'survey-request-review.v6'
 export const reviewLabels: Record<ReviewCode, string> = {
   'contact-valid': 'Thông tin liên hệ hợp lệ',
   'dragon-fruit-farm-confirmed': 'Xác nhận đây là nông trại thanh long',
@@ -35,12 +35,11 @@ export const reviewLabels: Record<ReviewCode, string> = {
   'candidate-location-sufficient': 'Vị trí cung cấp đủ để xét duyệt sơ bộ, chưa phải ranh giới được xác minh',
   'consent-feasibility': 'Có khả năng thu thập văn bản đồng ý sử dụng dữ liệu',
   'flight-permission-feasibility': 'Có khả năng xin giấy phép bay',
-  'eligible-manager-available': 'Có Manager hoạt động, sẵn sàng và có chứng chỉ bay hợp lệ',
 }
 export function reviewChecklist(version: string, values: Partial<ReviewChecklist>, approve: boolean): ReviewChecklist {
   if (version !== checklistVersion) throw new Error('Checklist đã thay đổi. Tải lại yêu cầu trước khi xét duyệt.')
   const answers = Object.fromEntries(Object.keys(reviewLabels).map(code => [code, values[code as ReviewCode] === true])) as Record<ReviewCode, boolean>
-  if (approve && Object.values(answers).some(value => !value)) throw new Error('Cần xác nhận đủ bảy điều kiện trước khi phê duyệt.')
+  if (approve && Object.values(answers).some(value => !value)) throw new Error('Cần xác nhận đủ sáu điều kiện trước khi phê duyệt.')
   return { ...answers, notes: values.notes?.trim() || null }
 }
 export function validateIntake(body: NewFarmIntake) {

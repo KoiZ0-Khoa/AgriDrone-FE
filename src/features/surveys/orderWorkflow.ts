@@ -9,6 +9,13 @@ export const orderStatusLabels: Record<string, string> = {
   AWAITING_PRICING: 'Chờ xác nhận số trụ và giá', AWAITING_PAID_APPOINTMENT: 'Chờ lịch dịch vụ', AWAITING_PAYMENT: 'Chờ thanh toán', READY_FOR_PAID_SERVICE: 'Sẵn sàng dịch vụ', IN_PROGRESS: 'Đang thực hiện', PENDING_REVIEW: 'Chờ duyệt kết quả', COMPLETED: 'Hoàn tất', CANCELLED: 'Đã hủy',
 }
 export const appointmentStatusLabels: Record<string, string> = { PROPOSED: 'Chờ Owner xác nhận', CONFIRMED: 'Đã xác nhận', RESCHEDULE_REQUESTED: 'Owner yêu cầu đổi lịch', SUPERSEDED: 'Đã có lịch thay thế', CANCELLED: 'Đã hủy' }
+export const baselineStageNotices: Record<string, { type: 'info' | 'warning'; title: string; description: string }> = {
+  AWAITING_BASELINE_DEPOSIT: { type: 'info', title: 'Chờ Owner thanh toán cọc bản đồ nền', description: 'Sau khi khoản cọc được xác nhận, đơn chuyển sang bước chuẩn bị bay khảo sát bản đồ nền.' },
+  BASELINE_READY: { type: 'info', title: 'Đơn đã chuyển sang bước chuẩn bị bay bản đồ nền', description: 'Kiểm tra lịch hẹn, giấy tờ và phạm vi khảo sát dự kiến trước khi thực hiện chuyến bay. Ranh giới chính thức sẽ được xác lập từ ảnh trực giao sau chuyến bay.' },
+  BASELINE_IN_PROGRESS: { type: 'info', title: 'Đang khảo sát và xử lý ảnh bản đồ nền', description: 'Khi ảnh trực giao đã sẵn sàng để xét duyệt, Manager sẽ xác minh ranh giới của nông trại.' },
+  AWAITING_BASELINE_REVIEW: { type: 'info', title: 'Chờ xác minh ranh giới từ ảnh trực giao', description: 'Đối chiếu ảnh đã xử lý, xác nhận bốn góc ranh giới, rồi kiểm tra các trụ và ngoại lệ trước khi công bố bản đồ nền.' },
+  AWAITING_BOUNDARY_CAPTURE: { type: 'warning', title: 'Đơn thuộc quy trình thu thập ranh giới cũ', description: 'Các điểm GNSS đã lưu được giữ trong lịch sử. Liên hệ quản trị hệ thống để tiếp tục đơn theo quy trình xác lập ranh giới từ ảnh trực giao.' },
+}
 export function matchingOrderSnapshot(order: AssignedOrder, scope: OrderScope) {
   return order.surveyOrderId === scope.surveyOrderId && order.farmId === scope.farmId && order.tenantId === scope.tenantId && order.orderVersion === scope.orderVersion && order.status === scope.orderStatus && order.requiresBaselineMapping === scope.requiresBaselineMapping && Number.isSafeInteger(scope.orderVersion) && scope.orderVersion > 0
 }
@@ -37,7 +44,7 @@ export function matchingCapture(scope: OrderScope, session: CaptureSession) {
   return session.surveyOrderId === scope.surveyOrderId && session.farmId === scope.farmId && session.orderVersion === scope.orderVersion && Number.isSafeInteger(session.sessionVersion) && session.sessionVersion >= 0
 }
 export function orthophotoBody(scope: OrderScope, points: { longitude: number; latitude: number }[], reason?: string, evidenceReference?: string): OrthophotoBody {
-  if (!Number.isSafeInteger(scope.orderVersion) || scope.orderVersion < 1 || !['AWAITING_BASELINE_REVIEW', 'BASELINE_IN_PROGRESS', 'BASELINE_READY', 'PENDING_BOUNDARY_VERIFICATION'].includes(scope.orderStatus)) throw new Error('Trạng thái đơn hoặc phiên bản chưa cho phép đánh dấu ranh giới trên ảnh trực giao.')
+  if (!Number.isSafeInteger(scope.orderVersion) || scope.orderVersion < 1 || !['AWAITING_BASELINE_REVIEW', 'PENDING_BOUNDARY_VERIFICATION'].includes(scope.orderStatus)) throw new Error('Trạng thái đơn hoặc phiên bản chưa cho phép đánh dấu ranh giới trên ảnh trực giao.')
   polygonFromPoints(points)
   if (points.length !== 4 || new Set(points.map(p => `${p.longitude},${p.latitude}`)).size !== 4) throw new Error('Cần đúng bốn góc khác nhau, theo thứ tự quanh nông trại.')
   return { expectedOrderVersion: scope.orderVersion, corners: points.map((point, index) => ({ sequence: index + 1, ...point })), reason: reason?.trim() || null, evidenceReference: evidenceReference?.trim() || null }

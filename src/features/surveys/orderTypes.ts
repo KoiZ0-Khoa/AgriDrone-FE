@@ -27,4 +27,4 @@ export type CaptureSession = {
 export type ApproveRouteBody = { sessionId: string; farmBoundaryVersionId: string; routePlanVersion: number; safetyInsetMeters: number; isWithinSafetyInset: boolean; expectedOrderVersion: number }
 export type OrthophotoBody = { expectedOrderVersion: number; corners: { sequence: number; longitude: number; latitude: number }[]; reason: string | null; evidenceReference: string | null }
 export type PaymentPurpose = 'BASELINE_DEPOSIT' | 'FINAL_BALANCE'
-export type PaymentSession = { surveyPaymentId: string; surveyOrderId: string; amount: number; currency: string; paymentStatus: string; redirectUrl: string; expiresAt: string; paymentVersion: number; orderVersion: number }
+export type PaymentSession = { surveyPaymentId: string; surveyOrderId: string; paidServiceAppointmentId: string; appointmentId: string | null; amount: number; currency: string; paymentStatus: string; redirectUrl: string | null; expiresAt: string; paymentVersion: number; orderVersion: number }

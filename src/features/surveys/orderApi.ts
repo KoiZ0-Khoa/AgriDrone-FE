@@ -29,8 +29,16 @@ export const startCapture = (token: string, orderId: string, body: { droneId: st
 export const syncCapture = (token: string, orderId: string, sessionId: string, body: { expectedSessionVersion: number; samples: CaptureSample[] }) => apiRequest<CaptureSession>(`${capturePath(orderId, sessionId)}/samples:sync`, { method: 'POST', token, body })
 export const finalizeCapture = (token: string, orderId: string, sessionId: string, body: { evidenceReference: string; expectedOrderVersion: number; expectedSessionVersion: number; expectedCurrentBoundaryVersionNumber: number | null }) => apiRequest<CaptureSession>(`${capturePath(orderId, sessionId)}/finalize`, { method: 'POST', token, body })
 export const abortCapture = (token: string, orderId: string, sessionId: string, body: { reason: string; expectedSessionVersion: number }) => apiRequest<CaptureSession>(`${capturePath(orderId, sessionId)}/abort`, { method: 'POST', token, body })
+/** @deprecated Legacy API; the current Baseline UI uses orthophoto marking after flight. */
 export const approveBaselineRoute = (token: string, orderId: string, routePlanId: string, body: ApproveRouteBody) => apiRequest<CaptureSession>(`${base}/${encodeURIComponent(orderId)}/baseline-route-plans/${encodeURIComponent(routePlanId)}/approve`, { method: 'POST', token, body })
 export const markOrthophotoCorners = (token: string, orderId: string, body: OrthophotoBody) => apiRequest(`${base}/${encodeURIComponent(orderId)}/farm-boundary/mark-orthophoto-corners`, { method: 'POST', token, body })
 // Owner payment amounts and confirmation always come from the server, never from FE input.
-export const initiateSurveyPayment = (token: string, orderId: string, body: { expectedOrderVersion: number; purpose: PaymentPurpose }) => apiRequest<PaymentSession>(`/api/tenant-owner/survey-orders/${encodeURIComponent(orderId)}/payments`, { method: 'POST', token, body })
-export const getCaptureDrones = (token: string, farmId: string, startAt: string, endAt: string, signal?: AbortSignal) => apiRequest<{ id: string; code: string; name: string; model: string | null }[]>(`/api/system-manager/farms/${encodeURIComponent(farmId)}/drones/available?${new URLSearchParams({ startAt, endAt, purpose: 'BaselineMapping' })}`, { token, signal })
+export async function initiateSurveyPayment(token: string, orderId: string, body: { expectedOrderVersion: number; purpose: PaymentPurpose }): Promise<PaymentSession> {
+  const payment = await apiRequest<PaymentSession>(`/api/tenant-owner/survey-orders/${encodeURIComponent(orderId)}/payments`, { method: 'POST', token, body })
+  return {
+    ...payment,
+    appointmentId: payment.appointmentId ?? payment.paidServiceAppointmentId ?? null,
+    // A confirmed zero balance is settled by BE; there is no payment page to open.
+    redirectUrl: payment.amount === 0 && payment.paymentStatus === 'CONFIRMED' ? null : payment.redirectUrl,
+  }
+}

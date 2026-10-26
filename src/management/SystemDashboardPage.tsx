@@ -2,6 +2,7 @@ import {
   ArrowRightOutlined,
   BankOutlined,
   FileSearchOutlined,
+  FileTextOutlined,
   MedicineBoxOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
@@ -34,6 +35,7 @@ export function SystemDashboardPage() {
 
   const shortcuts = [
     { to: '/system/survey-requests', title: 'Xét duyệt yêu cầu khảo sát', description: 'Kiểm tra khách hàng, chọn Manager và tạo đơn khảo sát.', icon: <FileSearchOutlined /> },
+    { to: '/system/survey-orders', title: 'Đơn khảo sát & giấy tờ', description: 'Theo dõi tiến độ, xác minh văn bản đồng ý và giấy phép bay.', icon: <FileTextOutlined /> },
     { to: '/system/managers', title: 'Quản lý System Manager', description: 'Mời nhân sự, kiểm tra chứng chỉ và khả năng nhận việc.', icon: <TeamOutlined /> },
     { to: '/system/survey-services', title: 'Dịch vụ & đơn giá', description: 'Quản lý dịch vụ Plant Health và giá khảo sát theo trụ.', icon: <MedicineBoxOutlined /> },
     { to: '/system/tenants', title: 'Quản lý đơn vị', description: 'Kiểm tra đơn vị, trạng thái truy cập và Owner.', icon: <BankOutlined /> },

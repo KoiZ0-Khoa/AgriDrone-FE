@@ -1,5 +1,7 @@
 # FE tích hợp API Long — 20/10/2026
 
+> Mốc lịch sử theo BE `8f93bf2`. Xem [cập nhật commit Long `0cd18cd` ngày 22/10/2026](./long-api-update-2026-10-22.md). Luồng GNSS/route và cảnh báo thiếu phiên GPS bên dưới đã được thay bằng luồng orthophoto sau chuyến bay.
+
 BE đối chiếu: `8f93bf2`. Chỉ cập nhật web FE; không sửa BE, Mobile, tài khoản thật hoặc database.
 
 ## Đã tích hợp trên giao diện

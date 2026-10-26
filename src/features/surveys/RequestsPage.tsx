@@ -52,7 +52,7 @@ export function RequestDetailPage() {
   return <>
     <Link className="back-link" to="/system/survey-requests"><ArrowLeftOutlined /> Danh sách yêu cầu</Link>
     <section className="resource-page-heading"><div><span className="page-kicker">{requestKindLabels[request.kind]}</span><h1>{request.requestNumber}</h1><p>{request.farmName} · {request.surveyServiceName}</p></div><Tag>{requestStatusLabels[request.status]}</Tag></section>
-    {approval ? <Alert className="workflow-notice" showIcon type="success" title={`Đã tạo đơn khảo sát ${approval.orderNumber}`} description={approval.requiresBaselineMapping ? 'Đơn cần khảo sát bản đồ nền trước. Manager đã được phân công; Owner mới sẽ nhận lời mời qua email.' : 'Đơn khảo sát đã được tạo cho nông trại. Manager tiếp tục xác minh phạm vi và điều kiện vận hành.'} /> : null}
+    {approval ? <Alert className="workflow-notice" showIcon type="success" title={`Đã tạo đơn khảo sát ${approval.orderNumber}`} description={<>{approval.requiresBaselineMapping ? 'Đơn cần khảo sát bản đồ nền trước. Manager đã được phân công; Owner mới sẽ nhận lời mời qua email.' : 'Đơn khảo sát đã được tạo cho nông trại. Manager tiếp tục xác minh phạm vi và điều kiện vận hành.'}<p><Link className="workflow-detail-link" to={`/system/survey-orders/${encodeURIComponent(approval.surveyOrderId)}/authorizations`}>Quản lý giấy tờ của đơn →</Link></p></>} /> : null}
     <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>Thông tin tiếp nhận</strong><span>Gửi lúc {dateTime(request.createdAt)}</span></div><Button icon={<ReloadOutlined />} onClick={() => { start.reset(); void query.refetch() }}>Tải lại</Button></div>
       <dl className="detail-list">
