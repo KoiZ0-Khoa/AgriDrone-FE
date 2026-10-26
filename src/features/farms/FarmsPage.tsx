@@ -75,18 +75,17 @@ export function FarmsPage() {
     <>
       <section className="resource-page-heading">
         <div>
-          <span className="page-kicker">NÔNG TRẠI</span>
-          <h1>Không gian canh tác</h1>
-          <p>Xem thông tin nông trại và gửi yêu cầu khảo sát cho đội ngũ vận hành.</p>
+          <h1>Nông trại</h1>
+          <p>{session.tenant.name}</p>
         </div>
         {canManageFarms ? (
           <Space size={12} wrap>
             {session.role === 'OWNER' ? (
               <Button color="primary" variant="outlined" icon={<InboxOutlined />} onClick={() => navigate('/farms/archived')}>
-                Xem nông trại đã lưu trữ
+                Đã lưu trữ
               </Button>
             ) : null}
-            {session.role === 'OWNER' ? <Button type="primary" onClick={() => navigate('/survey-requests/new')}>Đăng ký nông trại mới</Button> : null}
+            {session.role === 'OWNER' ? <Button type="primary" onClick={() => navigate('/survey-requests/new')}>Đăng ký nông trại</Button> : null}
           </Space>
         ) : null}
       </section>
@@ -97,7 +96,6 @@ export function FarmsPage() {
             <strong>Danh sách nông trại</strong>
             <span>{farmsQuery.data ? `${farmsQuery.data.totalCount} nông trại` : 'Đang đồng bộ'}</span>
           </div>
-          <span className="scope-note">{session.tenant.name}</span>
         </div>
 
         {farmsQuery.isPending ? <CommonState type="loading" title="Đang tải nông trại" /> : null}

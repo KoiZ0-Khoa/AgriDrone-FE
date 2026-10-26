@@ -18,6 +18,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
+import { WorkspaceTheme } from '../components/WorkspaceTheme'
 
 const roleLabels = {
   SYSTEM_ADMIN: 'Quản trị hệ thống',
@@ -64,7 +65,7 @@ export function AppLayout() {
   ]
 
   return (
-    <div className="app-shell">
+    <WorkspaceTheme><div className="app-shell">
       <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
 
       <aside className={`app-sidebar ${menuOpen ? 'is-open' : ''}`} id="app-sidebar">
@@ -153,6 +154,6 @@ export function AppLayout() {
           </div>
         </main>
       </div>
-    </div>
+    </div></WorkspaceTheme>
   )
 }

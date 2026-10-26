@@ -16,6 +16,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
+import { WorkspaceTheme } from '../components/WorkspaceTheme'
 
 const navigation = [
   { to: '/system', end: true, label: 'Tổng quan hệ thống', icon: <DashboardOutlined aria-hidden="true" /> },
@@ -56,7 +57,7 @@ export function SystemAdminLayout() {
     { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: logout },
   ]
 
-  return <div className="app-shell system-admin-shell">
+  return <WorkspaceTheme><div className="app-shell system-admin-shell">
     <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
     <aside className={`app-sidebar system-admin-sidebar ${menuOpen ? 'is-open' : ''}`} id="system-admin-sidebar">
       <div className="sidebar-brand">
@@ -91,5 +92,5 @@ export function SystemAdminLayout() {
       </header>
       <main className="app-content" id="main-content"><div className="page-container"><Outlet /></div></main>
     </div>
-  </div>
+  </div></WorkspaceTheme>
 }
