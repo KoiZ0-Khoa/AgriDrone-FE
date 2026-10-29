@@ -11,8 +11,9 @@ import { getFarms } from '../farms/farmsApi'
 import * as api from './api'
 import type { PublicIntake } from './types'
 import { operationFor, priceLabel, validateIntake, validatePublicTenant, validateRequestWindow, workflowError } from './workflow'
+import { intakeArea, intakeCoordinate } from './intakeNumbers'
 
-type IntakeValues = PublicIntake & { farmId?: string }
+type IntakeValues = Omit<PublicIntake, 'approximateAreaHa' | 'longitude' | 'latitude'> & { farmId?: string; approximateAreaHa: string | number; longitude: string | number; latitude: string | number }
 export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
   const { session } = useAuth()
   const [params] = useSearchParams()
@@ -32,7 +33,7 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
       operation.current = operationFor(operation.current, { farmId: values.farmId, ...common })
       return api.submitExistingFarmRequest(session!.accessToken, values.farmId, common, operation.current.key)
     }
-    const newFarm = { ...common, farmName: values.farmName.trim(), farmAddress: values.farmAddress.trim(), approximateAreaHa: values.approximateAreaHa, longitude: values.longitude, latitude: values.latitude }
+    const newFarm = { ...common, farmName: values.farmName.trim(), farmAddress: values.farmAddress.trim(), approximateAreaHa: intakeArea(values.approximateAreaHa), longitude: intakeCoordinate(values.longitude, 'longitude'), latitude: intakeCoordinate(values.latitude, 'latitude') }
     validateIntake(newFarm)
     const body = owner ? newFarm : { ...newFarm, tenantCode: values.tenantCode.trim(), tenantName: values.tenantName.trim(), applicantName: values.applicantName.trim(), applicantEmail: values.applicantEmail.trim(), applicantPhone: values.applicantPhone.trim() }
     if (!owner) validatePublicTenant(body as PublicIntake)
@@ -55,8 +56,8 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
           {newFarm ? <>
             <Form.Item name="farmName" label="Tên nông trại" rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input maxLength={200} /></Form.Item>
             <Form.Item name="farmAddress" label="Địa chỉ nông trại" rules={[{ required: true, whitespace: true }, { max: 2000 }]}><Input.TextArea rows={2} maxLength={2000} /></Form.Item>
-            <div className="form-two-columns"><Form.Item name="approximateAreaHa" label="Diện tích ước tính (ha)" rules={[{ required: true }]}><InputNumber min={0.0001} max={99999999.9999} precision={4} /></Form.Item><Form.Item name="estimatedPoleCount" label="Số trụ ước tính (không bắt buộc)"><InputNumber min={1} max={2147483647} precision={0} /></Form.Item></div>
-            <div className="form-two-columns"><Form.Item name="longitude" label="Kinh độ" rules={[{ required: true }]}><InputNumber min={-180} max={180} precision={7} /></Form.Item><Form.Item name="latitude" label="Vĩ độ" rules={[{ required: true }]}><InputNumber min={-90} max={90} precision={7} /></Form.Item></div><p className="form-hint">Nhập vị trí gần đúng của nông trại. Manager sẽ xác minh ranh giới trước khi khảo sát.</p>
+            <div className="form-two-columns"><Form.Item name="approximateAreaHa" label="Diện tích ước tính (ha)" extra="Tối đa 4 chữ số thập phân, ví dụ 2,5123." rules={[{ required: true, whitespace: true, message: 'Nhập diện tích nông trại.' }, { validator: async (_, value: string | number | undefined) => { if (value !== undefined && value !== '') intakeArea(value) } }]}><Input inputMode="decimal" placeholder="Ví dụ: 2,5123" /></Form.Item><Form.Item name="estimatedPoleCount" label="Số trụ ước tính (không bắt buộc)"><InputNumber min={1} max={2147483647} precision={0} /></Form.Item></div>
+            <div className="form-two-columns"><Form.Item name="longitude" label="Kinh độ" rules={[{ required: true, whitespace: true, message: 'Nhập kinh độ.' }, { validator: async (_, value: string | number | undefined) => { if (value !== undefined && value !== '') intakeCoordinate(value, 'longitude') } }]}><Input inputMode="decimal" placeholder="Ví dụ: 108,1234567" /></Form.Item><Form.Item name="latitude" label="Vĩ độ" rules={[{ required: true, whitespace: true, message: 'Nhập vĩ độ.' }, { validator: async (_, value: string | number | undefined) => { if (value !== undefined && value !== '') intakeCoordinate(value, 'latitude') } }]}><Input inputMode="decimal" placeholder="Ví dụ: 11,0123456" /></Form.Item></div><p className="form-hint">Kinh độ từ -180 đến 180; vĩ độ từ -90 đến 90. Dùng dấu chấm hoặc dấu phẩy cho phần thập phân.</p>
           </> : <>
             <Form.Item name="farmId" label="Nông trại" rules={[{ required: true, message: 'Chọn nông trại' }]}><Select showSearch optionFilterProp="label" loading={farms.isPending} options={farms.data?.items.map(farm => ({ value: farm.id, label: readableCode(farm.code) ? `${farm.name} · ${readableCode(farm.code)}` : farm.name }))} /></Form.Item>
             <Pagination size="small" current={farmPage} total={farms.data?.totalCount ?? 0} pageSize={20} showSizeChanger={false} disabled={mutation.isPending} onChange={page => { form.setFieldValue('farmId', undefined); setFarmPage(page) }} />
