@@ -6,6 +6,7 @@ import {
   LogoutOutlined,
   MedicineBoxOutlined,
   MenuOutlined,
+  RocketOutlined,
   TeamOutlined,
   TrophyOutlined,
   UserOutlined,
@@ -26,6 +27,8 @@ const navigation = [
   { to: '/system/plant-conditions', label: 'Tình trạng cây', icon: <MedicineBoxOutlined aria-hidden="true" /> },
   { to: '/system/plant-health', label: 'Nhãn & hướng dẫn', icon: <MedicineBoxOutlined aria-hidden="true" /> },
   { to: '/system/harvest-quality-grades', label: 'Chất lượng thu hoạch', icon: <TrophyOutlined aria-hidden="true" /> },
+  { to: '/system/drones', label: 'Drone', icon: <RocketOutlined aria-hidden="true" /> },
+  { to: '/system/preflight-checklist', label: 'Checklist trước bay', icon: <RocketOutlined aria-hidden="true" /> },
 ]
 
 function pageTitle(pathname: string) {
@@ -37,6 +40,8 @@ function pageTitle(pathname: string) {
   if (pathname === '/system/plant-conditions') return 'Danh mục tình trạng cây'
   if (pathname === '/system/plant-health') return 'Nhãn và hướng dẫn Plant Health'
   if (pathname === '/system/harvest-quality-grades') return 'Danh mục chất lượng thu hoạch'
+  if (pathname === '/system/drones') return 'Drone'
+  if (pathname === '/system/preflight-checklist') return 'Checklist trước bay'
   if (pathname === '/system/account') return 'Tài khoản quản trị'
   return 'Tổng quan hệ thống'
 }

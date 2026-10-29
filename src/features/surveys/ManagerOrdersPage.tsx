@@ -10,6 +10,7 @@ import type { Appointment, AssignedOrder } from './orderTypes'
 import { appointmentStatusLabels, matchingOrderSnapshot, orderStatusLabels } from './orderWorkflow'
 import { dateTime, workflowError } from './workflow'
 import { AppointmentModal, BoundaryVerificationModal } from './OrderActionModals'
+import { PrepareMissionPanel } from '../missions/PrepareMissionPanel'
 
 export function ManagerOrdersPage() {
   const token = useAuth().session!.accessToken
@@ -63,6 +64,7 @@ export function ManagerOrderDetailPage() {
       {scope.orderStatus === 'AWAITING_BOUNDARY_CAPTURE' ? <Alert className="workflow-notice" showIcon type="info" title="Bước tiếp theo: thu thập ranh giới tại hiện trường" description="Phiên thu thập GPS và kế hoạch đường bay chưa được tích hợp trên web. Không thể dùng nút xác minh ranh giới để thay thế bước này." /> : null}
       {appointment?.surveyOrderId === orderId ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch, chờ Owner xác nhận" description={`${dateTime(appointment.proposedStartAt)} – ${dateTime(appointment.proposedEndAt)}`} /> : null}
     </section>
+    <PrepareMissionPanel token={token} orderId={orderId} farmId={order.farmId} scope={scope} consistent={consistent} />
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Phạm vi khu vực</strong><span>Các khu vực được trả về trong phạm vi đơn khảo sát</span></div></div><Table rowKey="zoneId" dataSource={scope.zones} pagination={false} scroll={{ x: 500 }} locale={{ emptyText: 'Chưa có khu vực trong phạm vi đơn.' }} columns={[{ title: 'Mã', dataIndex: 'code' }, { title: 'Khu vực', dataIndex: 'name' }, { title: 'Trạng thái', render: (_, zone) => zone.status === 'ACTIVE' ? 'Đang hoạt động' : zone.status }]} /></section>
     {action === 'appointment' ? <AppointmentModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setAppointment(result); setAction(null); await refresh() }} /> : null}
     {action === 'boundary' ? <BoundaryVerificationModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}

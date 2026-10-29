@@ -59,6 +59,9 @@ const ManagerFarmDetailPage = lazy(() => import('../features/surveys/ManagerFarm
 const ManagerOrdersPage = lazy(() => import('../features/surveys/ManagerOrdersPage').then(m => ({ default: m.ManagerOrdersPage })))
 const ManagerOrderDetailPage = lazy(() => import('../features/surveys/ManagerOrdersPage').then(m => ({ default: m.ManagerOrderDetailPage })))
 const PlantHealthPage = lazy(() => import('../features/surveys/PlantHealthPage').then(m => ({ default: m.PlantHealthPage })))
+const MissionWorkspacePage = lazy(() => import('../features/missions/MissionWorkspacePage').then(m => ({ default: m.MissionWorkspacePage })))
+const DronesPage = lazy(() => import('../features/missions/DronesPage').then(m => ({ default: m.DronesPage })))
+const PreflightChecklistPage = lazy(() => import('../features/missions/PreflightChecklistPage').then(m => ({ default: m.PreflightChecklistPage })))
 
 export function App() {
   const [queryClient] = useState(
@@ -136,6 +139,8 @@ export function App() {
                         <Route path="/system/survey-services" element={<ServicesPage />} />
                         <Route path="/system/survey-requests" element={<RequestsPage />} />
                         <Route path="/system/survey-requests/:requestId" element={<RequestDetailPage />} />
+                        <Route path="/system/drones" element={<DronesPage />} />
+                        <Route path="/system/preflight-checklist" element={<PreflightChecklistPage />} />
                       </Route>
                     </Route>
                     <Route element={<SystemManagerRoute />}>
@@ -144,6 +149,7 @@ export function App() {
                         <Route path="/manager/farms/:farmId" element={<ManagerFarmDetailPage />} />
                         <Route path="/manager/orders" element={<ManagerOrdersPage />} />
                         <Route path="/manager/orders/:orderId" element={<ManagerOrderDetailPage />} />
+                        <Route path="/manager/orders/:orderId/missions/:missionId" element={<MissionWorkspacePage />} />
                         <Route path="/manager/account" element={<AccountPage />} />
                       </Route>
                     </Route>
