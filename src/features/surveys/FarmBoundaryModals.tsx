@@ -1,3 +1,4 @@
+import { readableCode } from '../../components/RecordReference'
 import { useMutation } from '@tanstack/react-query'
 import { Form, Input, InputNumber, Modal, Select } from 'antd'
 import { useState } from 'react'
@@ -51,7 +52,7 @@ export function ExceptionReviewModal({ token, farmId, item, close, done }: { tok
   }, onSuccess: done })
   const locked = mutationNeedsReload(mutation.error)
   return <Modal open title="Xét duyệt điểm ranh giới" okText="Lưu quyết định" cancelText="Đóng" confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
-    <p>{snapshot.sourceReferenceId} · {snapshot.originalPosition.coordinates.join(', ')}</p>
+    <p>{readableCode(snapshot.sourceReferenceId) ? readableCode(snapshot.sourceReferenceId) + ' · ' : ''}{snapshot.originalPosition.coordinates.join(', ')}</p>
     <Form className="workflow-coordinate-fields" form={form} layout="vertical" disabled={locked || mutation.isPending} onFinish={values => { if (!locked && !mutation.isPending) mutation.mutate(values) }}>
       <Form.Item name="decision" label="Quyết định" rules={[{ required: true }]}><Select options={[{ value: 1, label: 'Chấp nhận trong ranh giới' }, { value: 2, label: 'Loại vì ngoài ranh giới' }, { value: 3, label: 'Sửa vị trí' }]} /></Form.Item>
       {decision === 3 ? <div className="form-two-columns"><Form.Item name="longitude" label="Kinh độ mới" rules={[{ required: true }]}><InputNumber min={-180} max={180} /></Form.Item><Form.Item name="latitude" label="Vĩ độ mới" rules={[{ required: true }]}><InputNumber min={-90} max={90} /></Form.Item></div> : null}

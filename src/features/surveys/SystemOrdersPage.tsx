@@ -1,3 +1,4 @@
+import { readableCode } from '../../components/RecordReference'
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Pagination, Select, Space, Table, Tag } from 'antd'
@@ -32,8 +33,7 @@ export function SystemOrdersPage() {
       </div>
       {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /> : <>
         <Table<SystemOrder> rowKey="surveyOrderId" dataSource={query.data?.items ?? []} loading={query.isPending} pagination={false} scroll={{ x: 950 }} locale={{ emptyText: 'Chưa có đơn khảo sát phù hợp với bộ lọc.' }} columns={[
-          { title: 'Đơn khảo sát', dataIndex: 'orderNumber' },
-          { title: 'Nông trại', render: (_, order) => <><strong>{order.farmName}</strong><div className="form-hint">{order.farmCode}</div></> },
+          { title: 'Nông trại', render: (_, order) => <><strong>{order.farmName}</strong><div className="form-hint">{readableCode(order.farmCode)}</div>{readableCode(order.orderNumber) ? <div className="form-hint">{readableCode(order.orderNumber)}</div> : null}</> },
           { title: 'Dịch vụ', dataIndex: 'surveyServiceName' },
           { title: 'Trạng thái', render: (_, order) => <Tag>{orderStatusLabels[order.status] ?? order.status}</Tag> },
           { title: 'Cập nhật', render: (_, order) => dateTime(order.updatedAt) },

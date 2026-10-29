@@ -14,7 +14,11 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     const { ManagersPage } = await server.ssrLoadModule('/src/features/surveys/ManagersPage.tsx')
     const { ServicesPage } = await server.ssrLoadModule('/src/features/surveys/ServicesPage.tsx')
     const { SurveyIntakePage } = await server.ssrLoadModule('/src/features/surveys/SurveyIntakePage.tsx')
-    const { RequestsPage } = await server.ssrLoadModule('/src/features/surveys/RequestsPage.tsx')
+    const { RequestsPage, RequestDetailPage } = await server.ssrLoadModule('/src/features/surveys/RequestsPage.tsx')
+    const { readableCode } = await server.ssrLoadModule('/src/components/RecordReference.tsx')
+    assert.equal(readableCode('FARM-01A17D91FC96732ABAFF93FB21B78D89'), null)
+    assert.equal(readableCode('8394b473-54c7-44b9-84c7-b25f95127d2a'), null)
+    for (const code of ['TAN AN', 'ANPHU', 'SR-20261027-001', 'tree_r1_c2']) assert.equal(readableCode(code), code)
     const { SystemOrdersPage, SystemOrderAuthorizationsPage } = await server.ssrLoadModule('/src/features/surveys/SystemOrdersPage.tsx')
     const { AuthorizationEditor } = await server.ssrLoadModule('/src/features/surveys/SurveyAuthorizationDialog.tsx')
     const { ManagerFarmsPage } = await server.ssrLoadModule('/src/features/surveys/ManagerFarmsPage.tsx')
@@ -32,7 +36,7 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
         if (value instanceof Error) client.getQueryCache().build(client, { queryKey: key }).setState({ status: 'error', error: value, fetchStatus: 'idle' })
         else client.setQueryData(key, value)
       }
-      return renderToStaticMarkup(h(QueryClientProvider, { client }, h(MemoryRouter, { initialEntries: [path] }, h(AuthProvider, null, h(Routes, null, h(Route, { path: path.startsWith('/system/survey-orders/') ? '/system/survey-orders/:orderId/authorizations' : path.startsWith('/manager/farms/') ? '/manager/farms/:farmId' : path.startsWith('/manager/orders/') ? '/manager/orders/:orderId' : '*', element: h(Component, props) }))))))
+      return renderToStaticMarkup(h(QueryClientProvider, { client }, h(MemoryRouter, { initialEntries: [path] }, h(AuthProvider, null, h(Routes, null, h(Route, { path: path.startsWith('/system/survey-requests/') ? '/system/survey-requests/:requestId' : path.startsWith('/system/survey-orders/') ? '/system/survey-orders/:orderId/authorizations' : path.startsWith('/manager/farms/') ? '/manager/farms/:farmId' : path.startsWith('/manager/orders/') ? '/manager/orders/:orderId' : '*', element: h(Component, props) }))))))
     }
     const services = [{ surveyServiceId: 'service', code: 'PLANT_HEALTH', name: 'Plant Health', description: 'Khảo sát sức khỏe cây', serviceType: 'PLANT_HEALTH', status: 'ACTIVE', version: 123, currentPrice: { priceVersionId: 'price', amountPerPole: 1500, currency: 'VND', effectiveFrom: '2026-10-16T00:00:00Z', effectiveTo: null } }]
     const manager = { id: 'manager', userId: 'user', email: 'manager@example.test', fullName: 'Manager One', status: 'ACTIVE', availability: 'AVAILABLE', qualificationStatus: 'QUALIFIED', qualificationExpiresAt: '2099-01-01T00:00:00Z', version: 7 }
@@ -61,6 +65,12 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(requests, /ANPHU/)
     assert.match(requests, /An Phu/)
     assert.doesNotMatch(requests, /PrivateApplicantName/)
+    const generatedRequestNumber = 'SR-01a17d980ea67991a9e84f9fd7351f07'
+    const generatedRequest = { id: 'request', requestNumber: generatedRequestNumber, kind: 'NEW_CUSTOMER', status: 'APPROVED', farmName: 'Tam Vu', surveyServiceName: 'Plant Health Survey', tenantName: 'Tam Vu', tenantCode: 'TAMVU2', applicantName: 'Owner', applicantEmail: 'owner@example.test', applicantPhone: '0900000000', farmAddress: '123 Tam Vu', approximateAreaHa: 2, candidateLocation: { latitude: 11, longitude: 108 }, createdAt: '2026-10-27T13:41:19Z', reviews: [] }
+    const generatedRequestDetail = render(RequestDetailPage, 'SYSTEM_ADMIN', [[['survey-request', 'request'], generatedRequest]], {}, '/system/survey-requests/request')
+    assert.match(generatedRequestDetail, /<h1>Yêu cầu khảo sát · Tam Vu<\/h1>/)
+    assert.match(generatedRequestDetail, /Sao chép mã yêu cầu/)
+    assert.doesNotMatch(generatedRequestDetail.replace(/<[^>]*>/g, ''), new RegExp(generatedRequestNumber))
     const farms = render(ManagerFarmsPage, 'SYSTEM_MANAGER', [[['manager-assigned-farms'], [{ farmId: 'farm', tenantId: 'tenant', code: 'FARM', name: 'Farm One', address: null, areaHectares: null, assignedAt: '2026-10-16T00:00:00Z' }]]])
     assert.match(farms, /Farm One/)
     assert.match(farms, /Nông trại phụ trách/)
@@ -74,6 +84,8 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(farmDetail, /108,1/)
     assert.match(farmDetail, /10,9/)
     assert.match(farmDetail, /Chỉnh sửa nông trại/)
+    const generatedFarmCode = 'FARM-01A17D91FC96732ABAFF93FB21B78D89'
+    assert.doesNotMatch(renderDetail({ ...detail, code: generatedFarmCode }).replace(/<[^>]*>/g, ''), new RegExp(generatedFarmCode))
     assert.doesNotMatch(farmDetail, /Chưa thể sửa thông tin chung/)
     for (const error of [new ApiError(403, 'Forbidden', undefined, 'read-trace'), new ApiError(401, 'Tenant context required', 'Tenant.ContextRequired', 'read-trace')]) {
       const blocked = renderDetail(error)
@@ -135,6 +147,15 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(rescheduleDetail, /Owner yêu cầu đổi lịch khảo sát/)
     assert.match(rescheduleDetail, /<button[^>]*><span>Đề xuất lịch mới<\/span><\/button>/)
     assert.doesNotMatch(rescheduleDetail, /Đã đề xuất lịch, chờ Owner xác nhận/)
+    const generatedOrder = { ...rescheduleOrder, orderNumber: 'SO-01a17d91fc96732abaff93fb21b78d89', farmCode: generatedFarmCode }
+    const generatedScope = { ...scope, orderNumber: generatedOrder.orderNumber }
+    const generatedOrderDetail = renderOrder(generatedOrder, generatedScope)
+    assert.match(generatedOrderDetail, /<h1>Farm One<\/h1>/)
+    assert.match(generatedOrderDetail, /Đề xuất lịch mới/)
+    assert.doesNotMatch(generatedOrderDetail.replace(/<[^>]*>/g, ''), /SO-01a17d91fc96732abaff93fb21b78d89|FARM-01A17D91FC96732ABAFF93FB21B78D89/)
+    const generatedOrderList = render(ManagerOrdersPage, 'SYSTEM_MANAGER', [[['manager-orders', 1, ''], { items: [generatedOrder], totalCount: 1 }]])
+    assert.doesNotMatch(generatedOrderList.replace(/<[^>]*>/g, ''), /SO-01a17d91fc96732abaff93fb21b78d89|FARM-01A17D91FC96732ABAFF93FB21B78D89/)
+    assert.match(generatedOrderList, /href="\/manager\/orders\/order"/)
     const awaitingOwner = renderOrder({ ...rescheduleOrder, currentAppointmentStatus: 'PROPOSED' }, scope)
     assert.match(awaitingOwner, /Chờ Owner xác nhận/)
     assert.doesNotMatch(awaitingOwner, /Đề xuất lịch mới|Owner yêu cầu đổi lịch khảo sát/)

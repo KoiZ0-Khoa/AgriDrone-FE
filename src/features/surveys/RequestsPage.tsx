@@ -1,3 +1,4 @@
+import { CopyReference, readableCode } from '../../components/RecordReference'
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Checkbox, Form, Input, Modal, Pagination, Select, Space, Table, Tag } from 'antd'
@@ -24,8 +25,8 @@ export function RequestsPage() {
       </div>
       {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /> : <>
         <Table<SurveyRequest> rowKey="id" loading={query.isPending} dataSource={query.data?.items ?? []} pagination={false} scroll={{ x: 850 }} locale={{ emptyText: 'Chưa có yêu cầu phù hợp với bộ lọc.' }} columns={[
-          { title: 'Yêu cầu', render: (_, item) => <><strong>{item.requestNumber}</strong><div className="form-hint">{requestKindLabels[item.kind]}</div></> },
-          { title: 'Đơn vị / Nông trại', render: (_, item) => <><strong>{item.farmName}</strong><div>{item.tenantName ?? 'Chưa có tên đơn vị'}{item.tenantCode ? ` · ${item.tenantCode}` : ''}</div></> },
+          { title: 'Yêu cầu', render: (_, item) => <><strong>{item.farmName}</strong>{readableCode(item.requestNumber) ? <div className="form-hint">{readableCode(item.requestNumber)}</div> : null}<div className="form-hint">{requestKindLabels[item.kind]}</div></> },
+          { title: 'Đơn vị', render: (_, item) => <>{item.tenantName ?? 'Khách hàng mới'}{readableCode(item.tenantCode) ? <div className="form-hint">{readableCode(item.tenantCode)}</div> : null}</> },
           { title: 'Dịch vụ', dataIndex: 'surveyServiceCode' },
           { title: 'Trạng thái', render: (_, item) => <Tag color={item.status === 'APPROVED' ? 'success' : 'default'}>{requestStatusLabels[item.status]}</Tag> },
           { title: 'Ngày gửi', render: (_, item) => dateTime(item.createdAt) },
@@ -51,12 +52,12 @@ export function RequestDetailPage() {
   const request = query.data
   return <>
     <Link className="back-link" to="/system/survey-requests"><ArrowLeftOutlined /> Danh sách yêu cầu</Link>
-    <section className="resource-page-heading"><div><span className="page-kicker">{requestKindLabels[request.kind]}</span><h1>{request.requestNumber}</h1><p>{request.farmName} · {request.surveyServiceName}</p></div><Tag>{requestStatusLabels[request.status]}</Tag></section>
-    {approval ? <Alert className="workflow-notice" showIcon type="success" title={`Đã tạo đơn khảo sát ${approval.orderNumber}`} description={<>{approval.requiresBaselineMapping ? 'Đơn cần khảo sát bản đồ nền trước. Manager đã được phân công; Owner mới sẽ nhận lời mời qua email.' : 'Đơn khảo sát đã được tạo cho nông trại. Manager tiếp tục xác minh phạm vi và điều kiện vận hành.'}<p><Link className="workflow-detail-link" to={`/system/survey-orders/${encodeURIComponent(approval.surveyOrderId)}/authorizations`}>Quản lý giấy tờ của đơn →</Link></p></>} /> : null}
+    <section className="resource-page-heading"><div><span className="page-kicker">{requestKindLabels[request.kind]}</span><h1>Yêu cầu khảo sát · {request.farmName}</h1><p>{request.surveyServiceName}</p><CopyReference value={request.requestNumber} label="Sao chép mã yêu cầu" /></div><Tag>{requestStatusLabels[request.status]}</Tag></section>
+    {approval ? <Alert className="workflow-notice" showIcon type="success" title="Đã tạo đơn khảo sát" description={<>{approval.requiresBaselineMapping ? 'Đơn cần khảo sát bản đồ nền trước. Manager đã được phân công; Owner mới sẽ nhận lời mời qua email.' : 'Đơn khảo sát đã được tạo cho nông trại. Manager tiếp tục xác minh phạm vi và điều kiện vận hành.'}<p><Link className="workflow-detail-link" to={`/system/survey-orders/${encodeURIComponent(approval.surveyOrderId)}/authorizations`}>Quản lý giấy tờ của đơn →</Link></p></>} /> : null}
     <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>Thông tin tiếp nhận</strong><span>Gửi lúc {dateTime(request.createdAt)}</span></div><Button icon={<ReloadOutlined />} onClick={() => { start.reset(); void query.refetch() }}>Tải lại</Button></div>
       <dl className="detail-list">
-        <div><dt>Đơn vị</dt><dd>{request.tenantName ?? 'Chưa có'}{request.tenantCode ? ` · ${request.tenantCode}` : ''}</dd></div>
+        <div><dt>Đơn vị</dt><dd>{request.tenantName ?? 'Chưa có'}{readableCode(request.tenantCode) ? ` · ${readableCode(request.tenantCode)}` : ''}</dd></div>
         <div><dt>Người liên hệ</dt><dd>{request.applicantName}</dd></div><div><dt>Email</dt><dd>{request.applicantEmail}</dd></div><div><dt>Điện thoại</dt><dd>{request.applicantPhone}</dd></div>
         <div><dt>Nông trại</dt><dd>{request.farmName}</dd></div><div><dt>Địa chỉ</dt><dd>{request.farmAddress}</dd></div><div><dt>Diện tích ước tính</dt><dd>{request.approximateAreaHa.toLocaleString('vi-VN')} ha</dd></div>
         <div><dt>Số trụ ước tính</dt><dd>{request.estimatedPoleCount?.toLocaleString('vi-VN') ?? 'Chưa có'}</dd></div>
@@ -97,7 +98,7 @@ function ReviewModal({ token, type, request, close, done }: { token: string; typ
   const eligible = managers.data?.items.filter(manager => isEligibleManager(manager)) ?? []
   const unsupportedChecklist = request.checklistVersion !== checklistVersion
   return <Modal open width={620} title={type === 'approve' ? 'Phê duyệt yêu cầu khảo sát' : 'Từ chối yêu cầu khảo sát'} okText={type === 'approve' ? 'Xác nhận phê duyệt' : 'Xác nhận từ chối'} cancelText={conflict ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ danger: type === 'reject', disabled: Boolean(conflict) || unsupportedChecklist || (needsManager && !managers.isSuccess) }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
-    <p>{request.requestNumber} · {request.farmName}</p>
+    <p><strong>{request.farmName}</strong> · {request.surveyServiceName}</p>
     <Form form={form} layout="vertical" disabled={mutation.isPending} onFinish={values => { if (!mutation.isPending && !conflict) mutation.mutate(values) }}>
       <fieldset className="workflow-checklist"><legend>Kiểm tra trước khi quyết định</legend>
         {Object.entries(reviewLabels).map(([code, label]) => <Form.Item key={code} name={code} valuePropName="checked"><Checkbox>{label}</Checkbox></Form.Item>)}

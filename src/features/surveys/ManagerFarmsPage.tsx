@@ -1,3 +1,4 @@
+import { readableCode } from '../../components/RecordReference'
 import { ArrowRightOutlined, HomeOutlined, ScheduleOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -7,7 +8,7 @@ import { useAuth } from '../auth/AuthContext'
 import { getAssignedFarms } from './api'
 import { getAssignedOrders } from './orderApi'
 import { orderStatusLabels } from './orderWorkflow'
-import { workflowError } from './workflow'
+import { dateTime, workflowError } from './workflow'
 
 export function ManagerFarmsPage() {
   const { session } = useAuth()
@@ -41,7 +42,7 @@ export function ManagerFarmsPage() {
       <section className="dw-panel">
         <DashboardSectionHeading title="Đơn được giao" to="/manager/orders" />
         {!orders.data && orders.isPending ? <DashboardState loading empty="" /> : !orders.data && orders.isError ? <DashboardState empty="" error={workflowError(orders.error)} retry={() => { void orders.refetch() }} /> : !assignedOrders.length ? <DashboardState empty="Chưa có đơn khảo sát"><p>Các đơn được giao sẽ xuất hiện tại đây.</p></DashboardState> : <div className="dw-request-list">{assignedOrders.slice(0, 4).map(order => <Link className="dw-request-row" to={'/manager/orders/' + encodeURIComponent(order.surveyOrderId)} key={order.surveyOrderId}>
-          <span className="dw-row-copy"><span className="dw-row-code">{order.orderNumber}</span><strong>{order.farmName}</strong><small>{order.surveyServiceName}</small><span className={'dw-badge ' + (order.status === 'COMPLETED' ? 'is-green' : order.status === 'CANCELLED' ? 'is-neutral' : 'is-amber')}>{orderStatusLabels[order.status] ?? order.status}</span>{order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED' ? <span className="dw-badge is-amber">Owner yêu cầu đổi lịch</span> : null}</span>
+          <span className="dw-row-copy"><span className="dw-row-code">{readableCode(order.orderNumber) ?? dateTime(order.createdAt)}</span><strong>{order.farmName}</strong><small>{order.surveyServiceName}</small><span className={'dw-badge ' + (order.status === 'COMPLETED' ? 'is-green' : order.status === 'CANCELLED' ? 'is-neutral' : 'is-amber')}>{orderStatusLabels[order.status] ?? order.status}</span>{order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED' ? <span className="dw-badge is-amber">Owner yêu cầu đổi lịch</span> : null}</span>
           <ArrowRightOutlined className="dw-row-arrow" aria-hidden="true" />
         </Link>)}</div>}
       </section>

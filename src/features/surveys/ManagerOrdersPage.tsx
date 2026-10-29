@@ -1,3 +1,4 @@
+import { CopyReference, readableCode } from '../../components/RecordReference'
 import { ArrowLeftOutlined, CopyOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Pagination, Select, Space, Table, Tag } from 'antd'
@@ -23,8 +24,7 @@ export function ManagerOrdersPage() {
     <section className="resource-panel"><div className="workflow-toolbar"><Select aria-label="Trạng thái đơn khảo sát" value={status} onChange={value => { setPage(1); setStatus(value) }} options={[{ value: '', label: 'Tất cả trạng thái' }, ...Object.entries(orderStatusLabels).map(([value, label]) => ({ value, label }))]} /></div>
       {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /> : <>
         <Table<AssignedOrder> rowKey="surveyOrderId" loading={query.isPending} dataSource={query.data?.items ?? []} pagination={false} scroll={{ x: 850 }} locale={{ emptyText: 'Chưa có đơn khảo sát phù hợp.' }} columns={[
-          { title: 'Đơn khảo sát', dataIndex: 'orderNumber' },
-          { title: 'Nông trại', render: (_, order) => <><strong>{order.farmName}</strong><div className="form-hint">{order.farmCode}</div></> },
+          { title: 'Nông trại', render: (_, order) => <><strong>{order.farmName}</strong><div className="form-hint">{readableCode(order.farmCode)}</div>{readableCode(order.orderNumber) ? <div className="form-hint">{readableCode(order.orderNumber)}</div> : null}</> },
           { title: 'Dịch vụ', dataIndex: 'surveyServiceName' },
           { title: 'Trạng thái', render: (_, order) => <Space orientation="vertical"><Tag>{orderStatusLabels[order.status] ?? order.status}</Tag>{order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED' ? <Tag color="orange">Owner yêu cầu đổi lịch</Tag> : null}</Space> },
           { title: 'Ngày tạo', render: (_, order) => dateTime(order.createdAt) },
@@ -58,7 +58,7 @@ export function ManagerOrderDetailPage() {
   const canPropose = consistent && (scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' || scope.orderStatus === 'AWAITING_PAID_APPOINTMENT') && (!order.currentAppointmentId || order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED')
   return <>
     {back}
-    <section className="resource-page-heading"><div><span className="page-kicker">{order.farmCode}</span><h1>{scope.orderNumber}</h1><p>{order.farmName} · {order.surveyServiceName}</p></div><Space wrap><Button icon={<CopyOutlined />} onClick={async () => {
+    <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT</span><h1>{order.farmName}</h1><p>{order.surveyServiceName} · {dateTime(order.createdAt)}</p><CopyReference value={scope.orderNumber} label="Sao chép mã đơn" /></div><Space wrap><Button icon={<CopyOutlined />} onClick={async () => {
       try { await navigator.clipboard.writeText(new URL(`/survey-payments/${encodeURIComponent(orderId)}`, window.location.origin).href); void message.success('Đã sao chép liên kết lịch sử thanh toán cho Owner.') }
       catch { void message.error('Không thể sao chép. Hãy cho phép truy cập bộ nhớ tạm của trình duyệt.') }
     }}>Sao chép liên kết thanh toán</Button><Button icon={<ReloadOutlined />} loading={busy} onClick={() => { setAppointment(null); void refresh() }}>Tải lại</Button></Space></section>

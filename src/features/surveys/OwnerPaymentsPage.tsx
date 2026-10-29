@@ -1,3 +1,4 @@
+import { CopyReference, readableCode } from '../../components/RecordReference'
 ﻿import { ArrowLeftOutlined, CreditCardOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Pagination, Select, Space, Table, Tag } from 'antd'
@@ -41,8 +42,7 @@ function OwnerOrderList({ token, tenantId, tenantName, returned }: { token: stri
     <section className="resource-panel"><div className="workflow-toolbar"><Select aria-label="Trạng thái đơn khảo sát của Owner" value={status} onChange={value => { const next = new URLSearchParams(); if (value) next.set('status', value); next.set('page', '1'); setParams(next) }} options={[{ value: '', label: 'Tất cả trạng thái' }, ...Object.keys(ownerOrderStatusQuery).map(value => ({ value, label: orderStatusLabels[value] ?? value }))]} /></div>
       {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /> : <>
         <Table<OwnerSurveyOrder> rowKey="surveyOrderId" loading={query.isPending} dataSource={query.data?.items ?? []} pagination={false} scroll={{ x: 850 }} locale={{ emptyText: 'Chưa có đơn khảo sát phù hợp.' }} columns={[
-          { title: 'Đơn khảo sát', dataIndex: 'orderNumber' },
-          { title: 'Nông trại', dataIndex: 'farmName' },
+          { title: 'Nông trại', render: (_, order) => <><strong>{order.farmName}</strong>{readableCode(order.orderNumber) ? <div className="form-hint">{readableCode(order.orderNumber)}</div> : null}</> },
           { title: 'Trạng thái', render: (_, order) => <Tag>{orderStatusLabels[order.status] ?? order.status}</Tag> },
           { title: 'Lịch hiện tại', render: (_, order) => order.currentAppointment ? <>{dateTime(order.currentAppointment.startAt)}<div className="form-hint">{appointmentStatusLabels[order.currentAppointment.status] ?? order.currentAppointment.status}</div></> : 'Chờ Manager đề xuất' },
           { title: 'Tổng tiền', render: (_, order) => money(order.totalAmount, order.currency) },
@@ -79,7 +79,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
   const busy = query.isFetching || query.isError || writes > 0
   const rescheduleBlockedByPayment = appointment?.purpose === 'PAID_SERVICE' && history.data?.payments.some(item => activePaymentStatus(item.status))
   return <>{back}
-    <section className="resource-page-heading"><div><span className="page-kicker">{order.farmName}</span><h1>{order.orderNumber}</h1><p>{orderStatusLabels[order.status] ?? order.status}</p></div><Button icon={<ReloadOutlined />} disabled={writes > 0 || !!action} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT & THANH TOÁN</span><h1>{order.farmName}</h1><p>{orderStatusLabels[order.status] ?? order.status}</p><CopyReference value={order.orderNumber} label="Sao chép mã đơn" /></div><Button icon={<ReloadOutlined />} disabled={writes > 0 || !!action} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button></section>
     {notice ? <Alert className="workflow-notice" showIcon type="success" title={notice} /> : null}
     <SurveyMutationError error={query.isError ? query.error : null} />
     {!validOwnerVersion(order.orderVersion) ? <Alert className="workflow-notice" showIcon type="warning" title="Thông tin đơn chưa đầy đủ. Tải lại trước khi xác nhận lịch hoặc thanh toán." /> : null}

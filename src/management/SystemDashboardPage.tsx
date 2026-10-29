@@ -1,3 +1,4 @@
+import { readableCode } from '../components/RecordReference'
 import { ArrowRightOutlined, BankOutlined, FileSearchOutlined, FileTextOutlined, MedicineBoxOutlined, TeamOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -43,7 +44,7 @@ export function SystemDashboardPage() {
       <section className="dw-panel">
         <DashboardSectionHeading title="Yêu cầu mới" to="/system/survey-requests" />
         {!requests.data && requests.isPending ? <DashboardState loading empty="" /> : !requests.data && requests.isError ? <DashboardState empty="" error={workflowError(requests.error)} retry={() => { void requests.refetch() }} /> : !pending.length ? <DashboardState empty="Đã xử lý hết yêu cầu mới"><p>Yêu cầu mới gửi sẽ xuất hiện tại đây để bạn tiếp nhận.</p><Link className="dw-text-link" to="/system/survey-requests">Xem các yêu cầu đã nhận <ArrowRightOutlined aria-hidden="true" /></Link></DashboardState> : <div className="dw-request-list">{pending.slice(0, 4).map(request => <Link className="dw-request-row" to={'/system/survey-requests/' + encodeURIComponent(request.id)} key={request.id}>
-          <span className="dw-request-mark" aria-hidden="true"><FileSearchOutlined /></span><span className="dw-row-copy"><span className="dw-row-code">{request.requestNumber}</span><strong>{request.farmName}</strong><small>{request.tenantName ?? request.tenantCode ?? 'Khách hàng mới'} · {request.surveyServiceCode}</small></span><span className="dw-request-meta"><span className="dw-badge is-amber">Chờ xét duyệt</span><small>{requestKindLabels[request.kind] ?? request.kind}</small></span><ArrowRightOutlined className="dw-row-arrow" aria-hidden="true" />
+          <span className="dw-request-mark" aria-hidden="true"><FileSearchOutlined /></span><span className="dw-row-copy"><span className="dw-row-code">{readableCode(request.requestNumber) ?? dateTime(request.createdAt)}</span><strong>{request.farmName}</strong><small>{request.tenantName ?? request.tenantCode ?? 'Khách hàng mới'} · {request.surveyServiceCode}</small></span><span className="dw-request-meta"><span className="dw-badge is-amber">Chờ xét duyệt</span><small>{requestKindLabels[request.kind] ?? request.kind}</small></span><ArrowRightOutlined className="dw-row-arrow" aria-hidden="true" />
         </Link>)}</div>}
         {requests.data && pending.length ? <div className="dw-panel-footer"><span>{Math.min(pending.length, 4)} yêu cầu mới nhất</span></div> : null}
       </section>
@@ -60,7 +61,7 @@ export function SystemDashboardPage() {
     <section className="dw-panel dw-bottom-panel">
       <DashboardSectionHeading title="Đơn khảo sát gần đây" to="/system/survey-orders" />
       {!orders.data && orders.isPending ? <DashboardState loading empty="" /> : !orders.data && orders.isError ? <DashboardState empty="" error={workflowError(orders.error)} retry={() => { void orders.refetch() }} /> : !recentOrders.length ? <DashboardState empty="Chưa có đơn khảo sát"><p>Đơn khảo sát được tạo sau khi yêu cầu được phê duyệt.</p></DashboardState> : <div className="dw-order-list">{recentOrders.slice(0, 4).map(order => <Link className="dw-order-row" key={order.surveyOrderId} to={'/system/survey-orders/' + encodeURIComponent(order.surveyOrderId) + '/authorizations'}>
-        <span className="dw-order-icon" aria-hidden="true"><FileTextOutlined /></span><span className="dw-row-copy"><span className="dw-row-code">{order.orderNumber}</span><strong>{order.farmName}</strong></span><span className="dw-order-service">{order.surveyServiceName}<small>{dateTime(order.createdAt)}</small></span><span className={'dw-badge ' + (order.status === 'COMPLETED' ? 'is-green' : order.status === 'CANCELLED' ? 'is-neutral' : 'is-amber')}>{orderStatusLabels[order.status] ?? order.status}</span><ArrowRightOutlined className="dw-row-arrow" aria-hidden="true" />
+        <span className="dw-order-icon" aria-hidden="true"><FileTextOutlined /></span><span className="dw-row-copy"><span className="dw-row-code">{readableCode(order.orderNumber) ?? dateTime(order.createdAt)}</span><strong>{order.farmName}</strong></span><span className="dw-order-service">{order.surveyServiceName}<small>{dateTime(order.createdAt)}</small></span><span className={'dw-badge ' + (order.status === 'COMPLETED' ? 'is-green' : order.status === 'CANCELLED' ? 'is-neutral' : 'is-amber')}>{orderStatusLabels[order.status] ?? order.status}</span><ArrowRightOutlined className="dw-row-arrow" aria-hidden="true" />
       </Link>)}</div>}
     </section>
 

@@ -1,3 +1,4 @@
+import { CopyReference } from '../../components/RecordReference'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Form, Input, Modal, Pagination, Select } from 'antd'
 import { useState } from 'react'
@@ -25,7 +26,7 @@ export function FarmManagerAssignmentModal({ token, close }: { token: string; cl
   return <Modal open width={620} title="Phân công nông trại" okText={result ? 'Đóng' : 'Xác nhận phân công'} cancelText="Hủy" confirmLoading={mutation.isPending} cancelButtonProps={{ hidden: Boolean(result) }} okButtonProps={{ disabled: !result && !managers.isSuccess }} onOk={() => { if (result) close(); else form.submit() }} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     {result ? <>
       <Alert showIcon type="success" title="Đã phân công nông trại" description="Manager đăng nhập vào Nông trại phụ trách và bấm Tải lại để xem nông trại được giao." />
-      <dl className="detail-list"><div><dt>Farm ID</dt><dd>{result.farmId}</dd></div><div><dt>Manager</dt><dd>{eligible.find(manager => manager.id === result.systemManagerProfileId)?.fullName ?? result.systemManagerProfileId}</dd></div><div><dt>Thời điểm phân công</dt><dd>{dateTime(result.assignedAt)}</dd></div></dl>
+      <dl className="detail-list"><div><dt>Nông trại được phân công</dt><dd><CopyReference value={result.farmId} label="Sao chép mã tra cứu nông trại" /></dd></div><div><dt>Manager</dt><dd>{eligible.find(manager => manager.id === result.systemManagerProfileId)?.fullName ?? 'Manager đã chọn'}</dd></div><div><dt>Thời điểm phân công</dt><dd>{dateTime(result.assignedAt)}</dd></div></dl>
     </> : <>
       <p>Giao nông trại hiện có cho System Manager phụ trách. Thao tác này không tạo đơn khảo sát hoặc phê duyệt yêu cầu khảo sát.</p>
       <Form form={form} layout="vertical" disabled={mutation.isPending} onValuesChange={() => { if (mutation.isError) mutation.reset() }} onFinish={values => { if (!mutation.isPending && managers.isSuccess) mutation.mutate(values) }}>

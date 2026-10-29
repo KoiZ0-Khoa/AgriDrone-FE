@@ -31,6 +31,7 @@ test('Manager base-map UI checks assignment, renders real draft candidates and k
     }
     const html = render(draft)
     assert.match(html, /tree_r1_c2/)
+    assert.doesNotMatch(html.replace(/<[^>]*>/g, ''), new RegExp(candidate.candidateId))
     assert.match(html, /108\.12/)
     assert.match(html, /Trong ranh giới/)
     assert.match(html, /Chưa duyệt/)

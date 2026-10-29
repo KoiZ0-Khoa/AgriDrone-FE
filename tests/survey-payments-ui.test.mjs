@@ -40,7 +40,7 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     }
     const button = (html, label) => [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]).find(value => value.includes('>' + label + '<'))
     const proposed = render('OWNER', [], { order: ownerOrder })
-    assert.match(proposed, /SO-OWNER-1/)
+    assert.match(proposed, /Sao chép mã đơn/)
     assert.match(proposed, /Long An/)
     assert.match(proposed, /01\/01\/2099|1\/1\/2099/)
     assert.ok(button(proposed, 'Xác nhận lịch'))
@@ -77,6 +77,14 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     assert.match(unavailable, /Chưa kết nối được máy chủ/)
     const list = render('OWNER', [], { path: '/survey-payments?page=3' })
     assert.match(list, /SO-OWNER-1/)
+    const generatedOrderNumber = 'SO-01a17d91fc96732abaff93fb21b78d89'
+    const generatedDetail = render('OWNER', [], { order: { ...confirmedOrder, orderNumber: generatedOrderNumber } })
+    assert.doesNotMatch(generatedDetail.replace(/<[^>]*>/g, ''), new RegExp(generatedOrderNumber))
+    assert.match(generatedDetail, /<h1>Long An<\/h1>/)
+    assert.match(generatedDetail, /Sao chép mã đơn/)
+    const generatedList = render('OWNER', [], { path: '/survey-payments', list: [{ ...ownerOrder, orderNumber: generatedOrderNumber }] })
+    assert.doesNotMatch(generatedList.replace(/<[^>]*>/g, ''), new RegExp(generatedOrderNumber))
+    assert.match(generatedList, new RegExp('/survey-payments/' + orderId))
     assert.match(list, /Xem đơn &amp; thanh toán/)
     assert.match(list, /ant-pagination-item-3 ant-pagination-item-active/)
     const returned = render('OWNER', [], { path: '/survey-payments/return?status=success' })

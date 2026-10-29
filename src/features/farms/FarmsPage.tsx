@@ -1,3 +1,4 @@
+import { readableCode } from '../../components/RecordReference'
 import {
   ArrowLeftOutlined,
   EnvironmentOutlined,
@@ -37,7 +38,7 @@ function FarmCard({ farm }: { farm: Farm }) {
         </Tag>
       </div>
       <div>
-        <span className="resource-code">{farm.code}</span>
+        <span className="resource-code">{readableCode(farm.code)}</span>
         <h2>{farm.name}</h2>
         <p>{farm.address ?? 'Chưa cập nhật địa chỉ'}</p>
       </div>
@@ -159,7 +160,7 @@ export function FarmDetailPage() {
       <Link className="back-link" to="/farms"><ArrowLeftOutlined /> Danh sách nông trại</Link>
       <section className="resource-page-heading detail-heading">
         <div>
-          <span className="page-kicker">{farm.code}</span>
+          <span className="page-kicker">{readableCode(farm.code)}</span>
           <h1>{farm.name}</h1>
           <p>{farm.address ?? 'Chưa cập nhật địa chỉ cho nông trại này.'}</p>
         </div>
@@ -176,7 +177,7 @@ export function FarmDetailPage() {
         <section className="resource-panel detail-main-panel">
           <div className="resource-panel-heading"><div><strong>Thông tin nông trại</strong><span>Dữ liệu chính thức từ backend</span></div></div>
           <dl className="detail-list">
-            <div><dt>Mã nông trại</dt><dd>{farm.code}</dd></div>
+            {readableCode(farm.code) ? <div><dt>Mã nông trại</dt><dd>{readableCode(farm.code)}</dd></div> : null}
             <div><dt>Trạng thái</dt><dd>{statusLabel(farm.status)}</dd></div>
             <div><dt>Diện tích</dt><dd>{formatArea(farm.areaHectares)}</dd></div>
             <div><dt>Ngày tạo</dt><dd>{formatDate(farm.createdAt)}</dd></div>

@@ -1,3 +1,4 @@
+import { CopyReference } from '../../components/RecordReference'
 ﻿import { CreditCardOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, type UseQueryResult } from '@tanstack/react-query'
 import { Alert, Button, Modal, Space, Table, Tag } from 'antd'
@@ -63,7 +64,7 @@ export function SurveyPaymentPanel({ order, history, refreshOrder, disabled = fa
       { title: 'Số tiền', render: (_, item) => money(item.amount, item.currency) },
       { title: 'Trạng thái', render: (_, item) => <Tag color={paymentIsPaid(item.status) ? 'success' : item.status === 'FAILED' ? 'error' : 'default'}>{paymentStatusLabels[item.status] ?? item.status}</Tag> },
       { title: 'Thời điểm', render: (_, item) => dateTime(item.confirmedAt ?? item.createdAt) },
-    ]} expandable={{ expandedRowRender: item => <><p>Mã giao dịch: {item.providerReference ?? item.surveyPaymentId}</p><p>Cổng thanh toán: {item.provider}</p>{item.events.map((event, index) => <p key={index}>{event.eventType} · {dateTime(event.occurredAt)}</p>)}</> }} />
+    ]} expandable={{ expandedRowRender: item => <><CopyReference value={item.providerReference ?? item.surveyPaymentId} label="Sao chép mã giao dịch" /><p>Cổng thanh toán: {item.provider}</p>{item.events.map((event, index) => <p key={index}>{event.eventType} · {dateTime(event.occurredAt)}</p>)}</> }} />
     <Modal title={confirm ? paymentPurposeLabels[paymentPurposeForOrder(confirm)!] : 'Thanh toán'} open={confirm !== null} onCancel={() => { if (!payment.isPending) setConfirm(null) }} onOk={start} okText="Tạo phiên thanh toán" cancelText="Hủy" confirmLoading={payment.isPending} closable={!payment.isPending} mask={{ closable: !payment.isPending }} cancelButtonProps={{ disabled: payment.isPending }} okButtonProps={{ disabled: !canPay || staleConfirm }}>
       {staleConfirm ? <Alert showIcon type="warning" title="Đơn đã thay đổi. Đóng và kiểm tra lại số tiền, lịch hẹn trước khi thanh toán." /> : null}
       <p>Số tiền: <strong>{confirm ? money(payableAmount(confirm), confirm.currency) : '—'}</strong></p><p>Thanh toán qua cổng do hệ thống cung cấp. Kết quả được cập nhật sau khi máy chủ xác nhận.</p>

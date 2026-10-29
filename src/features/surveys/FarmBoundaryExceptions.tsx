@@ -1,3 +1,4 @@
+import { CopyReference, readableCode } from '../../components/RecordReference'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Select, Space, Table } from 'antd'
 import { useState } from 'react'
@@ -20,7 +21,7 @@ export function FarmBoundaryExceptions({ token, farm, disabled = false }: { toke
     <div className="workflow-toolbar"><Select aria-label="Trạng thái ngoại lệ ranh giới" value={state} onChange={setState} options={[{ value: '', label: 'Tất cả trạng thái' }, { value: 'NeedsReview', label: 'Cần xét duyệt' }, { value: 'OutOfBoundary', label: 'Ngoài ranh giới' }, { value: 'Resolved', label: 'Đã xử lý' }]} /><Button loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button></div>
     {result ? <Alert className="workflow-notice" showIcon type="info" title={`Kết quả: ${result.classification === 'WithinBoundary' ? 'Trong ranh giới' : result.classification === 'NearBoundary' ? 'Gần ranh giới' : result.classification === 'OutOfBoundary' ? 'Ngoài ranh giới' : result.classification}`} description={`Khoảng cách đến ranh giới: ${result.distanceMeters.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} m.${result.boundaryExceptionId ? ' Đã ghi nhận ngoại lệ để xét duyệt.' : ''}`} /> : null}
     {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={refresh} /> : <Table<BoundaryException> rowKey="id" loading={query.isPending} dataSource={query.data ?? []} pagination={{ pageSize: 10, showSizeChanger: false }} scroll={{ x: 800 }} locale={{ emptyText: 'Chưa có ngoại lệ phù hợp.' }} columns={[
-      { title: 'Bằng chứng', dataIndex: 'sourceReferenceId' }, { title: 'Vị trí gốc (kinh độ, vĩ độ)', render: (_, item) => item.originalPosition.coordinates.join(', ') },
+      { title: 'Bằng chứng', render: (_, item) => readableCode(item.sourceReferenceId) ?? <CopyReference value={item.sourceReferenceId} label="Sao chép tham chiếu" /> }, { title: 'Vị trí gốc (kinh độ, vĩ độ)', render: (_, item) => item.originalPosition.coordinates.join(', ') },
       { title: 'Trạng thái', render: (_, item) => exceptionStateLabel[item.state] ?? item.state }, { title: 'Ngày ghi nhận', render: (_, item) => dateTime(item.createdAt) },
       { title: 'Thao tác', render: (_, item) => <Space>{item.state === 'Resolved' || item.state === 'RESOLVED' ? <span>{item.reviewReason ?? 'Đã xét duyệt'}</span> : <Button disabled={blocked || item.farmId !== farm.farmId || !Number.isSafeInteger(item.version) || item.version < 1} onClick={() => setAction(item)}>Xét duyệt điểm</Button>}</Space> },
     ]} />}
