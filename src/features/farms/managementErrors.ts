@@ -9,7 +9,7 @@ export function managementError(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status === 403) return 'Bạn không có quyền thực hiện thao tác này. Sửa khu vực cần Owner hoặc người được phân công quản lý khu vực; lưu trữ chỉ dành cho Owner.'
     if (error.status === 404) return 'Nông trại hoặc khu vực không còn tồn tại trong phạm vi truy cập. Hãy quay lại danh sách.'
-    if (error.code === 'Farm.ActiveDependenciesExist') return 'Chưa thể lưu trữ nông trại. Hãy lưu trữ các khu vực còn lại và hoàn tất nhiệm vụ bay, công việc đang mở trước.'
+    if (error.code === 'Farm.ActiveDependenciesExist') return 'Chưa thể lưu trữ nông trại. Hãy lưu trữ các khu vực còn lại và hoàn tất hoặc hủy các đơn khảo sát, nhiệm vụ bay và công việc đang mở trước.'
     if (error.code === 'FarmZone.ActiveDependenciesExist') return 'Chưa thể lưu trữ khu vực vì còn nhiệm vụ bay hoặc công việc đang mở.'
     if (error.code === 'FarmZone.BoundaryOverlaps') return 'Ranh giới khu vực chồng lấn với khu vực đang hoạt động khác.'
     if (error.code === 'FarmZone.BoundaryOutsideFarm') return 'Ranh giới khu vực phải nằm trong ranh giới nông trại.'

@@ -27,3 +27,6 @@ dist-ssr
 
 #Ignore vscode AI rules
 .github\instructions\codacy.instructions.md
+
+# Local dashboard previews and verification artifacts
+/docs/dashboard-redesign-2026-10-26/

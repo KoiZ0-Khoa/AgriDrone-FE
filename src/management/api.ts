@@ -26,7 +26,7 @@ export const getUsers = (token: string, page: number) => request<Page<User>>(`/a
 export const getMemberships = (token: string, userId: string, page: number) => request<Page<Membership>>(`/api/system/users/${id(userId)}/tenants?pageNumber=${page}&pageSize=20`, { token })
 export const updateProfile = (token: string, body: { name: string; phone: string }) => request<Profile>('/current/profile', { method: 'PUT', token, body })
 export const changePassword = (token: string, body: { oldPassword: string; newPassword: string }) => request('/current/change-password', { method: 'PUT', token, body })
-export const updateFarm = (token: string, farmId: string, body: FarmUpdate) => request(`/api/farms/${id(farmId)}`, { method: 'PUT', token, body })
+export const updateFarm = (token: string, farmId: string, body: FarmUpdate) => request(`/api/farms/${id(farmId)}`, { method: 'PUT', token, body: { name: body.name, address: body.address, centerPoint: body.centerPoint, areaHectares: body.areaHectares, expectedVersion: body.expectedVersion } })
 export const changeMemberRole = (token: string, userId: string, role: 'MEMBER' | 'TENANT_ADMIN') => request<void>(`/api/tenants/current/members/${id(userId)}/role`, { method: 'PUT', token, body: { role } })
 export const changeMemberStatus = (token: string, userId: string, status: 'ACTIVE' | 'INACTIVE') => request<void>(`/api/tenants/current/members/${id(userId)}/status`, { method: 'PUT', token, body: { status } })
 export const transferOwnership = (token: string, newOwnerUserId: string) => request<void>('/api/tenants/current/transfer-ownership', { method: 'POST', token, body: { newOwnerUserId } })

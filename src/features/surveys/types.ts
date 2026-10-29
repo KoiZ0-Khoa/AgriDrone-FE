@@ -27,7 +27,7 @@ export type RequestDetail = SurveyRequest & {
   checklistVersion: string; checklistItems: { code: string; description: string }[]
   reviews: { id: string; decision: string; reason: string; reviewedAt: string; checklistSnapshot: unknown }[]
 }
-export type ReviewCode = 'contact-valid' | 'dragon-fruit-farm-confirmed' | 'service-area-supported' | 'candidate-location-sufficient' | 'consent-feasibility' | 'flight-permission-feasibility' | 'eligible-manager-available'
+export type ReviewCode = 'contact-valid' | 'dragon-fruit-farm-confirmed' | 'service-area-supported' | 'candidate-location-sufficient' | 'consent-feasibility' | 'flight-permission-feasibility'
 export type ReviewChecklist = Record<ReviewCode, boolean> & { notes: string | null }
 export type ReviewDecision = { expectedVersion: number; reason: string; checklist: ReviewChecklist }
 export type Approval = { surveyRequestId: string; requestNumber: string; surveyOrderId: string; orderNumber: string; orderStatus: string; tenantId: string; farmId: string; requiresBaselineMapping: boolean }

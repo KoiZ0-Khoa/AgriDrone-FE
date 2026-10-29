@@ -13,13 +13,13 @@ import type {
   Zone,
 } from './types'
 
-export function getFarms(token: string, pageNumber = 1, pageSize = 20) {
+export function getFarms(token: string, pageNumber = 1, pageSize = 20, signal?: AbortSignal) {
   const params = new URLSearchParams({
     pageNumber: String(pageNumber),
     pageSize: String(pageSize),
   })
 
-  return apiRequest<PagedResult<Farm>>(`/api/farms?${params}`, { token })
+  return apiRequest<PagedResult<Farm>>(`/api/farms?${params}`, { token, signal })
 }
 
 export function getFarm(token: string, farmId: string, signal?: AbortSignal) {

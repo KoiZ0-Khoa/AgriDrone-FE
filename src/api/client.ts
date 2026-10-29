@@ -34,21 +34,23 @@ type ApiRequestOptions = Omit<RequestInit, 'body'> & { body?: unknown; token?: s
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { body, token, headers, ...requestOptions } = options
+  const multipart = body instanceof FormData
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...requestOptions,
     headers: {
       Accept: 'application/json',
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(body === undefined || multipart ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: multipart ? body : body === undefined ? undefined : JSON.stringify(body),
   })
 
   if (!response.ok) {
     let problem: ProblemDetails | undefined
     try {
-      problem = (await response.json()) as ProblemDetails
+      const payload: unknown = await response.json()
+      problem = typeof payload === 'string' ? { detail: payload } : payload as ProblemDetails
     } catch {
       problem = undefined
     }

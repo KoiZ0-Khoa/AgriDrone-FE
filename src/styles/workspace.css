@@ -1,0 +1,75 @@
+/* Only the authenticated application uses this theme; public pages keep their styles. */
+.app-shell { --mint: #08764e; --mint-soft: #eff6ef; --ink: #182c22; --muted: #68746c; --cloud: #dce3dc; --mist: #e5e9e3; color: var(--ink); font-size: 16px; line-height: 1.6; }
+.app-shell .app-content { background: #f7f8f6; }
+.app-shell .page-container { width: min(1320px, calc(100% - 64px)); padding: 32px 0 48px; }
+.app-shell .resource-page-heading { align-items: center; gap: 24px; margin-bottom: 28px; }
+.app-shell .resource-page-heading > div { min-width: 0; }
+.app-shell .resource-page-heading h1 { font-size: clamp(28px, 2.4vw, 34px); line-height: 1.25; letter-spacing: -.8px; overflow-wrap: anywhere; }
+.app-shell .resource-page-heading p { margin-top: 10px; color: var(--muted); font-size: 16px; }
+.app-shell .page-kicker { font-size: 14px; letter-spacing: .4px; overflow-wrap: anywhere; }
+.app-shell .resource-panel { border-color: var(--mist); border-radius: 13px; }
+.app-shell .resource-panel-heading { flex-wrap: wrap; gap: 12px; border-color: var(--mist); }
+.app-shell .resource-panel-heading strong { color: var(--ink); font-size: 18px; }
+.app-shell .resource-panel-heading > div > span, .app-shell .scope-note { color: var(--muted); font-size: 14px; }
+.app-shell .resource-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.app-shell .resource-card { min-width: 0; min-height: 245px; padding: 22px; border-color: var(--mist); border-radius: 12px; background: #fff; }
+.app-shell .resource-card:hover { border-color: #9ebca6; box-shadow: 0 4px 14px #193b2708; transform: none; }
+.app-shell .resource-card h2 { margin-top: 8px; font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
+.app-shell .resource-card p { min-height: 0; font-size: 16px; overflow-wrap: anywhere; }
+.app-shell .resource-code { display: block; color: var(--muted); font-size: 14px; line-height: 1.5; letter-spacing: .2px; overflow-wrap: anywhere; }
+.app-shell .resource-card-heading { flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.app-shell .resource-meta { margin: 20px 0; gap: 16px; }
+.app-shell .resource-meta dt, .app-shell .detail-list dt { color: var(--muted); font-size: 14px; }
+.app-shell .resource-meta dd, .app-shell .detail-list dd { font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+.app-shell .resource-card-link { min-height: 44px; color: var(--mint); font-size: 16px; font-weight: 600; }
+.app-shell .back-link { min-height: 44px; margin-bottom: 16px; font-size: 14px; }
+.app-shell :is(.primary-action-link, .table-action-link) { min-height: 44px; font-size: 16px; border-radius: 7px; }
+.app-shell .primary-action-link { color: #fff; }
+.app-shell .workflow-detail-link { display: inline-flex; min-height: 44px; align-items: center; font-size: 16px; }
+.app-shell :is(.form-hint, .catalog-name span, .farm-picker small, .zone-card-copy small, .boundary-panel > p) { font-size: 14px; line-height: 1.65; }
+.app-shell .boundary-panel > strong, .app-shell .form-section-label { font-size: 18px; }
+.app-shell .detail-list > div { grid-template-columns: minmax(120px, .7fr) minmax(0, 1fr); }
+.app-shell .workflow-toolbar { margin-top: 0; }
+.app-shell .workflow-toolbar .ant-select { max-width: 100%; }
+.app-shell .ant-table-cell { overflow-wrap: anywhere; }
+.app-shell .ant-tag { white-space: normal; line-height: 1.5; padding: 4px 8px; }
+.app-shell .app-content .ant-tag.ant-tag-filled.ant-tag-success { color: #326239; background: #f0f7ee; border-color: #dcebdc; }
+.app-shell .ant-pagination :is(.ant-pagination-item, .ant-pagination-prev, .ant-pagination-next) { min-width: 44px; height: 44px; line-height: 42px; }
+.app-shell .ant-pagination :is(.ant-pagination-item-link, .ant-pagination-item > a) { display: flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
+.app-shell .ant-pagination :is(.ant-pagination-item, .ant-pagination-prev, .ant-pagination-next)[tabindex]:focus-visible, .app-shell .ant-select:focus-within { outline: 3px solid var(--mint); outline-offset: 3px; }
+.app-shell .ant-table-wrapper + .ant-pagination { margin-top: 22px; }
+.app-shell :is(a, button, input, textarea, select, [tabindex]):focus-visible { outline: 3px solid var(--mint); outline-offset: 3px; }
+.app-shell .sidebar-navigation a { min-height: 44px; font-size: 15px; }
+.app-shell .workspace-context strong { font-size: 15px; }
+.app-shell .workspace-context small, .app-shell .workspace-context > span { font-size: 12px; }
+.app-shell .app-topbar > strong { font-size: 16px; }
+.app-shell .mobile-menu-button, .app-shell .sidebar-close { min-width: 44px; min-height: 44px; }
+.app-shell .account-copy strong { font-size: 14px; }
+.app-shell .account-copy small { font-size: 12px; }
+.app-shell .dw-manager .dw-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-shell .dw-manager .dw-main-grid { grid-template-columns: minmax(0, 1.25fr) minmax(300px, 1fr); }
+.app-shell .dw-manager .dw-farm-row { grid-template-columns: 42px minmax(0, 1fr) 12px; }
+.app-shell .dw-manager .dw-request-row { grid-template-columns: minmax(0, 1fr) 12px; }
+.app-shell .dw-manager .dw-request-row .dw-badge { align-self: flex-start; }
+@media (max-width: 1280px) {
+  .app-shell .resource-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell .dw-manager .dw-main-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 680px) {
+  .app-shell .page-container { width: calc(100% - 32px); padding: 25px 0 40px; }
+  .app-shell .resource-page-heading { align-items: flex-start; flex-direction: column; gap: 18px; }
+  .app-shell .resource-page-heading h1 { font-size: 28px; }
+  .app-shell .resource-page-heading .ant-space { width: 100%; }
+  .app-shell .resource-page-heading .ant-space-item { max-width: 100%; }
+  .app-shell .resource-page-heading .ant-btn { height: auto; min-height: 44px; white-space: normal; }
+  .app-shell .resource-grid { grid-template-columns: minmax(0, 1fr); }
+  .app-shell .resource-panel { padding: 20px; }
+  .app-shell .resource-panel-heading { align-items: flex-start; }
+  .app-shell .resource-card { padding: 20px; }
+  .app-shell .detail-list > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .app-shell .resource-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell .dw-manager .dw-metric-value { font-size: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *, .app-shell *::before, .app-shell *::after { transition: none !important; animation: none !important; }
+}

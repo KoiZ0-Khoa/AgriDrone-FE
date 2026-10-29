@@ -3,6 +3,7 @@ import {
   CloseOutlined,
   DashboardOutlined,
   DownOutlined,
+  FileTextOutlined,
   LogoutOutlined,
   MedicineBoxOutlined,
   MenuOutlined,
@@ -16,10 +17,12 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
+import { WorkspaceTheme } from '../components/WorkspaceTheme'
 
 const navigation = [
   { to: '/system', end: true, label: 'Tổng quan hệ thống', icon: <DashboardOutlined aria-hidden="true" /> },
   { to: '/system/survey-requests', label: 'Yêu cầu khảo sát', icon: <BankOutlined aria-hidden="true" /> },
+  { to: '/system/survey-orders', label: 'Đơn khảo sát', icon: <FileTextOutlined aria-hidden="true" /> },
   { to: '/system/managers', label: 'System Manager', icon: <TeamOutlined aria-hidden="true" /> },
   { to: '/system/survey-services', label: 'Dịch vụ & đơn giá', icon: <MedicineBoxOutlined aria-hidden="true" /> },
   { to: '/system/tenants', label: 'Đơn vị', icon: <BankOutlined aria-hidden="true" /> },
@@ -33,6 +36,7 @@ const navigation = [
 
 function pageTitle(pathname: string) {
   if (pathname.startsWith('/system/survey-requests')) return 'Yêu cầu khảo sát'
+  if (pathname.startsWith('/system/survey-orders')) return 'Đơn khảo sát'
   if (pathname === '/system/managers') return 'System Manager'
   if (pathname === '/system/survey-services') return 'Dịch vụ & đơn giá'
   if (pathname === '/system/tenants') return 'Quản lý đơn vị'
@@ -58,7 +62,7 @@ export function SystemAdminLayout() {
     { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: logout },
   ]
 
-  return <div className="app-shell system-admin-shell">
+  return <WorkspaceTheme><div className="app-shell system-admin-shell">
     <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
     <aside className={`app-sidebar system-admin-sidebar ${menuOpen ? 'is-open' : ''}`} id="system-admin-sidebar">
       <div className="sidebar-brand">
@@ -93,5 +97,5 @@ export function SystemAdminLayout() {
       </header>
       <main className="app-content" id="main-content"><div className="page-container"><Outlet /></div></main>
     </div>
-  </div>
+  </div></WorkspaceTheme>
 }

@@ -1,113 +1,76 @@
-import {
-  AreaChartOutlined,
-  CheckCircleOutlined,
-  EnvironmentOutlined,
-  GlobalOutlined,
-  InboxOutlined,
-  RocketOutlined,
-} from '@ant-design/icons'
+import { ArrowRightOutlined, BorderOutlined, EnvironmentOutlined, HomeOutlined, PlusOutlined, UserOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { checkApiHealth } from '../api/client'
+import { CommonState } from '../components/CommonState'
+import { DashboardHeading, DashboardMetric, DashboardSectionHeading, DashboardState, dashboardNumber } from '../components/dashboard/DashboardUI'
 import { useAuth } from '../features/auth/AuthContext'
+import { getFarms } from '../features/farms/farmsApi'
+import { workflowError } from '../features/surveys/workflow'
+import { farmPageSummary } from './dashboardData'
 
 export function DashboardPage() {
   const { session } = useAuth()
-  const apiHealth = useQuery({
-    queryKey: ['api-health'],
-    queryFn: checkApiHealth,
-    refetchInterval: 30_000,
-  })
+  const tenantId = session?.tenant?.id
+  const canManage = session?.role === 'OWNER' || session?.role === 'TENANT_ADMIN'
+  const owner = session?.role === 'OWNER'
+  const health = useQuery({ queryKey: ['api-health'], queryFn: checkApiHealth, enabled: Boolean(session), refetchInterval: 30_000 })
+  const farms = useQuery({ queryKey: ['farms', tenantId, 1], queryFn: ({ signal }) => getFarms(session!.accessToken, 1, 20, signal), enabled: Boolean(tenantId && canManage) })
 
   if (!session) return null
+  if (!session.tenant) return <CommonState type="forbidden" description="Chọn đơn vị làm việc để mở tổng quan nông trại." />
 
-  const apiStatus = apiHealth.isPending
-    ? 'Đang kiểm tra kết nối'
-    : apiHealth.isSuccess
-      ? 'Hệ thống đang hoạt động'
-      : 'Không kết nối được backend'
+  const healthStatus = health.isPending ? 'loading' : health.isSuccess ? 'online' : 'offline'
+  const refreshing = health.isFetching || farms.isFetching
+  const refresh = () => { void Promise.all([health.refetch(), ...(canManage ? [farms.refetch()] : [])]) }
+  const firstName = session.fullName.trim().split(/\s+/).at(-1) ?? session.fullName
 
-  return (
-    <>
-      <section className="dashboard-intro" aria-labelledby="dashboard-title">
-        <div>
-          <span className="page-kicker">TỔNG QUAN</span>
-          <h1 id="dashboard-title">Tổng quan nông trại</h1>
-          <p>Theo dõi cây trồng, nhiệm vụ bay và tình trạng vận hành trong một màn hình.</p>
-        </div>
-        <span className={`system-state ${apiHealth.isSuccess ? 'is-online' : ''}`} aria-live="polite">
-          <i /> {apiStatus}
-        </span>
+  // The current BE no longer exposes tenant-member or personal farm-assignment reads.
+  if (!canManage) return <div className="workspace-dashboard dw-tenant">
+    <DashboardHeading title={'Chào ' + firstName} description={session.tenant.name} health={healthStatus} refreshing={refreshing} refresh={refresh} />
+    <section className="dw-panel"><DashboardState empty="Phân công chưa khả dụng"><p>Phiên bản hiện tại chưa hỗ trợ xem phân công thành viên. Liên hệ quản trị viên để được hỗ trợ.</p><Link className="dw-text-link" to="/account">Tài khoản của tôi <ArrowRightOutlined aria-hidden="true" /></Link></DashboardState></section>
+  </div>
+
+  const visibleFarms = farms.data?.items ?? []
+  const summary = farmPageSummary(visibleFarms)
+
+  return <div className="workspace-dashboard dw-tenant">
+    <DashboardHeading title={'Chào ' + firstName} description={session.tenant.name} health={healthStatus} refreshing={refreshing} refresh={refresh} action={<Link className="dw-button dw-button-primary" to={owner ? '/survey-requests/new' : '/farms'}>{owner ? <PlusOutlined aria-hidden="true" /> : <HomeOutlined aria-hidden="true" />}{owner ? 'Đăng ký khảo sát' : 'Xem nông trại'}</Link>} />
+
+    {farms.isError ? <div className="dw-notice" role="alert"><span>Chưa tải được nông trại.</span><button type="button" className="dw-text-button" onClick={refresh}>Tải lại</button></div> : null}
+
+    <section className="dw-metrics" aria-label="Chỉ số trong phạm vi làm việc">
+      <DashboardMetric label="Nông trại" value={farms.data?.totalCount} detail="" icon={<HomeOutlined />} to="/farms" loading={farms.isPending} error={farms.isError} />
+      <DashboardMetric label="Diện tích ghi nhận" value={farms.data ? summary.area : null} suffix="ha" detail={'Từ ' + summary.knownAreas + ' nông trại'} icon={<BorderOutlined />} to="/farms" loading={farms.isPending} error={farms.isError} />
+      <DashboardMetric label="Đã có ranh giới" value={farms.data ? summary.withBoundary : null} detail={'Trong ' + visibleFarms.length + ' nông trại đã tải'} icon={<EnvironmentOutlined />} to="/farms" loading={farms.isPending} error={farms.isError} />
+    </section>
+
+    <div className="dw-main-grid">
+      <section className="dw-panel dw-farm-panel">
+        <DashboardSectionHeading title="Nông trại của bạn" to="/farms" />
+        {!farms.data && farms.isPending ? <DashboardState loading empty="" /> : !farms.data && farms.isError ? <DashboardState error={workflowError(farms.error)} empty="" retry={() => { void farms.refetch() }} /> : !visibleFarms.length ? <DashboardState empty="Chưa có nông trại"><p>{owner ? 'Gửi yêu cầu khảo sát để bắt đầu.' : 'Nông trại sẽ xuất hiện sau khi hoàn tất tiếp nhận.'}</p>{owner ? <Link className="dw-text-link" to="/survey-requests/new">Đăng ký khảo sát <ArrowRightOutlined aria-hidden="true" /></Link> : null}</DashboardState> : <div className="dw-farm-list">{visibleFarms.slice(0, 4).map(farm => <Link className="dw-farm-row" to={'/farms/' + encodeURIComponent(farm.id)} key={farm.id}>
+          <span className="dw-farm-mark" aria-hidden="true"><HomeOutlined /></span>
+          <span className="dw-row-copy"><strong>{farm.name}</strong>{farm.address ? <small>{farm.address}</small> : null}</span>
+          <span className="dw-farm-meta"><span className={'dw-badge ' + ([0, 'Active', 'ACTIVE'].includes(farm.status) ? 'is-green' : 'is-neutral')}>{[0, 'Active', 'ACTIVE'].includes(farm.status) ? 'Hoạt động' : 'Ngừng hoạt động'}</span>{farm.areaHectares !== null ? <small>{dashboardNumber(farm.areaHectares)} ha</small> : null}</span>
+          <ArrowRightOutlined className="dw-row-arrow" aria-hidden="true" />
+        </Link>)}</div>}
+        {farms.data && visibleFarms.length ? <div className="dw-panel-footer"><span>{Math.min(visibleFarms.length, 4)} / {dashboardNumber(farms.data.totalCount)} nông trại</span></div> : null}
       </section>
 
-      <section className="farm-metrics" aria-label="Các chỉ số nông trại">
-        <article className="stat-card">
-          <small>TỔNG SỐ CÂY</small>
-          <strong>—</strong>
-          <span>Chưa có dữ liệu</span>
-        </article>
-        <article className="stat-card">
-          <small>KHỎE MẠNH</small>
-          <strong>—</strong>
-          <span>Chưa có dữ liệu</span>
-        </article>
-        <article className="stat-card">
-          <small>CẦN THEO DÕI</small>
-          <strong>—</strong>
-          <span>Chưa có dữ liệu</span>
-        </article>
-        <article className="stat-card">
-          <small>NGHIÊM TRỌNG</small>
-          <strong>—</strong>
-          <span>Chưa có dữ liệu</span>
-        </article>
-      </section>
+      <aside className="dw-feature dw-feature-forest">
+        <div className="dw-field-art" aria-hidden="true"><span /><span /><span /><span /><i /></div>
+        <div className="dw-feature-copy"><h2>{owner ? 'Cần khảo sát nông trại?' : 'Khu vực canh tác'}</h2><p>{owner ? 'Gửi nhu cầu. Đội ngũ sẽ liên hệ và đề xuất lịch.' : 'Xem các khu vực thuộc nông trại của đơn vị.'}</p><Link className="dw-button dw-button-light" to={owner ? '/survey-requests/new' : '/zones'}>{owner ? 'Đăng ký khảo sát' : 'Xem khu vực'}<ArrowRightOutlined aria-hidden="true" /></Link></div>
+      </aside>
+    </div>
 
-      <section className="dashboard-panel map-panel" aria-labelledby="map-title">
-        <div className="panel-heading">
-          <div>
-            <span className="page-kicker">BẢN ĐỒ</span>
-            <h2 id="map-title">Phân bố cây trồng</h2>
-          </div>
-          <span className="panel-context"><EnvironmentOutlined aria-hidden="true" /> {session.tenant?.name ?? 'Toàn hệ thống'}</span>
-        </div>
-        <div className="panel-empty map-empty">
-          <span className="empty-icon"><GlobalOutlined aria-hidden="true" /></span>
-          <strong>Chưa có dữ liệu bản đồ</strong>
-          <p>Bản đồ tương tác sẽ xuất hiện khi Farm, Zone và Plant đã được đồng bộ từ backend.</p>
-        </div>
-      </section>
-
-      <div className="dashboard-lower-grid">
-        <section className="dashboard-panel" aria-labelledby="trend-title">
-          <div className="panel-heading">
-            <div>
-              <span className="page-kicker">SỨC KHỎE</span>
-              <h2 id="trend-title">Xu hướng bệnh</h2>
-            </div>
-            <AreaChartOutlined className="panel-heading-icon" aria-hidden="true" />
-          </div>
-          <div className="panel-empty compact-empty">
-            <span className="empty-icon"><CheckCircleOutlined aria-hidden="true" /></span>
-            <strong>Chưa có dữ liệu sức khỏe</strong>
-            <p>Kết quả kiểm tra chính thức sẽ được tổng hợp tại đây.</p>
-          </div>
-        </section>
-
-        <section className="dashboard-panel" aria-labelledby="missions-title">
-          <div className="panel-heading">
-            <div>
-              <span className="page-kicker">NHIỆM VỤ</span>
-              <h2 id="missions-title">Nhiệm vụ gần đây</h2>
-            </div>
-            <RocketOutlined className="panel-heading-icon" aria-hidden="true" />
-          </div>
-          <div className="panel-empty compact-empty">
-            <span className="empty-icon"><InboxOutlined aria-hidden="true" /></span>
-            <strong>Chưa có nhiệm vụ nào</strong>
-            <p>Nhiệm vụ bay mới nhất sẽ xuất hiện khi API danh sách được triển khai.</p>
-          </div>
-        </section>
+    <section className="dw-panel dw-bottom-panel">
+      <DashboardSectionHeading title="Truy cập nhanh" />
+      <div className="dw-shortcuts">
+        <Link className="dw-shortcut" to="/farms"><span className="dw-shortcut-icon"><HomeOutlined aria-hidden="true" /></span><span><strong>Nông trại</strong></span><ArrowRightOutlined aria-hidden="true" /></Link>
+        <Link className="dw-shortcut" to="/zones"><span className="dw-shortcut-icon"><EnvironmentOutlined aria-hidden="true" /></span><span><strong>Khu vực</strong></span><ArrowRightOutlined aria-hidden="true" /></Link>
+        <Link className="dw-shortcut" to="/account"><span className="dw-shortcut-icon"><UserOutlined aria-hidden="true" /></span><span><strong>Tài khoản</strong></span><ArrowRightOutlined aria-hidden="true" /></Link>
       </div>
-    </>
-  )
+    </section>
+    <footer className="dw-page-foot"><small>Diện tích và ranh giới tính trên {visibleFarms.length} nông trại đã tải.</small></footer>
+  </div>
 }
