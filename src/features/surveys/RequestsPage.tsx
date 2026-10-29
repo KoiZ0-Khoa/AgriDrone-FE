@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { CopyReference, readableCode } from '../../components/RecordReference'
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -100,6 +101,7 @@ function ReviewModal({ token, type, request, close, done }: { token: string; typ
   return <Modal open width={620} title={type === 'approve' ? 'Phê duyệt yêu cầu khảo sát' : 'Từ chối yêu cầu khảo sát'} okText={type === 'approve' ? 'Xác nhận phê duyệt' : 'Xác nhận từ chối'} cancelText={conflict ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ danger: type === 'reject', disabled: Boolean(conflict) || unsupportedChecklist || (needsManager && !managers.isSuccess) }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     <p><strong>{request.farmName}</strong> · {request.surveyServiceName}</p>
     <Form form={form} layout="vertical" disabled={mutation.isPending} onFinish={values => { if (!mutation.isPending && !conflict) mutation.mutate(values) }}>
+      <FormSubmit disabled={mutation.isPending || Boolean(conflict) || unsupportedChecklist || (needsManager && !managers.isSuccess)} />
       <fieldset className="workflow-checklist"><legend>Kiểm tra trước khi quyết định</legend>
         {Object.entries(reviewLabels).map(([code, label]) => <Form.Item key={code} name={code} valuePropName="checked"><Checkbox>{label}</Checkbox></Form.Item>)}
       </fieldset>

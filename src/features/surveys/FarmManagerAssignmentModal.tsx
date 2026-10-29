@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { CopyReference } from '../../components/RecordReference'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Form, Input, Modal, Pagination, Select } from 'antd'
@@ -30,6 +31,7 @@ export function FarmManagerAssignmentModal({ token, close }: { token: string; cl
     </> : <>
       <p>Giao nông trại hiện có cho System Manager phụ trách. Thao tác này không tạo đơn khảo sát hoặc phê duyệt yêu cầu khảo sát.</p>
       <Form form={form} layout="vertical" disabled={mutation.isPending} onValuesChange={() => { if (mutation.isError) mutation.reset() }} onFinish={values => { if (!mutation.isPending && managers.isSuccess) mutation.mutate(values) }}>
+      <FormSubmit disabled={mutation.isPending || !managers.isSuccess} />
         <Form.Item label="Farm ID" name="farmId" extra="Lấy ID sau /farms/ trên URL trang chi tiết nông trại. Không nhập mã nông trại như TAN AN." rules={[{ required: true, whitespace: true, message: 'Nhập Farm ID' }, { validator: (_, value: string | undefined) => !value || (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim()) && value.trim() !== '00000000-0000-0000-0000-000000000000') ? Promise.resolve() : Promise.reject(new Error('Farm ID phải là UUID hợp lệ trong URL nông trại.')) }]}>
           <Input placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
         </Form.Item>

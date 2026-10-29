@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { useMutation } from '@tanstack/react-query'
 import { Form, Input, Modal } from 'antd'
 import { useState } from 'react'
@@ -15,6 +16,7 @@ export function OrthophotoCornersModal({ token, scope, close, done }: { token: s
   return <Modal open width={680} title="Đánh dấu 4 góc ranh giới trên ảnh trực giao" okText="Lưu ranh giới 4 góc" cancelText="Đóng" confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     <p>Đối chiếu ảnh trực giao đã xử lý, rồi nhập tọa độ WGS84 của bốn góc theo thứ tự quanh nông trại. Tọa độ này không phải vị trí pixel trong ảnh. Diện tích ranh giới được máy chủ kiểm tra trong khoảng 0,01–5.000 ha.</p>
     <Form className="workflow-coordinate-fields" form={form} layout="vertical" disabled={locked || mutation.isPending} initialValues={{ points: [{}, {}, {}, {}] }} onFinish={values => { if (!locked && !mutation.isPending) mutation.mutate(values) }}>
+      <FormSubmit disabled={locked || mutation.isPending} />
       <BoundaryPointFields fixed disabled={locked || mutation.isPending} />
       <Form.Item name="evidenceReference" label="Tham chiếu ảnh trực giao" rules={[{ required: true, whitespace: true }, { max: 1000 }]}><Input maxLength={1000} /></Form.Item>
       <Form.Item name="reason" label="Ghi chú xác minh" rules={[{ max: 2000 }]}><Input.TextArea maxLength={2000} rows={2} /></Form.Item>

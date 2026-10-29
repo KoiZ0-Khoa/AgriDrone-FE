@@ -2,7 +2,7 @@ import { CopyReference, readableCode } from '../../components/RecordReference'
 import { ArrowLeftOutlined, CheckCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Form, Input, Modal, Select, Space, Table, Tag } from 'antd'
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
@@ -48,6 +48,7 @@ export function BaseMapDraftDetail({ token, farmId, draftId, farmName }: { token
   const [selected, setSelected] = useState<string[]>([]), [editor, setEditor] = useState<ReviewSelection | null>(null)
   const [validation, setValidation] = useState<{ fingerprint: string; data: MappingValidation } | null>(null)
   const [publishOpen, setPublishOpen] = useState(false), [published, setPublished] = useState<PublishedBaseMap | null>(null)
+  const confirmButtonId = useId()
   const submitting = useRef(false)
   const validate = useMutation({ retry: false, mutationFn: async () => {
     if (!query.data || query.isFetching || query.isError || !editableDraft(query.data)) throw new Error('Tải lại bản đồ nháp trước khi kiểm tra.')
@@ -102,6 +103,6 @@ export function BaseMapDraftDetail({ token, farmId, draftId, farmName }: { token
       {checked ? <><Alert showIcon type={checked.isValid ? 'success' : 'warning'} title={checked.isValid ? `Hợp lệ · ${checked.confirmedPublishablePoleCount} trụ có thể phát hành` : 'Còn lỗi cần xử lý trước khi phát hành'} /><Table rowKey={(_, index) => String(index)} dataSource={checked.issues} pagination={{ pageSize: 10, hideOnSinglePage: true }} locale={{ emptyText: 'Không có lỗi kiểm tra.' }} columns={[{ title: 'Mức độ', render: (_, issue) => stateToken(issue.severity) === 'ERROR' ? 'Lỗi' : 'Lưu ý' }, { title: 'Điểm', render: (_, issue) => readableCode(rows.find(row => row.candidateId === issue.candidateId)?.treeId) ?? (issue.candidateId ? 'Điểm cần kiểm tra' : 'Toàn bản đồ') }, { title: 'Chi tiết', dataIndex: 'message' }, { title: 'Thao tác', render: (_, issue) => issue.candidateId && rows.some(row => row.candidateId === issue.candidateId) ? <Button disabled={!editable || busy || !!editor} onClick={() => openReview([issue.candidateId!], false)}>Xử lý</Button> : null }]} /></> : <p className="form-hint">Bấm Kiểm tra bản đồ để xem kết quả từ máy chủ. Chỉ phát hành khi không còn điểm chưa duyệt và không có lỗi chặn.</p>}
     </section>
     {editor ? <BaseMapReviewDialog token={token} selection={editor} current={draft} disabled={busy || !editable} close={() => { setEditor(null); void refresh() }} done={reviewed} /> : null}
-    <Modal open={publishOpen} title="Phát hành bản đồ nền" okText="Xác nhận phát hành" cancelText="Hủy" confirmLoading={publish.isPending} okButtonProps={{ disabled: !canPublish }} cancelButtonProps={{ disabled: publish.isPending }} closable={!publish.isPending} mask={{ closable: !publish.isPending }} onCancel={() => { if (!publish.isPending) setPublishOpen(false) }} onOk={() => { if (!canPublish || submitting.current) return; submitting.current = true; publish.mutate() }}><p>Phát hành bản đồ phiên bản <strong>{draft.versionNumber}</strong> cho <strong>{farmName}</strong> với <strong>{checked?.confirmedPublishablePoleCount ?? 0} trụ</strong>.</p><p>Các quyết định sẽ được áp dụng vào cây chính thức. Bản đồ hiện hành sẽ được thay thế và đơn khảo sát chuyển sang bước xác nhận giá.</p></Modal>
+    <Modal open={publishOpen} title="Phát hành bản đồ nền" okText="Xác nhận phát hành" cancelText="Hủy" confirmLoading={publish.isPending} afterOpenChange={open => { if (open) document.getElementById(confirmButtonId)?.focus() }} okButtonProps={{ disabled: !canPublish, autoFocus: true, id: confirmButtonId }} cancelButtonProps={{ disabled: publish.isPending }} closable={!publish.isPending} mask={{ closable: !publish.isPending }} onCancel={() => { if (!publish.isPending) setPublishOpen(false) }} onOk={() => { if (!canPublish || submitting.current) return; submitting.current = true; publish.mutate() }}><p>Phát hành bản đồ phiên bản <strong>{draft.versionNumber}</strong> cho <strong>{farmName}</strong> với <strong>{checked?.confirmedPublishablePoleCount ?? 0} trụ</strong>.</p><p>Các quyết định sẽ được áp dụng vào cây chính thức. Bản đồ hiện hành sẽ được thay thế và đơn khảo sát chuyển sang bước xác nhận giá.</p></Modal>
   </>
 }

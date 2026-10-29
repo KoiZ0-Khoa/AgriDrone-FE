@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Form, Input, InputNumber, Modal, Space } from 'antd'
@@ -80,6 +81,7 @@ export function FarmManagementActions({ farmId, name, version, zone, onArchived 
       confirmLoading={mutation.isPending} cancelButtonProps={{ disabled: busy }} closable={!busy} maskClosable={!busy} keyboard={!busy}
       onOk={() => form.submit()} onCancel={() => { if (!busy) setMode(null) }}>
       <Form form={form} layout="vertical" requiredMark={false} disabled={busy} onFinish={values => { if (mode && !blocked && !busy) mutation.mutate(values) }}>
+      <FormSubmit disabled={busy || blocked || !Number.isSafeInteger(snapshot.version) || snapshot.version < 1} />
         {mode === 'edit' ? <>
           <p>Owner hoặc người được phân công quản lý khu vực có thể chỉnh sửa thông tin này.</p>
           <Form.Item name="name" label="Tên khu vực" rules={[{ required: true, whitespace: true, message: 'Nhập tên khu vực' }, { max: 100 }]}><Input maxLength={100} /></Form.Item>

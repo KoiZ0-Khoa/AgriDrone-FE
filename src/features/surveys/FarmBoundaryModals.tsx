@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { readableCode } from '../../components/RecordReference'
 import { useMutation } from '@tanstack/react-query'
 import { Form, Input, InputNumber, Modal, Select } from 'antd'
@@ -19,6 +20,7 @@ export function FarmBoundaryModal({ token, farm, close, done }: Props) {
   return <Modal open width={680} title="Cập nhật ranh giới nông trại" okText="Lưu phiên bản ranh giới" cancelText="Đóng" confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     <p>{snapshot.name}. Nhập các điểm theo thứ tự quanh ranh giới. Các vùng trống bên trong được giữ nguyên. Ranh giới mới phải bao phủ các khu vực đang hoạt động.</p>
     <Form className="workflow-coordinate-fields" form={form} layout="vertical" disabled={mutation.isPending || locked} initialValues={{ points: boundaryPoints(snapshot.approvedBoundary?.geometry?.coordinates[0]) }} onFinish={values => { if (!mutation.isPending && !locked) mutation.mutate(values) }}>
+      <FormSubmit disabled={mutation.isPending || locked} />
       <BoundaryPointFields disabled={mutation.isPending || locked} />
       <Form.Item className="workflow-notice" name="reason" label="Lý do cập nhật" rules={[{ required: true, whitespace: true }, { max: 2000 }]}><Input.TextArea maxLength={2000} rows={2} /></Form.Item>
       <Form.Item name="evidenceReference" label="Tham chiếu bằng chứng" rules={[{ max: 1000 }]}><Input maxLength={1000} /></Form.Item>
@@ -34,6 +36,7 @@ export function ClassifyPointModal({ token, farm, close, done }: Omit<Props, 'do
   return <Modal open title="Kiểm tra điểm so với ranh giới" okText="Kiểm tra và ghi nhận" cancelText="Đóng" confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     <p>Điểm gần hoặc ngoài ranh giới sẽ được ghi nhận để xét duyệt.</p>
     <Form className="workflow-coordinate-fields" form={form} layout="vertical" initialValues={{ threshold: 5 }} disabled={locked || mutation.isPending} onFinish={values => { if (!locked && !mutation.isPending) mutation.mutate(values) }}>
+      <FormSubmit disabled={locked || mutation.isPending} />
       <div className="form-two-columns"><Form.Item name="longitude" label="Kinh độ" rules={[{ required: true }]}><InputNumber min={-180} max={180} /></Form.Item><Form.Item name="latitude" label="Vĩ độ" rules={[{ required: true }]}><InputNumber min={-90} max={90} /></Form.Item></div>
       <Form.Item name="sourceReferenceId" label="Mã biên bản / bằng chứng hiện trường" rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input maxLength={200} /></Form.Item>
       <Form.Item name="threshold" label="Khoảng cách coi là gần ranh giới (m)" rules={[{ required: true }]}><InputNumber min={0.1} max={50} /></Form.Item>
@@ -54,6 +57,7 @@ export function ExceptionReviewModal({ token, farmId, item, close, done }: { tok
   return <Modal open title="Xét duyệt điểm ranh giới" okText="Lưu quyết định" cancelText="Đóng" confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     <p>{readableCode(snapshot.sourceReferenceId) ? readableCode(snapshot.sourceReferenceId) + ' · ' : ''}{snapshot.originalPosition.coordinates.join(', ')}</p>
     <Form className="workflow-coordinate-fields" form={form} layout="vertical" disabled={locked || mutation.isPending} onFinish={values => { if (!locked && !mutation.isPending) mutation.mutate(values) }}>
+      <FormSubmit disabled={locked || mutation.isPending} />
       <Form.Item name="decision" label="Quyết định" rules={[{ required: true }]}><Select options={[{ value: 1, label: 'Chấp nhận trong ranh giới' }, { value: 2, label: 'Loại vì ngoài ranh giới' }, { value: 3, label: 'Sửa vị trí' }]} /></Form.Item>
       {decision === 3 ? <div className="form-two-columns"><Form.Item name="longitude" label="Kinh độ mới" rules={[{ required: true }]}><InputNumber min={-180} max={180} /></Form.Item><Form.Item name="latitude" label="Vĩ độ mới" rules={[{ required: true }]}><InputNumber min={-90} max={90} /></Form.Item></div> : null}
       <Form.Item name="reason" label="Lý do quyết định" rules={[{ required: true, whitespace: true }, { max: 2000 }]}><Input.TextArea rows={2} maxLength={2000} /></Form.Item>

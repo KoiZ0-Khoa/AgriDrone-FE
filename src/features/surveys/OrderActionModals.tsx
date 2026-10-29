@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
 import { Alert, Button, Form, Input, InputNumber, Modal } from 'antd'
@@ -21,6 +22,7 @@ export function AppointmentModal({ token, order, scope, close, done }: { token: 
   return <Modal open title="Đề xuất lịch khảo sát" okText="Gửi đề xuất lịch" cancelText={locked ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p><p>Đề xuất lịch {snapshot.scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' ? 'bay bản đồ nền' : 'dịch vụ'}. Lịch chỉ chính thức khi Owner xác nhận.</p>
     <Form form={form} layout="vertical" disabled={mutation.isPending || locked} onFinish={values => { if (!mutation.isPending && !locked) mutation.mutate(values) }}>
+      <FormSubmit disabled={mutation.isPending || locked} />
       <Form.Item name="start" label="Bắt đầu (giờ địa phương)" rules={[{ required: true }]}><Input type="datetime-local" /></Form.Item><Form.Item name="end" label="Kết thúc (giờ địa phương)" rules={[{ required: true }]}><Input type="datetime-local" /></Form.Item>
     </Form>
     <MutationError error={mutation.error} />
@@ -43,6 +45,7 @@ export function BoundaryVerificationModal({ token, scope, close, done }: { token
   return <Modal open width={680} title="Xác minh ranh giới nông trại" okText="Xác nhận ranh giới" cancelText={locked ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     <p>Nhập các đỉnh theo thứ tự quanh ranh giới. Điểm cuối sẽ tự nối với điểm đầu; các vùng trống bên trong ranh giới cũ được giữ nguyên.</p>
     <Form className="workflow-coordinate-fields" form={form} layout="vertical" disabled={mutation.isPending || locked} initialValues={{ points: openRing.length ? openRing.map(point => ({ longitude: point[0], latitude: point[1] })) : [{}, {}, {}] }} onFinish={values => { if (!mutation.isPending && !locked) mutation.mutate(values) }}>
+      <FormSubmit disabled={mutation.isPending || locked} />
       <Form.List name="points">{(fields, { add, remove }) => <>{fields.map((field, index) => <fieldset className="workflow-checklist" key={field.key}><legend>Điểm {index + 1}</legend><div className="form-two-columns"><Form.Item name={[field.name, 'longitude']} label="Kinh độ" rules={[{ required: true }]}><InputNumber min={-180} max={180} /></Form.Item><Form.Item name={[field.name, 'latitude']} label="Vĩ độ" rules={[{ required: true }]}><InputNumber min={-90} max={90} /></Form.Item></div><Button icon={<MinusCircleOutlined />} disabled={mutation.isPending || locked || fields.length <= 3} onClick={() => remove(field.name)}>Bỏ điểm {index + 1}</Button></fieldset>)}<Button icon={<PlusOutlined />} disabled={mutation.isPending || locked} onClick={() => add({})}>Thêm điểm ranh giới</Button></>}</Form.List>
       <Form.Item className="workflow-notice" name="reason" label="Lý do xác minh" rules={[{ required: true, whitespace: true }, { max: 2000 }]}><Input.TextArea rows={2} maxLength={2000} /></Form.Item><Form.Item name="evidenceReference" label="Tham chiếu bằng chứng (không bắt buộc)" rules={[{ max: 1000 }]}><Input maxLength={1000} /></Form.Item>
     </Form>

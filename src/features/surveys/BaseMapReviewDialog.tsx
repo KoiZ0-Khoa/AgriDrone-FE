@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { readableCode } from '../../components/RecordReference'
 import { Alert, Form, Input, InputNumber, Modal, Select } from 'antd'
 import { useMutation } from '@tanstack/react-query'
@@ -29,6 +30,7 @@ export function BaseMapReviewDialog({ token, selection, current, disabled, close
     <Form form={form} layout="vertical" disabled={blocked || mutation.isPending} initialValues={batch ? {} : { decision: candidate.reviewDecision in decisionLabels && candidate.reviewDecision !== 'Pending' ? candidate.reviewDecision : undefined,
       longitude: candidate.correctedLongitude, latitude: candidate.correctedLatitude, row: candidate.correctedRowIndex, column: candidate.correctedColumnIndex,
       plantId: candidate.correctedMatchedPlantId ?? candidate.proposedMatchedPlantId, reason: candidate.reviewReason }} onFinish={values => { if (blocked || pending.current) return; pending.current = true; mutation.mutate(values) }}>
+      <FormSubmit disabled={blocked || mutation.isPending} />
       <Form.Item label="Quyết định" name="decision" rules={[{ required: true, message: 'Chọn quyết định duyệt.' }]}><Select placeholder="Chọn cách xử lý điểm" options={(batch ? ['CreateNew', 'MatchExisting', 'Reject'] : Object.keys(decisionLabels).filter(value => value !== 'Pending')).map(value => ({ value, label: decisionLabels[value as ReviewDecision] }))} /></Form.Item>
       {decision === 'CreateNew' ? <Alert className="workflow-notice" showIcon type="info" title="Các điểm này sẽ tạo cây mới khi phát hành bản đồ." /> : null}
       {batch && decision === 'MatchExisting' ? <Alert className="workflow-notice" showIcon type="info" title="Mỗi điểm dùng mã cây tương ứng đã được BE đề xuất hoặc đã sửa. Điểm thiếu mã cây cần duyệt riêng." /> : null}

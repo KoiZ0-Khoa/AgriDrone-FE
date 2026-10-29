@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { readableCode } from '../../components/RecordReference'
 import {
   ArrowLeftOutlined,
@@ -101,6 +102,7 @@ export function ZonesPage() {
   }
 
   function submitZone(values: ZoneFormValues) {
+    if (createMutation.isPending) return
     createMutation.mutate({
       code: values.code.trim(),
       name: values.name.trim(),
@@ -205,6 +207,7 @@ export function ZonesPage() {
         destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={submitZone} requiredMark={false}>
+          <FormSubmit disabled={createMutation.isPending} />
           <div className="form-two-columns">
             <Form.Item label="Mã khu vực" name="code" rules={[{ required: true, message: 'Nhập mã khu vực' }, { max: 30 }]}>
               <Input placeholder="VD: ZONE_A01" />
