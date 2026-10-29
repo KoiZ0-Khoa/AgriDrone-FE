@@ -4,10 +4,16 @@ import type { Appointment, AppointmentBody, AssignedOrder, OrderScope, VerifiedB
 import type { ApproveRouteBody, CaptureSample, CaptureSession, OrthophotoBody, PaymentPurpose, PaymentSession } from './orderTypes'
 
 const base = '/api/system-manager/survey-orders'
-export function getAssignedOrders(token: string, page = 1, status = '', signal?: AbortSignal) {
+export async function getAssignedOrders(token: string, page = 1, status = '', signal?: AbortSignal) {
   const params = new URLSearchParams({ pageNumber: String(page), pageSize: '20' })
   if (status) params.set('status', status)
-  return apiRequest<Page<AssignedOrder>>(`${base}?${params}`, { token, signal })
+  const result = await apiRequest<Page<AssignedOrder>>(`${base}?${params}`, { token, signal })
+  // The assigned-order mapper uses ToUpperInvariant(), so RescheduleRequested
+  // arrives without underscores. Keep the UI's appointment status vocabulary
+  // consistent with the Owner and appointment mutation responses.
+  return { ...result, items: result.items.map(order => order.currentAppointmentStatus === 'RESCHEDULEREQUESTED'
+    ? { ...order, currentAppointmentStatus: 'RESCHEDULE_REQUESTED' }
+    : order) }
 }
 export async function getAssignedOrder(token: string, orderId: string, signal?: AbortSignal) {
   let pageNumber = 1
@@ -39,6 +45,6 @@ export async function initiateSurveyPayment(token: string, orderId: string, body
     ...payment,
     appointmentId: payment.appointmentId ?? payment.paidServiceAppointmentId ?? null,
     // A confirmed zero balance is settled by BE; there is no payment page to open.
-    redirectUrl: payment.amount === 0 && payment.paymentStatus === 'CONFIRMED' ? null : payment.redirectUrl,
+    redirectUrl: payment.amount === 0 && ['PAID', 'CONFIRMED'].includes(payment.paymentStatus) ? null : payment.redirectUrl,
   }
 }

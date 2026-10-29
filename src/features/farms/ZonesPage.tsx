@@ -222,7 +222,7 @@ export function ZonesPage() {
       <Drawer
         title="Chi tiết khu vực"
         open={Boolean(selectedZoneId)}
-        width={440}
+        size={440}
         onClose={() => setSelectedZoneId('')}
         destroyOnHidden
       >

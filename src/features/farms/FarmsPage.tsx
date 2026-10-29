@@ -12,8 +12,6 @@ import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { getFarm, getFarms } from './farmsApi'
-import { FarmAssignmentPanel } from './FarmAssignmentPanel'
-import { FarmMembersPanel } from '../../management/FarmMembersPanel'
 import { MyFarmsPage } from '../../management/MyFarmsPage'
 import type { Farm, GeneralStatus } from './types'
 
@@ -141,8 +139,9 @@ export function FarmDetailPage() {
   const { session } = useAuth()
   const farmQuery = useQuery({
     queryKey: ['farm', session?.tenant?.id, farmId],
-    queryFn: () => getFarm(session!.accessToken, farmId),
+    queryFn: ({ signal }) => getFarm(session!.accessToken, farmId, signal),
     enabled: Boolean(session?.accessToken && session.tenant && farmId),
+    retry: false,
   })
 
   if (farmQuery.isPending) return <CommonState type="loading" title="Đang tải nông trại" />
@@ -166,6 +165,7 @@ export function FarmDetailPage() {
         </div>
         <Space size={12} wrap>
           {session?.role === 'OWNER' ? <Link className="primary-action-link" to={`/survey-requests/new?farmId=${farm.id}`}>Đăng ký khảo sát</Link> : null}
+          {session?.role === 'OWNER' ? <Link className="workflow-detail-link" to="/survey-payments">Xem đơn và thanh toán →</Link> : null}
           <Link className="primary-action-link" to={`/zones?farmId=${farm.id}`}>
             <EnvironmentOutlined aria-hidden="true" /> Xem khu vực
           </Link>
@@ -190,12 +190,6 @@ export function FarmDetailPage() {
           <p>{farm.boundary ? `Đã lưu ${farm.boundary.coordinates[0]?.length ?? 0} điểm ranh giới.` : 'Chưa thiết lập polygon ranh giới.'}</p>
         </aside>
       </div>
-      {session?.tenant && (session.role === 'OWNER' || session.role === 'TENANT_ADMIN') && (farm.status === 0 || farm.status === 'Active' || farm.status === 'ACTIVE') ? (
-        <>
-          <FarmMembersPanel key={`${session.tenant.id}:${farm.id}`} farmId={farm.id} />
-          <FarmAssignmentPanel key={`${session.tenant.id}:${farm.id}:${session.accessToken}`} farmId={farm.id} session={session} />
-        </>
-      ) : null}
     </>
   )
 }

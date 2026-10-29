@@ -20,6 +20,7 @@ export type FarmScope = 'ALL_ZONES' | 'SELECTED_ZONES'
 export type FarmMember = { farmMembershipId: string; farmId: string; userId: string; email: string; fullName: string; tenantRole: string; role: FarmRole; accessScope: FarmScope; zoneIds: string[]; status: 'ACTIVE' | 'INACTIVE'; version: number; joinedAt: string }
 export type MyFarmAssignment = { farmMembershipId: string; farm: { id: string; code: string; name: string; address: string | null; areaHectares: number | null }; role: FarmRole; accessScope: FarmScope; zones: { id: string; code: string; name: string; areaHectares: number | null }[]; status: 'ACTIVE' | 'INACTIVE'; version: number; joinedAt: string }
 const id = encodeURIComponent
+/** Legacy contract; the current BE does not expose this route. Do not use in tenant screens. */
 export const getMembers = (token: string, page: number) => request<Page<User>>(`/tenants/current/users?pageNumber=${page}&pageSize=20`, { token })
 export const getTenants = (token: string, page: number) => request<Page<Tenant>>(`/api/system/tenants/all?pageNumber=${page}&pageSize=20`, { token })
 export const getUsers = (token: string, page: number) => request<Page<User>>(`/api/users?pageNumber=${page}&pageSize=20`, { token })
@@ -38,6 +39,7 @@ export function getFarmMembers(token: string, farmId: string, page: number, role
   if (status) params.set('status', status)
   return request<Page<FarmMember>>(`/api/farms/${id(farmId)}/members?${params}`, { token, signal })
 }
+/** Legacy contract; the current BE does not expose tenant farm assignments. */
 export function getMyFarmAssignments(token: string, page: number, role = '', signal?: AbortSignal) {
   const params = new URLSearchParams({ pageNumber: String(page), pageSize: '20' })
   if (role) params.set('role', role)

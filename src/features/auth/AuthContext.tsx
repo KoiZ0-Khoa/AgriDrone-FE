@@ -4,6 +4,7 @@ import { clearAuthSession, loadAuthSession, saveAuthSession, toAuthSession } fro
 import type { AuthSession, LoginCredentials, TenantSelectionResponse } from './types'
 import { useQueryClient } from '@tanstack/react-query'
 import { assertTenantSelectionFresh } from './authErrors'
+import { clearSavedCheckouts } from '../surveys/checkoutStorage'
 
 type LoginOutcome = 'authenticated' | 'tenant-selection-required'
 
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function logout() {
+    clearSavedCheckouts()
     void queryClient.cancelQueries()
     queryClient.clear()
     clearAuthSession()

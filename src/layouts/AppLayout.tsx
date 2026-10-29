@@ -2,6 +2,7 @@ import {
   BarChartOutlined,
   CloseOutlined,
   DashboardOutlined,
+  CreditCardOutlined,
   DatabaseOutlined,
   DeploymentUnitOutlined,
   DownOutlined,
@@ -43,6 +44,7 @@ const activeNavigation = [
 ]
 
 function getPageTitle(pathname: string) {
+  if (pathname.startsWith('/survey-payments')) return 'Thanh toán khảo sát'
   if (pathname === '/survey-requests/new') return 'Đăng ký khảo sát'
   if (pathname === '/my-farms') return 'Nông trại được giao'
   if (pathname === '/account') return 'Tài khoản'
@@ -102,10 +104,11 @@ export function AppLayout() {
               <span>{item.label}</span>
             </span>
           ))}
-          {session.tenant ? <NavLink to="/my-farms" onClick={() => setMenuOpen(false)}><HomeOutlined /><span>Nông trại được giao</span></NavLink> : null}
+          {session.role === 'MEMBER' && session.tenant ? <NavLink to="/my-farms" onClick={() => setMenuOpen(false)}><HomeOutlined /><span>Nông trại được giao</span></NavLink> : null}
           {session.role === 'OWNER' ? <NavLink to="/survey-requests/new" onClick={() => setMenuOpen(false)}><RocketOutlined /><span>Đăng ký khảo sát</span></NavLink> : null}
+          {session.role === 'OWNER' ? <NavLink to="/survey-payments" onClick={() => setMenuOpen(false)}><CreditCardOutlined /><span>Thanh toán khảo sát</span></NavLink> : null}
           <NavLink to="/account" onClick={() => setMenuOpen(false)}><SafetyCertificateOutlined /><span>Tài khoản</span></NavLink>
-          {session.role === 'OWNER' || session.role === 'TENANT_ADMIN' ? <NavLink to="/team" onClick={() => setMenuOpen(false)}><DeploymentUnitOutlined /><span>Thành viên</span></NavLink> : null}
+          {session.role === 'OWNER' || session.role === 'TENANT_ADMIN' ? <span className="sidebar-navigation-item is-disabled" aria-disabled="true" title="Quản lý thành viên chưa được hỗ trợ trong phiên bản hiện tại"><DeploymentUnitOutlined /><span>Thành viên</span></span> : null}
         </nav>
 
         <div className="sidebar-footer">

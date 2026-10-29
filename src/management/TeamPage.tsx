@@ -1,32 +1,16 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Button, Pagination, Space, Table } from 'antd'
+﻿import { Alert } from 'antd'
+import { Link } from 'react-router-dom'
 import { CommonState } from '../components/CommonState'
 import { useAuth } from '../features/auth/AuthContext'
-import * as api from './api'
-import { confirmation, inviteAction, inviteMemberAction, isAdminRole, isOwnerRole, roleLabel, type Action } from './actions'
-import { ActionModal } from './ActionModal'
 
 export function TeamPage() {
   const { session } = useAuth()
-  const [page, setPage] = useState(1)
-  const [action, setAction] = useState<Action | null>(null)
-  const allowed = session?.role === 'OWNER' || session?.role === 'TENANT_ADMIN'
-  const query = useQuery({ queryKey: ['members', session?.tenant?.id, page], queryFn: () => api.getMembers(session!.accessToken, page), enabled: allowed })
-  if (!allowed || !session) return <CommonState type="forbidden" />
-  const token = session.accessToken
-  return <><section className="resource-page-heading"><div><span className="page-kicker">{session.tenant?.name}</span><h1>Thành viên đơn vị</h1><p>Quản lý vai trò và quyền truy cập của từng thành viên.</p></div><Space wrap><Button type="primary" onClick={() => setAction(inviteMemberAction(token))}>Mời thành viên</Button>{session.role === 'OWNER' ? <Button onClick={() => setAction(inviteAction(token))}>Mời quản trị viên</Button> : null}</Space></section>
-    <p>Thành viên nhận lời mời vào đơn vị trước, sau đó được phân công vào nông trại.</p>
-    {query.isError ? <CommonState type="error" description={query.error.message} retry={() => query.refetch()} /> : null}
-    <Table<api.User> loading={query.isPending} rowKey="id" dataSource={query.data?.items ?? []} pagination={false} scroll={{ x: 700 }} columns={[
-      { title: 'Họ và tên', dataIndex: 'fullName' }, { title: 'Email', dataIndex: 'email' }, { title: 'Vai trò', render: (_, user) => roleLabel(user.role) },
-      { title: 'Thao tác', render: (_, user) => session.role === 'OWNER' && !isOwnerRole(user.role) && user.email !== session.email ? <Space wrap>
-        <Button onClick={() => setAction(confirmation('Đổi vai trò', `Đổi vai trò của ${user.fullName} thành ${isAdminRole(user.role) ? 'Thành viên' : 'Quản trị viên'}?`, () => api.changeMemberRole(token, user.id, isAdminRole(user.role) ? 'MEMBER' : 'TENANT_ADMIN')))}>Đổi vai trò</Button>
-        <Button onClick={() => setAction(confirmation('Kích hoạt quyền truy cập', `Cho phép ${user.fullName} truy cập đơn vị?`, () => api.changeMemberStatus(token, user.id, 'ACTIVE')))}>Kích hoạt</Button>
-        <Button danger onClick={() => setAction(confirmation('Ngừng quyền truy cập', `${user.fullName} sẽ không còn quyền truy cập đơn vị này.`, () => api.changeMemberStatus(token, user.id, 'INACTIVE')))}>Ngừng truy cập</Button>
-      </Space> : '—' },
-    ]} />
-    <Pagination current={page} pageSize={20} total={query.data?.totalCount ?? 0} showSizeChanger={false} onChange={setPage} />
-    {action ? <ActionModal action={action} close={() => setAction(null)} /> : null}
+  if (!session?.tenant || !['OWNER', 'TENANT_ADMIN'].includes(session.role)) return <CommonState type="forbidden" />
+  return <>
+    <section className="resource-page-heading"><div><span className="page-kicker">{session.tenant.name}</span><h1>Thành viên đơn vị</h1></div></section>
+    <section className="resource-panel">
+      <Alert showIcon type="info" title="Quản lý thành viên chưa sẵn sàng" description="Danh sách, lời mời và thay đổi quyền thành viên chưa được hỗ trợ trong phiên bản hiện tại." />
+      <div className="workflow-toolbar"><Link className="workflow-detail-link" to="/farms">Xem nông trại →</Link>{session.role === 'OWNER' ? <Link className="workflow-detail-link" to="/survey-payments">Xem đơn và thanh toán →</Link> : null}</div>
+    </section>
   </>
 }
