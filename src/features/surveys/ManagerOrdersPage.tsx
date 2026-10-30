@@ -13,6 +13,8 @@ import { dateTime, workflowError } from './workflow'
 import { AppointmentModal, BoundaryVerificationModal } from './OrderActionModals'
 import { BoundaryCapturePanel } from './BoundaryCapturePanel'
 import { OrthophotoCornersModal } from './BaselineModals'
+import { PrepareMissionModal } from '../missions/PrepareMissionModal'
+import { missionPurposeFor, missionPurposeLabels } from '../missions/missionWorkflow'
 
 export function ManagerOrdersPage() {
   const token = useAuth().session!.accessToken
@@ -41,7 +43,7 @@ export function ManagerOrderDetailPage() {
   const token = useAuth().session!.accessToken
   const { orderId = '' } = useParams()
   const client = useQueryClient()
-  const [action, setAction] = useState<'appointment' | 'boundary' | 'corners' | null>(null)
+  const [action, setAction] = useState<'appointment' | 'boundary' | 'corners' | 'prepare-mission' | null>(null)
   const [appointment, setAppointment] = useState<Appointment | null>(null)
   const context = useQuery({ queryKey: ['manager-order-context', orderId], queryFn: ({ signal }) => getAssignedOrder(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.status) ? 10000 : false })
   const query = useQuery({ queryKey: ['manager-order-scope', orderId], queryFn: ({ signal }) => getOrderScope(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.orderStatus) ? 10000 : false })
@@ -56,6 +58,7 @@ export function ManagerOrderDetailPage() {
   const busy = query.isFetching || context.isFetching
   const rescheduleRequested = order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED'
   const canPropose = consistent && (scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' || scope.orderStatus === 'AWAITING_PAID_APPOINTMENT') && (!order.currentAppointmentId || order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED')
+  const missionPurpose = consistent ? missionPurposeFor(order, scope.orderStatus) : null
   return <>
     {back}
     <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT</span><h1>{order.farmName}</h1><p>{order.surveyServiceName} · {dateTime(order.createdAt)}</p><CopyReference value={scope.orderNumber} label="Sao chép mã đơn" /></div><Space wrap><Button icon={<CopyOutlined />} onClick={async () => {
@@ -68,7 +71,8 @@ export function ManagerOrderDetailPage() {
       <dl className="detail-list"><div><dt>Nông trại</dt><dd><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}`}>{order.farmName}</Link></dd></div><div><dt>Lịch hẹn</dt><dd>{order.currentAppointmentStatus ? appointmentStatusLabels[order.currentAppointmentStatus] ?? order.currentAppointmentStatus : 'Chưa có lịch hiện tại'}</dd></div><div><dt>Ranh giới đã xác minh</dt><dd>{scope.currentApprovedBoundary ? `Phiên bản ${scope.currentApprovedBoundary.versionNumber}` : 'Chưa có'}</dd></div><div><dt>Cập nhật</dt><dd>{dateTime(order.updatedAt)}</dd></div></dl>
       <Space wrap>{canPropose ? <Button type="primary" disabled={busy} onClick={() => setAction('appointment')}>{rescheduleRequested ? 'Đề xuất lịch mới' : `Đề xuất lịch ${scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' ? 'khảo sát bản đồ' : 'dịch vụ'}`}</Button> : null}
         {consistent && !scope.requiresBaselineMapping && scope.orderStatus === 'PENDING_BOUNDARY_VERIFICATION' ? <Button type="primary" disabled={busy} onClick={() => setAction('boundary')}>Xác minh ranh giới</Button> : null}
-        {consistent && scope.requiresBaselineMapping && scope.orderStatus === 'AWAITING_BASELINE_REVIEW' ? <Button type="primary" disabled={busy} onClick={() => setAction('corners')}>Đánh dấu 4 góc trên ảnh trực giao</Button> : null}</Space>
+        {consistent && scope.requiresBaselineMapping && scope.orderStatus === 'AWAITING_BASELINE_REVIEW' ? <Button type="primary" disabled={busy} onClick={() => setAction('corners')}>Đánh dấu 4 góc trên ảnh trực giao</Button> : null}
+        {missionPurpose ? <Button disabled={busy} onClick={() => setAction('prepare-mission')}>Chuẩn bị nhiệm vụ bay · {missionPurposeLabels[missionPurpose]}</Button> : null}</Space>
       {scope.requiresBaselineMapping ? <><p className="form-hint">Chốt lịch khảo sát bản đồ trước. Owner xác nhận lịch và thanh toán cọc trước khi thực hiện. Sau khi có ảnh trực giao, đối chiếu bốn góc ranh giới trước khi duyệt bản đồ nền.</p><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/base-map-drafts`}>Duyệt bản đồ nền →</Link></> : null}
       {appointment?.surveyOrderId === orderId && appointment.appointmentId === order.currentAppointmentId && order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch, chờ Owner xác nhận" description={`${dateTime(appointment.proposedStartAt)} – ${dateTime(appointment.proposedEndAt)}`} /> : null}
     </section>
@@ -78,5 +82,6 @@ export function ManagerOrderDetailPage() {
     {action === 'appointment' ? <AppointmentModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setAppointment(result); setAction(null); await refresh() }} /> : null}
     {action === 'boundary' ? <BoundaryVerificationModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
     {action === 'corners' ? <OrthophotoCornersModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
+    {action === 'prepare-mission' ? <PrepareMissionModal token={token} order={order} orderStatus={scope.orderStatus} close={() => { setAction(null); void refresh() }} /> : null}
   </>
 }
