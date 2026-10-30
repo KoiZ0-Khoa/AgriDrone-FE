@@ -1,14 +1,17 @@
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
-import { useMutation } from '@tanstack/react-query'
-import { Alert, Button, Checkbox, Form, Input, Select, Space } from 'antd'
-import { useState } from 'react'
+import { MinusCircleOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Alert, Button, Checkbox, Form, Input, Select, Space, Table, Tag } from 'antd'
+import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { workflowError } from '../surveys/workflow'
-import { changeChecklistConditions, createChecklist, type ChecklistDefinitionSummary } from './checklistApi'
-import type { ChecklistItem } from './types'
+import { changeChecklistConditions, createChecklist, getAllChecklistDefinitions } from './checklistApi'
+import type { ChecklistItem, PreflightChecklistDefinitionStatus } from './types'
 
 type ItemFormValues = { items: ChecklistItem[] }
 type ConditionsFormValues = { itemsToAdd: ChecklistItem[]; keysToRemove: string[] }
+
+const statusColor: Record<PreflightChecklistDefinitionStatus, string> = { DRAFT: 'default', ACTIVE: 'success', RETIRED: 'default' }
+const statusLabel: Record<PreflightChecklistDefinitionStatus, string> = { DRAFT: 'Bản nháp', ACTIVE: 'Đang áp dụng', RETIRED: 'Đã ngừng' }
 
 function ItemRows({ name }: { name: string }) {
   return <Form.List name={name} rules={[{ validator: async (_, items) => { if (!items || items.length === 0) throw new Error('Cần ít nhất một điều kiện.') } }]}>
@@ -27,41 +30,60 @@ function ItemRows({ name }: { name: string }) {
   </Form.List>
 }
 
-function ResultPanel({ title, result }: { title: string; result: ChecklistDefinitionSummary }) {
-  return <Alert className="workflow-notice" type="success" showIcon title={title} description={
-    <dl className="detail-list">
-      <div><dt>Mã checklist</dt><dd>{result.code}</dd></div>
-      <div><dt>Phiên bản</dt><dd>{result.versionNumber}</dd></div>
-      <div><dt>Có hiệu lực từ</dt><dd>{new Date(result.effectiveFrom).toLocaleString('vi-VN')}</dd></div>
-      <div><dt>Definition ID</dt><dd><code>{result.definitionId}</code></dd></div>
-    </dl>
-  } />
-}
-
 export function PreflightChecklistPage() {
   const token = useAuth().session!.accessToken
-  const [lastResult, setLastResult] = useState<ChecklistDefinitionSummary | null>(null)
+  const client = useQueryClient()
   const [createForm] = Form.useForm<ItemFormValues>()
   const [conditionsForm] = Form.useForm<ConditionsFormValues>()
+  const query = useQuery({ queryKey: ['checklist-definitions'], queryFn: ({ signal }) => getAllChecklistDefinitions(token, signal) })
 
+  async function afterWrite() { await client.invalidateQueries({ queryKey: ['checklist-definitions'] }) }
   const createMutation = useMutation({
     mutationFn: (values: ItemFormValues) => createChecklist(token, values.items),
-    onSuccess: result => setLastResult(result),
+    onSuccess: async () => { createForm.resetFields(); await afterWrite() },
   })
   const conditionsMutation = useMutation({
     mutationFn: (values: ConditionsFormValues) => changeChecklistConditions(token, values.itemsToAdd ?? [], values.keysToRemove ?? []),
-    onSuccess: result => { setLastResult(result); conditionsForm.resetFields() },
+    onSuccess: async () => { conditionsForm.resetFields(); await afterWrite() },
   })
+
+  const definitions = [...(query.data ?? [])].sort((a, b) => b.versionNumber - a.versionNumber)
 
   return <>
     <section className="resource-page-heading">
       <div><span className="page-kicker">AN TOÀN BAY</span><h1>Checklist trước bay</h1><p>Bộ điều kiện preflight dùng chung cho mọi Mission.</p></div>
+      <Button icon={<ReloadOutlined />} onClick={() => { void query.refetch() }}>Tải lại</Button>
     </section>
-    <Alert className="workflow-notice" type="warning" showIcon title="BE chưa có API đọc checklist hiện hành"
-      description="Form dưới đây chỉ ghi, không tải lại được toàn bộ danh sách điều kiện đang áp dụng. Thông tin hiển thị chỉ phản ánh lần ghi gần nhất trong phiên làm việc này — không phải trạng thái đầy đủ hiện tại trên BE." />
 
     <section className="resource-panel">
-      <div className="resource-panel-heading"><div><strong>Tạo checklist lần đầu</strong><span>Chỉ thành công khi hệ thống chưa có checklist active.</span></div></div>
+      <div className="resource-panel-heading"><div><strong>Các phiên bản checklist</strong><span>Phiên bản mới nhất ở trên cùng; phiên bản cũ và checklist Mission đã lưu được giữ nguyên.</span></div></div>
+      {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /> : (
+        <Table
+          rowKey="id"
+          loading={query.isPending}
+          dataSource={definitions}
+          pagination={false}
+          locale={{ emptyText: 'Chưa có checklist nào.' }}
+          columns={[
+            { title: 'Mã', dataIndex: 'code' },
+            { title: 'Phiên bản', dataIndex: 'versionNumber' },
+            { title: 'Trạng thái', render: (_, def) => <Tag color={statusColor[def.status]}>{statusLabel[def.status] ?? def.status}</Tag> },
+            { title: 'Có hiệu lực từ', render: (_, def) => new Date(def.effectiveFrom).toLocaleString('vi-VN') },
+            { title: 'Ngừng áp dụng', render: (_, def) => def.retiredAt ? new Date(def.retiredAt).toLocaleString('vi-VN') : '—' },
+            { title: 'Số điều kiện', render: (_, def) => def.items.length },
+          ]}
+          expandable={{
+            expandedRowRender: def => <Table
+              rowKey="key" size="small" pagination={false} dataSource={def.items}
+              columns={[{ title: 'Key', dataIndex: 'key' }, { title: 'Câu hỏi', dataIndex: 'prompt' }, { title: 'Bắt buộc', render: (_, item) => item.required ? 'Có' : 'Không' }]}
+            />,
+          }}
+        />
+      )}
+    </section>
+
+    <section className="resource-panel workflow-section">
+      <div className="resource-panel-heading"><div><strong>Tạo checklist lần đầu</strong><span>Chỉ thành công khi hệ thống chưa có checklist đang áp dụng.</span></div></div>
       <Form form={createForm} layout="vertical" disabled={createMutation.isPending} onFinish={values => createMutation.mutate(values)}>
         <ItemRows name="items" />
         <Form.Item className="workflow-notice"><Button type="primary" htmlType="submit" loading={createMutation.isPending}>Tạo checklist</Button></Form.Item>
@@ -70,7 +92,7 @@ export function PreflightChecklistPage() {
     </section>
 
     <section className="resource-panel workflow-section">
-      <div className="resource-panel-heading"><div><strong>Thêm / sửa / xóa điều kiện</strong><span>Để sửa 1 điều kiện, xoá key cũ và thêm lại item đã sửa trong cùng lần gửi.</span></div></div>
+      <div className="resource-panel-heading"><div><strong>Thêm / sửa / xóa điều kiện</strong><span>Để sửa 1 điều kiện, xoá key cũ và thêm lại item đã sửa trong cùng lần gửi. Xem key hiện tại ở bảng phía trên.</span></div></div>
       <Form form={conditionsForm} layout="vertical" disabled={conditionsMutation.isPending} onFinish={values => conditionsMutation.mutate(values)}>
         <ItemRows name="itemsToAdd" />
         <Form.Item name="keysToRemove" label="Key cần xóa (nhấn Enter sau mỗi key)">
@@ -82,7 +104,5 @@ export function PreflightChecklistPage() {
       </Form>
       {conditionsMutation.isError ? <Alert type="error" showIcon title={workflowError(conditionsMutation.error)} /> : null}
     </section>
-
-    {lastResult ? <section className="resource-panel workflow-section"><ResultPanel title="Kết quả lần ghi gần nhất" result={lastResult} /></section> : null}
   </>
 }

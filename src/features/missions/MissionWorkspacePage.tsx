@@ -100,7 +100,7 @@ function PreflightChecklistPanel({ token, farmId, missionId, version, onDone }: 
         deviceCompletedAt: new Date().toISOString(),
       }
       opRef.current = operationFor(opRef.current, body)
-      return api.completePreflight(token, farmId, missionId, { ...body, idempotencyKey: opRef.current.key })
+      return api.completePreflight(token, farmId, missionId, opRef.current.key, body)
     },
     onSuccess: result => onDone(result.mission),
   })
@@ -144,12 +144,12 @@ export function MissionWorkspacePage() {
     patchMissionSetCache(client, orderId, next)
   }
   const status = snapshot.status
-  const canPreflight = status === 'Draft' || status === 'Scheduled'
-  const canStart = status === 'Scheduled'
-  const canCompleteFlight = status === 'InFlight'
-  const canFailFlight = status === 'InFlight'
-  const canCancel = status === 'Draft' || status === 'Scheduled'
-  const canReschedule = status === 'Scheduled' || status === 'FlightFailed'
+  const canPreflight = status === 'DRAFT' || status === 'SCHEDULED'
+  const canStart = status === 'SCHEDULED'
+  const canCompleteFlight = status === 'IN_FLIGHT'
+  const canFailFlight = status === 'IN_FLIGHT'
+  const canCancel = status === 'DRAFT' || status === 'SCHEDULED'
+  const canReschedule = status === 'SCHEDULED' || status === 'FLIGHT_FAILED'
 
   return <>
     {back}

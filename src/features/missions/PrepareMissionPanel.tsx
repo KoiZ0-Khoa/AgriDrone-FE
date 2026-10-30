@@ -32,7 +32,13 @@ function PrepareMissionModal({
   const opRef = useRef<{ payload: string; key: string } | null>(null)
   const drones = useQuery({
     queryKey: ['available-drones', farmId, date],
-    queryFn: ({ signal }) => getAvailableDrones(token, farmId, `${date}T00:00:00+07:00`, `${date}T23:59:59+07:00`, undefined, signal),
+    // Resolve the chosen calendar date as a Vietnam-local day window, but send it to the API in
+    // UTC ("Z"): Npgsql rejects any non-zero DateTimeOffset offset when writing timestamptz.
+    queryFn: ({ signal }) => getAvailableDrones(
+      token, farmId,
+      new Date(`${date}T00:00:00+07:00`).toISOString(),
+      new Date(`${date}T23:59:59+07:00`).toISOString(),
+      baseline ? 'BASELINE_MAPPING' : undefined, signal),
     enabled: Boolean(date),
   })
   const mutation = useMutation({
@@ -91,7 +97,7 @@ export function PrepareMissionPanel({
       {canPrepare ? <Button type="primary" onClick={() => setOpen(true)}>Chuẩn bị Mission bay</Button> : null}
     </div>
     <Alert className="workflow-notice" type="info" showIcon title="Danh sách dưới đây chỉ được nạp trong phiên làm việc này"
-      description="BE chưa có API liệt kê Mission theo đơn khảo sát. Nếu danh sách trống sau khi tải lại trang, bấm lại 'Chuẩn bị Mission bay' với cùng Drone/ngày đã dùng — nếu Mission đã tồn tại đầy đủ, hệ thống sẽ trả lại đúng Mission hiện có." />
+      description={<>BE chưa có API liệt kê Mission theo đơn khảo sát (chỉ có danh sách Mission theo nông trại, không gắn đơn). Nếu danh sách trống sau khi tải lại trang, bấm lại "Chuẩn bị Mission bay" với cùng Drone/ngày đã dùng — nếu Mission đã tồn tại đầy đủ, hệ thống sẽ trả lại đúng Mission hiện có. Muốn xem toàn bộ Mission của nông trại (không lọc theo đơn), mở <Link to={`/manager/farms/${encodeURIComponent(farmId)}/missions`}>trang Mission của nông trại</Link>.</>} />
     {missions.length === 0 ? <CommonState type="empty" title="Chưa nạp Mission nào trong phiên này" /> : (
       <Table rowKey="missionId" dataSource={missions} pagination={false} columns={[
         { title: 'Mục đích', render: (_, mission) => missionPurposeLabels[mission.purpose] ?? mission.purpose },

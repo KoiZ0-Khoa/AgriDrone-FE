@@ -6,10 +6,11 @@ import ts from 'typescript'
 const compile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2023 } }).outputText
 const dataUrl = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
 const clientUrl = dataUrl(compile('../src/api/client.ts').replace('import.meta.env.VITE_API_BASE_URL', "'http://test.local'"))
+const workflowUrl = dataUrl(compile('../src/features/missions/workflow.ts'))
+const workflow = await import(workflowUrl)
 const droneApi = await import(dataUrl(compile('../src/features/missions/droneApi.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
-const missionApi = await import(dataUrl(compile('../src/features/missions/missionApi.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
+const missionApi = await import(dataUrl(compile('../src/features/missions/missionApi.ts').replace("'../../api/client'", JSON.stringify(clientUrl)).replace("'./workflow'", JSON.stringify(workflowUrl))))
 const checklistApi = await import(dataUrl(compile('../src/features/missions/checklistApi.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
-const workflow = await import(dataUrl(compile('../src/features/missions/workflow.ts')))
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
@@ -41,7 +42,7 @@ test('drone registry register/update/status use expected routes and payloads', a
     serialNumber: null, registrationNumber: null, registrationDate: null, registrationExpiryDate: null, weightKg: null, notes: null,
   })).version, 5)
 
-  const statusBody = { status: 'Maintenance', nextMaintenanceAt: '2026-11-01T00:00:00.000Z', expectedVersion: 5, reason: 'Bảo trì định kỳ' }
+  const statusBody = { status: 'MAINTENANCE', nextMaintenanceAt: '2026-11-01T00:00:00.000Z', expectedVersion: 5, reason: 'Bảo trì định kỳ' }
   globalThis.fetch = async (url, options) => {
     assert.equal(url, 'http://test.local/api/system/drones/d%2F1/status')
     assert.equal(options.method, 'PATCH')
@@ -84,24 +85,24 @@ test('mission lifecycle transitions send expectedMissionVersion and the required
   globalThis.fetch = async (url, options) => {
     assert.equal(url, `${base}/start`)
     assert.deepEqual(JSON.parse(options.body), { expectedMissionVersion: 2 })
-    return Response.json({ id: 'mission-1', status: 'InFlight', version: 3 })
+    return Response.json({ id: 'mission-1', status: 'IN_FLIGHT', version: 3 })
   }
-  assert.equal((await missionApi.startMission('manager', 'farm-1', 'mission-1', 2)).status, 'InFlight')
+  assert.equal((await missionApi.startMission('manager', 'farm-1', 'mission-1', 2)).status, 'IN_FLIGHT')
 
   globalThis.fetch = async (url, options) => {
     assert.equal(url, `${base}/complete-flight`)
     assert.deepEqual(JSON.parse(options.body), { expectedMissionVersion: 3 })
-    return Response.json({ id: 'mission-1', status: 'FlightCompleted', version: 4 })
+    return Response.json({ id: 'mission-1', status: 'FLIGHT_COMPLETED', version: 4 })
   }
-  assert.equal((await missionApi.completeFlight('manager', 'farm-1', 'mission-1', 3)).status, 'FlightCompleted')
+  assert.equal((await missionApi.completeFlight('manager', 'farm-1', 'mission-1', 3)).status, 'FLIGHT_COMPLETED')
 
   const cancelBody = { expectedMissionVersion: 2, reason: 'Thời tiết không phù hợp' }
   globalThis.fetch = async (url, options) => {
     assert.equal(url, `${base}/cancel`)
     assert.deepEqual(JSON.parse(options.body), cancelBody)
-    return Response.json({ id: 'mission-1', status: 'Cancelled', version: 3 })
+    return Response.json({ id: 'mission-1', status: 'CANCELLED', version: 3 })
   }
-  assert.equal((await missionApi.cancelMission('manager', 'farm-1', 'mission-1', cancelBody)).status, 'Cancelled')
+  assert.equal((await missionApi.cancelMission('manager', 'farm-1', 'mission-1', cancelBody)).status, 'CANCELLED')
 
   const failBody = {
     expectedMissionVersion: 3, reason: 'Mất tín hiệu điều khiển', incidentIdempotencyKey: 'incident-1',
@@ -110,17 +111,27 @@ test('mission lifecycle transitions send expectedMissionVersion and the required
   globalThis.fetch = async (url, options) => {
     assert.equal(url, `${base}/fail-flight`)
     assert.deepEqual(JSON.parse(options.body), failBody)
-    return Response.json({ id: 'mission-1', status: 'FlightFailed', version: 4 })
+    return Response.json({ id: 'mission-1', status: 'FLIGHT_FAILED', version: 4 })
   }
-  assert.equal((await missionApi.failFlight('manager', 'farm-1', 'mission-1', failBody)).status, 'FlightFailed')
+  assert.equal((await missionApi.failFlight('manager', 'farm-1', 'mission-1', failBody)).status, 'FLIGHT_FAILED')
 
   const rescheduleBody = { expectedVersion: 4, scheduledDate: '2026-10-27' }
   globalThis.fetch = async (url, options) => {
     assert.equal(url, `${base}/reschedule`)
     assert.deepEqual(JSON.parse(options.body), rescheduleBody)
-    return Response.json({ id: 'mission-1', status: 'Scheduled', version: 5 })
+    return Response.json({ id: 'mission-1', status: 'SCHEDULED', version: 5 })
   }
-  assert.equal((await missionApi.rescheduleMission('manager', 'farm-1', 'mission-1', rescheduleBody)).status, 'Scheduled')
+  assert.equal((await missionApi.rescheduleMission('manager', 'farm-1', 'mission-1', rescheduleBody)).status, 'SCHEDULED')
+})
+
+test('prepare mission set normalizes the PascalCase purpose/status this one endpoint returns to UPPER_SNAKE_CASE', async () => {
+  globalThis.fetch = async () => Response.json({
+    surveyOrderId: 'order-1', farmId: 'farm-1', reusedExistingSet: true,
+    missions: [{ missionId: 'mission-1', purpose: 'BaselineMapping', status: 'Scheduled', scheduledAt: null, scheduledEndAt: null, version: 1 }],
+  })
+  const result = await missionApi.prepareMissionSet('manager', 'order-1', { droneId: 'drone-1', baselineDate: '2026-10-25' }, 'key-1')
+  assert.equal(result.missions[0].purpose, 'BASELINE_MAPPING')
+  assert.equal(result.missions[0].status, 'SCHEDULED')
 })
 
 test('preflight completion reads the active checklist then submits identity and answers from it', async () => {
@@ -131,13 +142,38 @@ test('preflight completion reads the active checklist then submits identity and 
   const checklist = await checklistApi.getActiveChecklist('manager', 'farm-1', 'mission-1')
   assert.equal(checklist.items[0].key, 'battery')
 
-  const body = { idempotencyKey: 'op-1', expectedMissionVersion: 2, checklistDefinitionId: 'def-1', checklistVersion: 2, answers: { battery: true }, suitableForFlight: true, notes: null }
+  const body = { expectedMissionVersion: 2, checklistDefinitionId: 'def-1', checklistVersion: 2, answers: { battery: true }, suitableForFlight: true, notes: null }
   globalThis.fetch = async (url, options) => {
     assert.equal(url, 'http://test.local/api/system-manager/farms/farm-1/missions/mission-1/preflight')
+    assert.equal(options.headers['Idempotency-Key'], 'op-1')
     assert.deepEqual(JSON.parse(options.body), body)
-    return Response.json({ mission: { id: 'mission-1', status: 'Scheduled', version: 3 }, reusedOperation: false })
+    return Response.json({ mission: { id: 'mission-1', status: 'SCHEDULED', version: 3 }, reusedOperation: false })
   }
-  assert.equal((await missionApi.completePreflight('manager', 'farm-1', 'mission-1', body)).mission.version, 3)
+  assert.equal((await missionApi.completePreflight('manager', 'farm-1', 'mission-1', 'op-1', body)).mission.version, 3)
+})
+
+test('checklist definitions are read with a plain GET available to SystemAdmin and SystemManager', async () => {
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'http://test.local/api/system/preflight-checklist')
+    assert.equal(options.method, undefined)
+    assert.equal(options.headers.Authorization, 'Bearer manager')
+    return Response.json([{ id: 'def-1', code: 'preflight', versionNumber: 2, status: 'ACTIVE', items: [{ key: 'battery', prompt: 'Pin?', required: true }], effectiveFrom: '2026-10-25T00:00:00Z', retiredAt: null, createdBy: 'admin', createdAt: '2026-10-25T00:00:00Z' }])
+  }
+  const definitions = await checklistApi.getAllChecklistDefinitions('manager')
+  assert.equal(definitions[0].status, 'ACTIVE')
+})
+
+test('farm mission list sends pagination and optional status filter to the farm-scoped route', async () => {
+  globalThis.fetch = async url => {
+    const parsed = new URL(url)
+    assert.equal(parsed.pathname, '/api/system-manager/farms/farm-1/missions')
+    assert.equal(parsed.searchParams.get('pageNumber'), '2')
+    assert.equal(parsed.searchParams.get('pageSize'), '20')
+    assert.equal(parsed.searchParams.get('status'), 'IN_FLIGHT')
+    return Response.json({ items: [], pageNumber: 2, pageSize: 20, totalCount: 0, hasNextPage: false })
+  }
+  const page = await missionApi.getMissions('manager', 'farm-1', { pageNumber: 2, status: 'IN_FLIGHT' })
+  assert.equal(page.pageNumber, 2)
 })
 
 test('checklist definition writes use POST create and PATCH conditions, never a GET', async () => {
@@ -157,6 +193,15 @@ test('checklist definition writes use POST create and PATCH conditions, never a 
     return Response.json({ definitionId: 'def-1', code: 'preflight', versionNumber: 2, effectiveFrom: '2026-10-25T00:00:00Z' })
   }
   assert.equal((await checklistApi.changeChecklistConditions('admin', items, ['oldKey'])).versionNumber, 2)
+})
+
+test('normalizeEnumCode converts PascalCase to UPPER_SNAKE_CASE and is a no-op on already-correct input', () => {
+  assert.equal(workflow.normalizeEnumCode('BaselineMapping'), 'BASELINE_MAPPING')
+  assert.equal(workflow.normalizeEnumCode('InFlight'), 'IN_FLIGHT')
+  assert.equal(workflow.normalizeEnumCode('ReadyForProcessing'), 'READY_FOR_PROCESSING')
+  assert.equal(workflow.normalizeEnumCode('Draft'), 'DRAFT')
+  assert.equal(workflow.normalizeEnumCode('SCHEDULED'), 'SCHEDULED')
+  assert.equal(workflow.normalizeEnumCode('IN_FLIGHT'), 'IN_FLIGHT')
 })
 
 test('operationFor keeps the key for a retried payload and mints a new one once edited', () => {

@@ -121,7 +121,7 @@ export function DronesPage() {
           columns={[
             { title: 'Drone', render: (_, drone) => <div><strong>{drone.name}</strong><div className="form-hint">{drone.code}</div></div> },
             { title: 'Model', render: (_, drone) => drone.model ?? '—' },
-            { title: 'Trạng thái', render: (_, drone) => <Tag color={drone.status === 'Available' ? 'success' : drone.status === 'Retired' || drone.status === 'Inactive' ? 'default' : 'warning'}>{droneStatusLabels[drone.status] ?? drone.status}</Tag> },
+            { title: 'Trạng thái', render: (_, drone) => <Tag color={drone.status === 'AVAILABLE' ? 'success' : drone.status === 'RETIRED' || drone.status === 'INACTIVE' ? 'default' : 'warning'}>{droneStatusLabels[drone.status] ?? drone.status}</Tag> },
             { title: 'Hết hạn đăng ký', render: (_, drone) => drone.registrationExpiryDate ?? 'Chưa có' },
             { title: 'Thao tác', render: (_, drone) => <Button onClick={() => setSelectedId(drone.id)}>Xem chi tiết</Button> },
           ]}

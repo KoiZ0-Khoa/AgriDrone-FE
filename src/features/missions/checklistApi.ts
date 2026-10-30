@@ -1,10 +1,14 @@
 import { apiRequest } from '../../api/client'
-import type { ActiveChecklist, ChecklistItem } from './types'
+import type { ActiveChecklist, ChecklistItem, PreflightChecklistDefinition } from './types'
 
 const base = '/api/system/preflight-checklist'
 const id = encodeURIComponent
 
 export type ChecklistDefinitionSummary = { definitionId: string; code: string; versionNumber: number; effectiveFrom: string }
+
+// SystemAdmin and SystemManager can both read every checklist definition/version.
+export const getAllChecklistDefinitions = (token: string, signal?: AbortSignal) =>
+  apiRequest<PreflightChecklistDefinition[]>(base, { token, signal })
 
 export const createChecklist = (token: string, items: ChecklistItem[]) =>
   apiRequest<ChecklistDefinitionSummary>(base, { method: 'POST', token, body: { items } })
