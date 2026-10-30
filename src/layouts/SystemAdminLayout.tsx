@@ -1,5 +1,6 @@
 import {
   BankOutlined,
+  CheckSquareOutlined,
   CloseOutlined,
   DashboardOutlined,
   DownOutlined,
@@ -7,6 +8,7 @@ import {
   LogoutOutlined,
   MedicineBoxOutlined,
   MenuOutlined,
+  RocketOutlined,
   TeamOutlined,
   TrophyOutlined,
   UserOutlined,
@@ -23,6 +25,8 @@ const navigation = [
   { to: '/system/survey-requests', label: 'Yêu cầu khảo sát', icon: <BankOutlined aria-hidden="true" /> },
   { to: '/system/survey-orders', label: 'Đơn khảo sát', icon: <FileTextOutlined aria-hidden="true" /> },
   { to: '/system/managers', label: 'System Manager', icon: <TeamOutlined aria-hidden="true" /> },
+  { to: '/system/drones', label: 'Drone', icon: <RocketOutlined aria-hidden="true" /> },
+  { to: '/system/preflight-checklist', label: 'Checklist Preflight', icon: <CheckSquareOutlined aria-hidden="true" /> },
   { to: '/system/survey-services', label: 'Dịch vụ & đơn giá', icon: <MedicineBoxOutlined aria-hidden="true" /> },
   { to: '/system/tenants', label: 'Đơn vị', icon: <BankOutlined aria-hidden="true" /> },
   { to: '/system/users', label: 'Người dùng', icon: <TeamOutlined aria-hidden="true" /> },
@@ -35,6 +39,8 @@ function pageTitle(pathname: string) {
   if (pathname.startsWith('/system/survey-requests')) return 'Yêu cầu khảo sát'
   if (pathname.startsWith('/system/survey-orders')) return 'Đơn khảo sát'
   if (pathname === '/system/managers') return 'System Manager'
+  if (pathname === '/system/drones') return 'Drone hệ thống'
+  if (pathname === '/system/preflight-checklist') return 'Checklist Preflight'
   if (pathname === '/system/survey-services') return 'Dịch vụ & đơn giá'
   if (pathname === '/system/tenants') return 'Quản lý đơn vị'
   if (pathname === '/system/users') return 'Quản lý người dùng'

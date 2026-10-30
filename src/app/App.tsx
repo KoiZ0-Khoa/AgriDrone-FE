@@ -63,6 +63,9 @@ const ManagerFarmDetailPage = lazy(() => import('../features/surveys/ManagerFarm
 const ManagerOrdersPage = lazy(() => import('../features/surveys/ManagerOrdersPage').then(m => ({ default: m.ManagerOrdersPage })))
 const ManagerOrderDetailPage = lazy(() => import('../features/surveys/ManagerOrdersPage').then(m => ({ default: m.ManagerOrderDetailPage })))
 const PlantHealthPage = lazy(() => import('../features/surveys/PlantHealthPage').then(m => ({ default: m.PlantHealthPage })))
+const ManagerMissionDetailPage = lazy(() => import('../features/missions/ManagerMissionDetailPage').then(m => ({ default: m.ManagerMissionDetailPage })))
+const DronesPage = lazy(() => import('../features/drones/DronesPage').then(m => ({ default: m.DronesPage })))
+const PreflightChecklistPage = lazy(() => import('../features/missions/PreflightChecklistPage').then(m => ({ default: m.PreflightChecklistPage })))
 
 export function App() {
   const [queryClient] = useState(
@@ -140,6 +143,8 @@ export function App() {
                         <Route path="/system/harvest-quality-grades" element={<SystemPage section="harvest-quality-grades" />} />
                         <Route path="/system/account" element={<AccountPage />} />
                         <Route path="/system/managers" element={<ManagersPage />} />
+                        <Route path="/system/drones" element={<DronesPage />} />
+                        <Route path="/system/preflight-checklist" element={<PreflightChecklistPage />} />
                         <Route path="/system/survey-services" element={<ServicesPage />} />
                         <Route path="/system/survey-requests" element={<RequestsPage />} />
                         <Route path="/system/survey-requests/:requestId" element={<RequestDetailPage />} />
@@ -155,6 +160,7 @@ export function App() {
                         <Route path="/manager/farms/:farmId/base-map-drafts/:draftId" element={<ManagerBaseMapsPage />} />
                         <Route path="/manager/orders" element={<ManagerOrdersPage />} />
                         <Route path="/manager/orders/:orderId" element={<ManagerOrderDetailPage />} />
+                        <Route path="/manager/farms/:farmId/missions/:missionId" element={<ManagerMissionDetailPage />} />
                         <Route path="/manager/account" element={<AccountPage />} />
                       </Route>
                     </Route>
