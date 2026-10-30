@@ -41,6 +41,25 @@ test('Order context searches assigned pages without inventing a detail route or 
   assert.deepEqual(calls, [1, 2])
 })
 
+test('Manager directory normalizes the BE reschedule status for dashboard, detail and replacement proposals', async () => {
+  const current = { surveyOrderId: 'order', tenantId: 'tenant', farmId: 'farm', status: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true, orderVersion: 2345, currentAppointmentId: 'appointment', currentAppointmentVersion: 2494 }
+  const response = { items: [{ ...current, currentAppointmentStatus: 'RESCHEDULEREQUESTED' }], totalCount: 3, pageNumber: 1, pageSize: 20, hasNextPage: false }
+  globalThis.fetch = async () => Response.json(response)
+  const page = await api.getAssignedOrders('manager')
+  assert.equal(page.items[0].currentAppointmentStatus, 'RESCHEDULE_REQUESTED')
+  assert.equal(page.items[0].currentAppointmentVersion, 2494)
+  assert.equal(page.items[0].orderVersion, 2345)
+  assert.equal(page.totalCount, 3)
+  assert.equal((await api.getAssignedOrder('manager', 'order')).currentAppointmentStatus, 'RESCHEDULE_REQUESTED')
+  const body = workflow.appointmentBody(page.items[0], { ...current, orderStatus: current.status }, '2099-01-01T08:00:00Z', '2099-01-01T10:00:00Z')
+  assert.equal(body.expectedCurrentAppointmentId, 'appointment')
+  assert.equal(body.expectedCurrentAppointmentVersion, 2494)
+  for (const status of ['RESCHEDULE_REQUESTED', 'PROPOSED', 'CONFIRMED', null]) {
+    globalThis.fetch = async () => Response.json({ ...response, items: [{ ...current, currentAppointmentStatus: status }] })
+    assert.equal((await api.getAssignedOrders('manager')).items[0].currentAppointmentStatus, status)
+  }
+})
+
 const scope = { surveyOrderId: 'order', farmId: 'farm', tenantId: 'tenant', orderVersion: 51, orderStatus: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true }
 const order = { surveyOrderId: 'order', farmId: 'farm', tenantId: 'tenant', orderVersion: 51, status: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null }
 const start = '2026-10-22T10:00:00+07:00', end = '2026-10-22T12:00:00+07:00', now = Date.parse('2026-10-19T00:00:00Z')

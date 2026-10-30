@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Form, Input, Modal, Radio, Space } from 'antd'
 import { useState } from 'react'
@@ -65,6 +66,7 @@ export function AuthorizationEditor({ token, authorization, close, setBusy }: { 
     {snapshot.status === 'REVOKED' ? <Alert className="workflow-notice" type="warning" showIcon title="Giấy tờ đã thu hồi không thể xác minh lại." /> : null}
     {!action ? <Space className="workflow-toolbar" wrap>{canVerify ? <Button type="primary" onClick={() => setAction('verify')}>{snapshot.status === 'VERIFIED' ? 'Cập nhật xác minh' : 'Xác minh giấy tờ'}</Button> : null}{snapshot.status === 'VERIFIED' ? <Button danger onClick={() => setAction('revoke')}>Thu hồi giấy tờ</Button> : null}<Button onClick={close}>Đóng</Button></Space> : <>
       <Form form={form} className="workflow-section" layout="vertical" disabled={mutation.isPending || locked} onFinish={values => { if (!mutation.isPending && !locked) mutation.mutate(values) }}>
+      <FormSubmit disabled={mutation.isPending || locked} />
         {action === 'verify' ? <>
           <Form.Item label="Bằng chứng xác minh"><Radio.Group value={mode} onChange={event => { setMode(event.target.value); form.setFieldValue('file', undefined); form.setFieldValue('mockReference', undefined) }} options={[{ value: 'file', label: 'Tải file' }, { value: 'mock', label: 'Giả lập để demo' }]} /></Form.Item>
           {mode === 'file' ? <Form.Item name="file" label="Ảnh hoặc tài liệu scan" rules={[{ required: true, message: 'Chọn file bằng chứng' }]}><EvidenceFileInput disabled={mutation.isPending || locked} /></Form.Item> : <><Alert className="workflow-notice" type="warning" showIcon title="Chế độ demo: mã giả lập vẫn được BE dùng để xác minh giấy tờ." /><Form.Item name="mockReference" label="Mã bằng chứng giả lập" rules={[{ required: true, whitespace: true }, { max: 200 }]}><Input maxLength={200} /></Form.Item></>}

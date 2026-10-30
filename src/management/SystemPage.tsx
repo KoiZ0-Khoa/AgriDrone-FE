@@ -1,3 +1,4 @@
+import { readableCode } from '../components/RecordReference'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Pagination, Space, Table } from 'antd'
@@ -54,14 +55,14 @@ function MembershipList({ user, token, setAction }: { user: api.User; token: str
     let more = true
     while (more) {
       const result = await api.getTenants(token, nextPage++)
-      for (const tenant of result.items) names[tenant.id] = `${tenant.name} (${tenant.code})`
+      for (const tenant of result.items) names[tenant.id] = readableCode(tenant.code) ? `${tenant.name} (${readableCode(tenant.code)})` : tenant.name
       more = result.hasNextPage
     }
     return names
   } })
   return <section className="resource-panel"><h2>Quyền đơn vị · {user.fullName}</h2>{query.isError ? <CommonState type="error" description={query.error.message} retry={() => query.refetch()} /> : null}
     <Table<api.Membership> rowKey="id" loading={query.isPending} dataSource={query.data?.items ?? []} pagination={false} columns={[
-      { title: 'Đơn vị', render: (_, m) => tenantNames.data?.[m.tenantId] ?? m.tenantId }, { title: 'Vai trò', render: (_, m) => roleLabel(m.role) }, { title: 'Trạng thái', render: (_, m) => isActive(m.status) ? 'Hoạt động' : 'Ngừng hoạt động' },
+      { title: 'Đơn vị', render: (_, m) => tenantNames.data?.[m.tenantId] ?? 'Chưa tải được tên đơn vị' }, { title: 'Vai trò', render: (_, m) => roleLabel(m.role) }, { title: 'Trạng thái', render: (_, m) => isActive(m.status) ? 'Hoạt động' : 'Ngừng hoạt động' },
       { title: 'Thao tác', render: (_, m) => isOwnerRole(m.role) && isActive(m.status) ? 'Owner được bảo vệ' : <Button danger={isActive(m.status)} onClick={() => setAction(confirmation('Thay đổi quyền truy cập đơn vị', `Xác nhận ${isActive(m.status) ? 'ngừng' : 'kích hoạt'} quyền truy cập của ${user.fullName}?`, () => api.setMembershipActive(token, m.id, !isActive(m.status))))}>{isActive(m.status) ? 'Ngừng truy cập' : 'Kích hoạt'}</Button> },
     ]} /><Pagination current={page} pageSize={20} total={query.data?.totalCount ?? 0} showSizeChanger={false} onChange={setPage} />
   </section>

@@ -1,3 +1,4 @@
+import { FormSubmit } from '../../components/FormSubmit'
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Drawer, Form, Modal, Pagination, Select, Space, Table, Tag } from 'antd'
@@ -89,7 +90,8 @@ function CreateManager({ token, close }: { token: string; close: () => void }) {
   const mutation = useMutation({ mutationFn: () => api.createManager(token, userId!), onSuccess: async () => { close(); await client.invalidateQueries({ queryKey: ['system-managers'] }) } })
   return <Modal open title="Tạo hồ sơ System Manager" okText="Tạo hồ sơ" cancelText="Hủy" confirmLoading={mutation.isPending} okButtonProps={{ disabled: !userId || users.isError }} onOk={() => { if (userId && !mutation.isPending) mutation.mutate() }} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
     <p>Chọn tài khoản đã có trên hệ thống. Hồ sơ mới sẽ chờ kích hoạt và xác minh chứng chỉ.</p>
-    <Form layout="vertical"><Form.Item label="Tài khoản" required><Select showSearch optionFilterProp="label" value={userId} loading={users.isPending} disabled={mutation.isPending} onChange={setUserId} options={users.data?.items.map(user => ({ value: user.id, label: `${user.fullName} · ${user.email}` }))} /></Form.Item></Form>
+    <Form layout="vertical" disabled={mutation.isPending} onFinish={() => { if (userId && users.isSuccess && !mutation.isPending) mutation.mutate() }}>
+      <FormSubmit disabled={mutation.isPending || !userId || !users.isSuccess} /><Form.Item label="Tài khoản" required><Select showSearch optionFilterProp="label" value={userId} loading={users.isPending} disabled={mutation.isPending} onChange={setUserId} options={users.data?.items.map(user => ({ value: user.id, label: `${user.fullName} · ${user.email}` }))} /></Form.Item></Form>
     <Pagination size="small" current={page} total={users.data?.totalCount ?? 0} pageSize={20} showSizeChanger={false} disabled={mutation.isPending} onChange={next => { setUserId(undefined); setPage(next) }} />
     {users.isError || mutation.isError ? <Alert showIcon type="error" title={workflowError(mutation.error ?? users.error)} /> : null}
   </Modal>

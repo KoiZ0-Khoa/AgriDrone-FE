@@ -48,6 +48,8 @@ const MyFarmsPage = lazy(() => import('../management/MyFarmsPage').then(m => ({ 
 const SystemPage = lazy(() => import('../management/SystemPage').then(m => ({ default: m.SystemPage })))
 const SystemDashboardPage = lazy(() => import('../management/SystemDashboardPage').then(m => ({ default: m.SystemDashboardPage })))
 const InvitationPage = lazy(() => import('../management/InvitationPage').then(m => ({ default: m.InvitationPage })))
+const OwnerPaymentsPage = lazy(() => import('../features/surveys/OwnerPaymentsPage').then(m => ({ default: m.OwnerPaymentsPage })))
+const ManagerBaseMapsPage = lazy(() => import('../features/surveys/ManagerBaseMapsPage').then(m => ({ default: m.ManagerBaseMapsPage })))
 const ManagersPage = lazy(() => import('../features/surveys/ManagersPage').then(m => ({ default: m.ManagersPage })))
 const ServicesPage = lazy(() => import('../features/surveys/ServicesPage').then(m => ({ default: m.ServicesPage })))
 const RequestsPage = lazy(() => import('../features/surveys/RequestsPage').then(m => ({ default: m.RequestsPage })))
@@ -126,6 +128,9 @@ export function App() {
                         <Route path="/team" element={<TeamPage />} />
                         <Route path="/my-farms" element={<MyFarmsPage />} />
                         <Route path="/survey-requests/new" element={<SurveyIntakePage owner />} />
+                        <Route path="/survey-payments" element={<OwnerPaymentsPage />} />
+                        <Route path="/survey-payments/return" element={<OwnerPaymentsPage />} />
+                        <Route path="/survey-payments/:orderId" element={<OwnerPaymentsPage />} />
                       </Route>
                     </Route>
                     <Route element={<SystemAdminRoute />}>
@@ -151,6 +156,8 @@ export function App() {
                       <Route element={<SystemManagerLayout />}>
                         <Route path="/manager" element={<ManagerFarmsPage />} />
                         <Route path="/manager/farms/:farmId" element={<ManagerFarmDetailPage />} />
+                        <Route path="/manager/farms/:farmId/base-map-drafts" element={<ManagerBaseMapsPage />} />
+                        <Route path="/manager/farms/:farmId/base-map-drafts/:draftId" element={<ManagerBaseMapsPage />} />
                         <Route path="/manager/orders" element={<ManagerOrdersPage />} />
                         <Route path="/manager/orders/:orderId" element={<ManagerOrderDetailPage />} />
                         <Route path="/manager/orders/:orderId/missions/:missionId" element={<MissionWorkspacePage />} />

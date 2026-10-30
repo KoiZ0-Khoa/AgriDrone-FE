@@ -1,3 +1,4 @@
+import { readableCode } from '../../components/RecordReference'
 import { ArrowLeftOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Pagination, Table, Tag } from 'antd'
@@ -25,7 +26,7 @@ export function ArchivedFarmsPage() {
     <section className="resource-panel" aria-label="Nông trại đã lưu trữ">
       {query.isError ? <ArchivedError error={query.error} retry={() => { void query.refetch() }} /> : <>
         <Table<ArchivedFarm> rowKey="id" loading={query.isPending} dataSource={query.data?.items ?? []} pagination={false} scroll={{ x: 700 }} locale={{ emptyText: 'Chưa có nông trại đã lưu trữ trong trang này.' }} columns={[
-          { title: 'Nông trại', render: (_, farm) => <><strong>{farm.name}</strong><div className="resource-code">{farm.code}</div></> },
+          { title: 'Nông trại', render: (_, farm) => <><strong>{farm.name}</strong><div className="resource-code">{readableCode(farm.code)}</div></> },
           { title: 'Diện tích', render: (_, farm) => area(farm.areaHectares) },
           { title: 'Thời điểm lưu trữ', render: (_, farm) => date(farm.archivedAt) },
           { title: 'Thao tác', render: (_, farm) => <Link className="table-action-link" to={`/farms/archived/${encodeURIComponent(farm.id)}`}><EyeOutlined aria-hidden="true" /> Xem chi tiết</Link> },
@@ -46,11 +47,11 @@ export function ArchivedFarmDetailPage() {
   return <>
     <Link className="back-link" to="/farms/archived"><ArrowLeftOutlined /> Danh sách đã lưu trữ</Link>
     {query.isPending ? <CommonState type="loading" title="Đang tải nông trại đã lưu trữ" /> : query.isError ? <ArchivedError error={query.error} retry={() => { void query.refetch() }} /> : farm ? <>
-      <section className="resource-page-heading"><div><span className="page-kicker">{farm.code}</span><h1>{farm.name}</h1><p>{farm.address ?? 'Chưa cập nhật địa chỉ'}</p></div><Tag>Đã lưu trữ</Tag></section>
+      <section className="resource-page-heading"><div><span className="page-kicker">{readableCode(farm.code)}</span><h1>{farm.name}</h1><p>{farm.address ?? 'Chưa cập nhật địa chỉ'}</p></div><Tag>Đã lưu trữ</Tag></section>
       <section className="resource-panel">
         <div className="resource-panel-heading"><div><strong>Thông tin nông trại đã lưu trữ</strong><span>{session?.tenant?.name}</span></div><span className="form-hint">Khôi phục đang tạm ngừng trong luồng vận hành hiện tại.</span></div>
         <dl className="detail-list">
-          <div><dt>Mã nông trại</dt><dd>{farm.code}</dd></div>
+          {readableCode(farm.code) ? <div><dt>Mã nông trại</dt><dd>{readableCode(farm.code)}</dd></div> : null}
           <div><dt>Diện tích</dt><dd>{area(farm.areaHectares)}</dd></div>
           <div><dt>Ngày tạo</dt><dd>{date(farm.createdAt)}</dd></div>
           <div><dt>Cập nhật lần cuối</dt><dd>{date(farm.updatedAt)}</dd></div>

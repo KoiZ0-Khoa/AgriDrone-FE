@@ -11,8 +11,13 @@ export function isEligibleManager(manager: Manager, now = Date.now()) {
   return manager.status === 'ACTIVE' && manager.availability === 'AVAILABLE' && manager.qualificationStatus === 'QUALIFIED' && manager.qualificationExpiresAt !== null && Date.parse(manager.qualificationExpiresAt) > now
 }
 export function workflowError(error: unknown) {
+  if (error instanceof ApiError && !error.code && [502, 503, 504].includes(error.status) && ['Không thể xử lý yêu cầu.', 'Bad Gateway', 'Service Unavailable', 'Gateway Timeout'].includes(error.message)) return 'Chưa kết nối được máy chủ. Vui lòng thử lại sau.'
   if (error instanceof ApiError) {
     const messages: Record<string, string> = {
+      'Payment.ActivePaymentExists': 'Đơn đã có giao dịch đang xử lý. Kiểm tra lịch sử trước khi thanh toán tiếp.',
+      'Payment.OrderNotReady': 'Đơn chưa đủ điều kiện thanh toán. Kiểm tra lịch hẹn đã xác nhận và giá của đơn.',
+      'Payment.ProviderUnavailable': 'Chưa kết nối được cổng thanh toán. Vui lòng thử lại sau.',
+      'SurveyAppointment.ActivePaymentBlocksReschedule': 'Đơn đã có giao dịch đang hiệu lực nên chưa thể đổi lịch dịch vụ.',
       'SurveyRequest.FarmProfileIncomplete': 'Thông tin nông trại chưa đầy đủ hoặc chưa hợp lệ. Cần có tên, địa chỉ, diện tích lớn hơn 0 và tọa độ tâm hợp lệ. Nhờ Manager phụ trách cập nhật trước khi gửi yêu cầu khảo sát.',
       'SurveyRequest.ApplicantProfileIncomplete': 'Hồ sơ chủ đơn vị thiếu họ tên, email hoặc số điện thoại hợp lệ. Cập nhật hồ sơ tài khoản trước khi gửi yêu cầu.',
       'SurveyRequest.IdempotencyPayloadMismatch': 'Nội dung yêu cầu khác với lần gửi trước nhưng đang dùng lại cùng mã gửi. Tải lại biểu mẫu và kiểm tra trước khi gửi lại.',

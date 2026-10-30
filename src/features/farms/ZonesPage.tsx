@@ -1,3 +1,5 @@
+import { FormSubmit } from '../../components/FormSubmit'
+import { readableCode } from '../../components/RecordReference'
 import {
   ArrowLeftOutlined,
   EnvironmentOutlined,
@@ -35,7 +37,7 @@ function ZoneCard({ zone, onOpen }: { zone: Zone; onOpen: () => void }) {
     <button className="zone-card" type="button" onClick={onOpen}>
       <span className="resource-icon"><EnvironmentOutlined aria-hidden="true" /></span>
       <span className="zone-card-copy">
-        <span className="resource-code">{zone.code}</span>
+        <span className="resource-code">{readableCode(zone.code)}</span>
         <strong>{zone.name}</strong>
         <small>{formatArea(zone.areaHectares)}</small>
       </span>
@@ -100,6 +102,7 @@ export function ZonesPage() {
   }
 
   function submitZone(values: ZoneFormValues) {
+    if (createMutation.isPending) return
     createMutation.mutate({
       code: values.code.trim(),
       name: values.name.trim(),
@@ -139,7 +142,7 @@ export function ZonesPage() {
               {farmsQuery.data.items.map((farm) => (
                 <button className="farm-picker" type="button" key={farm.id} onClick={() => chooseFarm(farm.id)}>
                   <span className="resource-icon"><EnvironmentOutlined aria-hidden="true" /></span>
-                  <span><strong>{farm.name}</strong><small>{farm.code} · {formatArea(farm.areaHectares)}</small></span>
+                  <span><strong>{farm.name}</strong><small>{readableCode(farm.code) ? readableCode(farm.code) + ' · ' : ''}{formatArea(farm.areaHectares)}</small></span>
                   <RightOutlined aria-hidden="true" />
                 </button>
               ))}
@@ -167,7 +170,7 @@ export function ZonesPage() {
       <section className="resource-panel" aria-label="Danh sách khu vực">
         <div className="resource-panel-heading">
           <div><strong>Danh sách khu vực</strong><span>{zonesQuery.data ? `${zonesQuery.data.length} khu vực` : 'Đang đồng bộ'}</span></div>
-          {farmQuery.data ? <span className="scope-note">{farmQuery.data.code}</span> : null}
+          {farmQuery.data ? <span className="scope-note">{readableCode(farmQuery.data.code)}</span> : null}
         </div>
         {zonesQuery.isPending ? <CommonState type="loading" title="Đang tải khu vực" /> : null}
         {zonesQuery.isError ? (
@@ -204,6 +207,7 @@ export function ZonesPage() {
         destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={submitZone} requiredMark={false}>
+          <FormSubmit disabled={createMutation.isPending} />
           <div className="form-two-columns">
             <Form.Item label="Mã khu vực" name="code" rules={[{ required: true, message: 'Nhập mã khu vực' }, { max: 30 }]}>
               <Input placeholder="VD: ZONE_A01" />
@@ -222,7 +226,7 @@ export function ZonesPage() {
       <Drawer
         title="Chi tiết khu vực"
         open={Boolean(selectedZoneId)}
-        width={440}
+        size={440}
         onClose={() => setSelectedZoneId('')}
         destroyOnHidden
       >
@@ -231,7 +235,7 @@ export function ZonesPage() {
         {zoneQuery.isSuccess ? (
           <div className="zone-detail">
             <span className="resource-icon"><EnvironmentOutlined aria-hidden="true" /></span>
-            <span className="resource-code">{zoneQuery.data.code}</span>
+            <span className="resource-code">{readableCode(zoneQuery.data.code)}</span>
             <h2>{zoneQuery.data.name}</h2>
             <Tag color={zoneQuery.data.status === 0 || zoneQuery.data.status === 'Active' || zoneQuery.data.status === 'ACTIVE' ? 'success' : 'default'}>
               {formatStatus(zoneQuery.data.status)}

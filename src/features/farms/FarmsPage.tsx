@@ -1,3 +1,4 @@
+import { readableCode } from '../../components/RecordReference'
 import {
   ArrowLeftOutlined,
   EnvironmentOutlined,
@@ -12,8 +13,6 @@ import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { getFarm, getFarms } from './farmsApi'
-import { FarmAssignmentPanel } from './FarmAssignmentPanel'
-import { FarmMembersPanel } from '../../management/FarmMembersPanel'
 import { MyFarmsPage } from '../../management/MyFarmsPage'
 import type { Farm, GeneralStatus } from './types'
 
@@ -39,7 +38,7 @@ function FarmCard({ farm }: { farm: Farm }) {
         </Tag>
       </div>
       <div>
-        <span className="resource-code">{farm.code}</span>
+        <span className="resource-code">{readableCode(farm.code)}</span>
         <h2>{farm.name}</h2>
         <p>{farm.address ?? 'Chưa cập nhật địa chỉ'}</p>
       </div>
@@ -141,8 +140,9 @@ export function FarmDetailPage() {
   const { session } = useAuth()
   const farmQuery = useQuery({
     queryKey: ['farm', session?.tenant?.id, farmId],
-    queryFn: () => getFarm(session!.accessToken, farmId),
+    queryFn: ({ signal }) => getFarm(session!.accessToken, farmId, signal),
     enabled: Boolean(session?.accessToken && session.tenant && farmId),
+    retry: false,
   })
 
   if (farmQuery.isPending) return <CommonState type="loading" title="Đang tải nông trại" />
@@ -160,12 +160,13 @@ export function FarmDetailPage() {
       <Link className="back-link" to="/farms"><ArrowLeftOutlined /> Danh sách nông trại</Link>
       <section className="resource-page-heading detail-heading">
         <div>
-          <span className="page-kicker">{farm.code}</span>
+          <span className="page-kicker">{readableCode(farm.code)}</span>
           <h1>{farm.name}</h1>
           <p>{farm.address ?? 'Chưa cập nhật địa chỉ cho nông trại này.'}</p>
         </div>
         <Space size={12} wrap>
           {session?.role === 'OWNER' ? <Link className="primary-action-link" to={`/survey-requests/new?farmId=${farm.id}`}>Đăng ký khảo sát</Link> : null}
+          {session?.role === 'OWNER' ? <Link className="workflow-detail-link" to="/survey-payments">Xem đơn và thanh toán →</Link> : null}
           <Link className="primary-action-link" to={`/zones?farmId=${farm.id}`}>
             <EnvironmentOutlined aria-hidden="true" /> Xem khu vực
           </Link>
@@ -176,7 +177,7 @@ export function FarmDetailPage() {
         <section className="resource-panel detail-main-panel">
           <div className="resource-panel-heading"><div><strong>Thông tin nông trại</strong><span>Dữ liệu chính thức từ backend</span></div></div>
           <dl className="detail-list">
-            <div><dt>Mã nông trại</dt><dd>{farm.code}</dd></div>
+            {readableCode(farm.code) ? <div><dt>Mã nông trại</dt><dd>{readableCode(farm.code)}</dd></div> : null}
             <div><dt>Trạng thái</dt><dd>{statusLabel(farm.status)}</dd></div>
             <div><dt>Diện tích</dt><dd>{formatArea(farm.areaHectares)}</dd></div>
             <div><dt>Ngày tạo</dt><dd>{formatDate(farm.createdAt)}</dd></div>
@@ -190,12 +191,6 @@ export function FarmDetailPage() {
           <p>{farm.boundary ? `Đã lưu ${farm.boundary.coordinates[0]?.length ?? 0} điểm ranh giới.` : 'Chưa thiết lập polygon ranh giới.'}</p>
         </aside>
       </div>
-      {session?.tenant && (session.role === 'OWNER' || session.role === 'TENANT_ADMIN') && (farm.status === 0 || farm.status === 'Active' || farm.status === 'ACTIVE') ? (
-        <>
-          <FarmMembersPanel key={`${session.tenant.id}:${farm.id}`} farmId={farm.id} />
-          <FarmAssignmentPanel key={`${session.tenant.id}:${farm.id}:${session.accessToken}`} farmId={farm.id} session={session} />
-        </>
-      ) : null}
     </>
   )
 }
