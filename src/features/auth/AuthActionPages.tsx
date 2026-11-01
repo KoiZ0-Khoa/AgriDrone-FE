@@ -18,7 +18,7 @@ function AuthPageShell({ children, wide = false }: { children: ReactNode; wide?:
     <main className="login-page">
       <a className="skip-link" href="#auth-form">Chuyển đến biểu mẫu</a>
       <section className={`login-main ${wide ? 'has-wide-card' : ''}`} id="auth-form">
-        <div className="login-brand"><BrandMark /></div>
+        <div className="login-brand"><Link to="/" aria-label="AgriDrone - Trang chủ"><BrandMark /></Link></div>
         <div className={`login-card auth-action-card ${wide ? 'is-wide' : ''}`}>
           {children}
         </div>
