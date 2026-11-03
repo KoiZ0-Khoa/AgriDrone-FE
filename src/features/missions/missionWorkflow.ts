@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client'
 import type { AssignedOrder } from '../surveys/orderTypes'
-import type { MissionPurpose } from './missionTypes'
+import type { MissionPurpose, PlantGpsTree } from './missionTypes'
 
 export const missionPurposeLabels: Record<MissionPurpose, string> = {
   BaselineMapping: 'Khảo sát bản đồ nền',
@@ -10,7 +10,7 @@ export const missionPurposeLabels: Record<MissionPurpose, string> = {
 // BE casing for Mission purpose/status is inconsistent: the prepare-mission response uses raw
 // enum.ToString() (PascalCase), while Mission list/detail responses use the global SCREAMING_SNAKE_CASE
 // converter. Normalize both to SCREAMING_SNAKE_CASE before lookup so labels work for either source.
-function toScreamingSnakeCase(value: string) {
+export function toScreamingSnakeCase(value: string) {
   return value.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase()
 }
 const missionPurposeLabelsByCode: Record<string, string> = {
@@ -23,6 +23,23 @@ const missionStatusLabelsByCode: Record<string, string> = {
 }
 export function missionPurposeLabel(raw: string | null) { return raw ? missionPurposeLabelsByCode[toScreamingSnakeCase(raw)] ?? raw : 'Chưa xác định' }
 export function missionStatusLabel(raw: string) { return missionStatusLabelsByCode[toScreamingSnakeCase(raw)] ?? raw }
+
+// Literal strings from UploadMissionMediaItemResponse — not run through the SCREAMING_SNAKE_CASE enum converter.
+export const mediaUploadStatusLabels: Record<string, string> = { Completed: 'Thành công', Failed: 'Lỗi', NotAttempted: 'Chưa thử (đợt dừng do file trước lỗi)' }
+export const mediaTypeLabels: Record<string, string> = { IMAGE: 'Ảnh', VIDEO: 'Video' }
+export const mediaRoleLabels: Record<string, string> = { RAW_VIDEO: 'Video gốc', RAW_IMAGE: 'Ảnh gốc', PROCESSED_IMAGE: 'Ảnh đã xử lý', THUMBNAIL: 'Ảnh thu nhỏ', OTHER: 'Khác' }
+export const fileSizeLabel = (bytes: number | null) => bytes == null ? '—' : bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${bytes} B`
+
+// Codes from FinalizeMissionUploadError — returned as MissionUploadReadinessResponse.blockers (reasons, not thrown errors).
+const uploadBlockerLabelsByCode: Record<string, string> = {
+  'MissionUpload.StatusNotAllowed': 'Nhiệm vụ không ở trạng thái Đang tải lên.',
+  'MissionUpload.ActiveSessionsExist': 'Còn phiên upload đang xử lý, chưa thể hoàn tất.',
+  'MissionUpload.RequiredMediaMissing': 'Thiếu ảnh/video hợp lệ theo đúng loại nhiệm vụ.',
+  'MissionUpload.TelemetryMissing': 'Chưa import telemetry hoặc chưa đủ điểm (tối thiểu 2).',
+  'MissionUpload.TelemetryInconsistent': 'Dữ liệu telemetry không khớp giữa số điểm khai báo và đã lưu. Liên hệ hỗ trợ.',
+  'MissionUpload.FlightRouteMissing': 'Đường bay thực tế chưa hợp lệ.',
+}
+export const uploadBlockerLabel = (code: string) => uploadBlockerLabelsByCode[code] ?? code
 
 // Mirrors PrepareMissionSetCommandHandler: BASELINE_READY needs BaselineMapping; READY_FOR_PAID_SERVICE needs the order's own service purpose.
 export function missionPurposeFor(order: AssignedOrder, orderStatus: string): MissionPurpose | null {
@@ -97,11 +114,51 @@ export function missionError(error: unknown) {
       'MissionOperation.RecoveryWindowRequired': 'Lịch bay phục hồi phải sau thời điểm lỗi và trong tương lai.',
       'MissionOperation.DroneNotOperational': 'Drone của nhiệm vụ này không khả dụng, hết hạn đăng ký hoặc đang chờ bảo trì.',
       'MissionOperation.BaselineNotCompleted': 'Chưa hoàn tất bản đồ nền bắt buộc cho nhiệm vụ dịch vụ này.',
+      'MissionTelemetry.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
+      'MissionTelemetry.MissionNotOrderBound': 'Nhiệm vụ cũ không gắn đơn khảo sát, không thể nhập telemetry.',
+      'TelemetryImport.MissionStatusNotAllowed': 'Chỉ nhập telemetry khi nhiệm vụ đã kết thúc chuyến bay hoặc đang tải lên.',
+      'TelemetryImport.OperationPayloadConflict': 'Mã gửi này đã dùng với dữ liệu telemetry khác. Tải lại và thử lại.',
+      'TelemetryImport.FlightTimelineMissing': 'Nhiệm vụ chưa có thời điểm bắt đầu/kết thúc chuyến bay thật.',
+      'TelemetryImport.TimestampOutsideMission': 'Có điểm telemetry nằm ngoài khoảng thời gian chuyến bay thật của nhiệm vụ.',
+      'TelemetryImport.ConcurrentUpdate': 'Nhiệm vụ hoặc dữ liệu telemetry vừa thay đổi. Tải lại và thử lại.',
+      'MissionUpload.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
+      'MissionUpload.ConcurrentUpdate': 'Nhiệm vụ vừa thay đổi. Tải lại và thử lại.',
     }
     if (error.code && messages[error.code]) return messages[error.code]
     if (error.code === 'Mission.ConcurrentUpdate' || (error.status === 409 && error.code?.includes('ConcurrentUpdate'))) return 'Nhiệm vụ bay đã được cập nhật bởi người khác. Tải lại và kiểm tra trước khi tiếp tục.'
     if (error.status === 403) return 'Bạn không có quyền thực hiện thao tác này.'
+    if (error.status === 404) return 'Không tìm thấy nhiệm vụ bay hoặc dữ liệu trong phạm vi được phân công.'
   }
   if (error instanceof TypeError) return 'Không kết nối được máy chủ. Hãy kiểm tra kết nối và thử lại.'
   return error instanceof Error ? error.message : 'Không thể xử lý yêu cầu.'
+}
+
+export function isNotFound(error: unknown) {
+  return error instanceof ApiError && error.status === 404
+}
+
+// Mirrors the validation in SystemManagerMissionsController.ReplacePlantGps.
+export function parsePlantGpsTrees(json: string): PlantGpsTree[] {
+  let input: unknown
+  try { input = JSON.parse(json) } catch { throw new Error('Danh sách cây không phải JSON hợp lệ.') }
+  if (!Array.isArray(input) || input.length < 1 || input.length > 10000) throw new Error('Cần từ 1 đến 10.000 cây.')
+  const ids = new Set<string>()
+  return input.map(value => {
+    if (!value || typeof value !== 'object') throw new Error('Dữ liệu cây không hợp lệ.')
+    const raw = value as Record<string, unknown>
+    const treeId = typeof raw.treeId === 'string' ? raw.treeId.trim() : ''
+    const row = Number(raw.row), col = Number(raw.col)
+    const latitude = Number(raw.latitude), longitude = Number(raw.longitude), confidence = Number(raw.confidence)
+    const status = raw.status
+    const source = typeof raw.source === 'string' ? raw.source.trim() : ''
+    if (!treeId || treeId.length > 100) throw new Error('Mỗi cây cần mã (treeId) không trống, tối đa 100 ký tự.')
+    if (ids.has(treeId)) throw new Error(`Mã cây "${treeId}" bị trùng.`)
+    if (!Number.isInteger(row) || row < 1 || !Number.isInteger(col) || col < 1) throw new Error(`Cây "${treeId}": row/col phải là số nguyên bắt đầu từ 1.`)
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) throw new Error(`Cây "${treeId}": tọa độ không hợp lệ.`)
+    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw new Error(`Cây "${treeId}": confidence phải từ 0 đến 1.`)
+    if (status !== 'DETECTED' && status !== 'MISSING') throw new Error(`Cây "${treeId}": status phải là DETECTED hoặc MISSING.`)
+    if (!source || source.length > 100) throw new Error(`Cây "${treeId}": cần nguồn (source), tối đa 100 ký tự.`)
+    ids.add(treeId)
+    return { treeId, row, col, latitude, longitude, confidence, status, source }
+  })
 }

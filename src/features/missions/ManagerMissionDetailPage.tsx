@@ -1,6 +1,6 @@
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Button, Checkbox, Form, Input, Space, Tag } from 'antd'
+import { Alert, App, Button, Checkbox, Divider, Form, Input, Space, Table, Tag } from 'antd'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
@@ -9,8 +9,9 @@ import { text, type Action } from '../../management/actions'
 import { useAuth } from '../auth/AuthContext'
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
-import type { MissionDetail } from './missionTypes'
-import { dateTime, missionError, missionPurposeLabel, missionStatusLabel } from './missionWorkflow'
+import type { ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, NormalizedTelemetryLog, PlantGpsTree, TelemetrySegment } from './missionTypes'
+import { dateTime, fileSizeLabel, isNotFound, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, toScreamingSnakeCase, uploadBlockerLabel } from './missionWorkflow'
+import { PlantGpsPasteModal } from './PlantGpsPasteModal'
 import { RescheduleMissionModal } from './RescheduleMissionModal'
 
 const incidentTypeOptions = [
@@ -37,6 +38,14 @@ export function ManagerMissionDetailPage() {
   const [latest, setLatest] = useState<MissionDetail | null>(null)
   const [action, setAction] = useState<Action | null>(null)
   const [rescheduling, setRescheduling] = useState(false)
+  const [pastingPlantGps, setPastingPlantGps] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [uploadResults, setUploadResults] = useState<MediaUploadItemResult[] | null>(null)
+  const [logFile, setLogFile] = useState<File | null>(null)
+  const [normalized, setNormalized] = useState<NormalizedTelemetryLog | null>(null)
+  const [selectedSegmentIndexes, setSelectedSegmentIndexes] = useState<number[]>([])
+  const [telemetryOperation, setTelemetryOperation] = useState<{ payload: string; key: string } | null>(null)
+  const [importResult, setImportResult] = useState<ImportTelemetryResult | null>(null)
 
   const missionQuery = useQuery({ queryKey: ['mission-detail', farmId, missionId], queryFn: ({ signal }) => api.findMissionById(token, farmId, missionId, signal) })
   const mission = missionQuery.data
@@ -50,6 +59,12 @@ export function ManagerMissionDetailPage() {
   const droneQuery = useQuery({ queryKey: ['mission-drone', farmId, mission?.droneId], queryFn: ({ signal }) => api.getFarmDroneDetails(token, farmId, mission!.droneId, signal), enabled: Boolean(mission) })
   const checklistQuery = useQuery({ queryKey: ['mission-checklist', farmId, missionId], queryFn: ({ signal }) => api.getActivePreflightChecklist(token, farmId, missionId, signal), enabled: scheduled && !preflightDone })
   const currentAnswers = checklistQuery.data ? { ...Object.fromEntries(checklistQuery.data.items.map(item => [item.key, true])), ...answers } : answers
+  const plantGpsQuery = useQuery({ queryKey: ['mission-plant-gps', farmId, missionId], queryFn: ({ signal }) => api.getMissionPlantGps(token, farmId, missionId, signal) })
+  const postFlight = ['FLIGHT_COMPLETED', 'UPLOADING', 'READY_FOR_PROCESSING', 'PROCESSING', 'AWAITING_REVIEW', 'COMPLETED'].includes(status ?? '')
+  const telemetryEligible = status === 'FLIGHT_COMPLETED' || status === 'UPLOADING'
+  const uploading = status === 'UPLOADING'
+  const mediaQuery = useQuery({ queryKey: ['mission-media', farmId, missionId], queryFn: ({ signal }) => api.getMissionMedia(token, farmId, missionId, 1, 20, signal), enabled: postFlight })
+  const readinessQuery = useQuery({ queryKey: ['mission-readiness', farmId, missionId], queryFn: ({ signal }) => api.getUploadReadiness(token, farmId, missionId, signal), enabled: uploading })
 
   async function refreshAfter(mission: MissionDetail) {
     setLatest(mission)
@@ -74,6 +89,63 @@ export function ManagerMissionDetailPage() {
   const completeFlightMutation = useMutation({
     mutationFn: () => { if (version === undefined) throw new Error('Chưa tải được phiên bản nhiệm vụ.'); return api.completeFlightMission(token, farmId, missionId, version) },
     onSuccess: async data => { await refreshAfter(data); void message.success('Đã ghi nhận kết thúc chuyến bay.') },
+  })
+  const uploadMutation = useMutation({
+    mutationFn: async (files: File[]) => {
+      const results: MediaUploadItemResult[] = []
+      for (let start = 0; start < files.length; start += 20) {
+        const batch = files.slice(start, start + 20)
+        const batchResults = await api.uploadMissionMedia(token, farmId, missionId, batch)
+        results.push(...batchResults)
+        if (batchResults.some(item => item.status !== 'Completed')) break
+      }
+      return results
+    },
+    onSuccess: async results => { setUploadResults(results); await client.invalidateQueries({ queryKey: ['mission-media', farmId, missionId] }) },
+  })
+  async function openMediaDownloadUrl(mediaId: string) {
+    try {
+      const result = await api.getMissionMediaDownloadUrl(token, farmId, missionId, mediaId)
+      window.open(result.downloadUrl, '_blank', 'noopener,noreferrer')
+    } catch (error) { void message.error(missionError(error)) }
+  }
+  const normalizeMutation = useMutation({
+    mutationFn: () => { if (!logFile) throw new Error('Chọn file log bay (TXT/BBL).'); return api.normalizeTelemetryLog(token, farmId, missionId, logFile) },
+    onSuccess: data => { setNormalized(data); setSelectedSegmentIndexes([]); setImportResult(null) },
+  })
+  const importMutation = useMutation({
+    mutationFn: () => {
+      if (!normalized || version === undefined) throw new Error('Chưa có dữ liệu log đã decode.')
+      const segments = normalized.segments.filter(segment => selectedSegmentIndexes.includes(segment.segmentIndex))
+      if (segments.length === 0) throw new Error('Chọn ít nhất 1 segment để import.')
+      const totalPoints = segments.reduce((sum, segment) => sum + segment.points.length, 0)
+      if (totalPoints < 2 || totalPoints > 50000) throw new Error('Tổng số điểm của các segment đã chọn phải từ 2 đến 50.000.')
+      const body = {
+        sourceFileName: normalized.sourceFileName, sourceChecksum: normalized.sourceChecksum, expectedMissionVersion: version,
+        segments: segments.map(segment => ({
+          segmentIndex: segment.segmentIndex,
+          points: segment.points.map(point => ({ sequenceNumber: point.sequenceNumber, recordedAt: point.recordedAt, longitude: point.longitude, latitude: point.latitude, altitudeM: point.altitudeM, altitudeReference: null, headingDeg: point.headingDeg, speedMps: point.speedMps, horizontalAccuracyM: point.horizontalAccuracyM })),
+        })),
+      }
+      const next = operationFor(telemetryOperation, body)
+      setTelemetryOperation(next)
+      return api.importMissionTelemetry(token, farmId, missionId, body, next.key)
+    },
+    onSuccess: async data => {
+      setImportResult(data)
+      setLatest(previous => previous ? { ...previous, version: data.missionVersion, status: 'UPLOADING' } : previous)
+      await client.invalidateQueries({ queryKey: ['mission-detail', farmId, missionId] })
+      void message.success(data.reusedOperation ? 'Telemetry đã được ghi nhận từ trước.' : 'Đã import telemetry.')
+    },
+  })
+  const finalizeMutation = useMutation({
+    mutationFn: () => { if (version === undefined) throw new Error('Chưa tải được phiên bản nhiệm vụ.'); return api.finalizeMissionUpload(token, farmId, missionId, version) },
+    onSuccess: async data => {
+      // data.status is raw enum.ToString() (PascalCase) like the Prepare response — normalize before storing so later status === 'X' checks keep working.
+      setLatest(previous => previous ? { ...previous, version: data.missionVersion, status: toScreamingSnakeCase(data.status) } : previous)
+      await client.invalidateQueries({ queryKey: ['mission-detail', farmId, missionId] })
+      void message.success('Đã hoàn tất upload. Nhiệm vụ chuyển sang chờ xử lý — chưa phải đã hoàn tất.')
+    },
   })
 
   function cancelAction(): Action {
@@ -126,7 +198,7 @@ export function ManagerMissionDetailPage() {
         <div><dt>Phiên bản</dt><dd>v{version}</dd></div>
       </dl>
     </section>
-    {!draft && !scheduled && !inFlight && !flightFailed ? <Alert className="workflow-notice" type="info" showIcon message={`Nhiệm vụ đang ở trạng thái "${missionStatusLabel(status ?? mission.status)}", không ở bước có thao tác trong phạm vi đã triển khai.`} /> : null}
+    {!draft && !scheduled && !inFlight && !flightFailed && !postFlight ? <Alert className="workflow-notice" type="info" showIcon message={`Nhiệm vụ đang ở trạng thái "${missionStatusLabel(status ?? mission.status)}", không ở bước có thao tác trong phạm vi đã triển khai.`} /> : null}
     {flightFailed ? <Alert className="workflow-notice" type="warning" showIcon message="Chuyến bay trước đã lỗi." description="Chỉ lên lịch lại được nếu quyết định khắc phục khi báo lỗi là &quot;Cần lên lịch lại&quot;." /> : null}
     {draft || scheduled || inFlight || flightFailed ? <section className="resource-panel">
       <h2>Thao tác khác</h2>
@@ -171,8 +243,86 @@ export function ManagerMissionDetailPage() {
       {completeFlightMutation.error ? <Alert type="error" showIcon message={missionError(completeFlightMutation.error)} /> : null}
       <Button type="primary" loading={completeFlightMutation.isPending} onClick={() => completeFlightMutation.mutate()}>Kết thúc chuyến bay</Button>
     </section> : null}
+    {postFlight ? <section className="resource-panel">
+      <h2>Upload ảnh/video</h2>
+      <p className="form-hint">Chọn ảnh/video từ drone. Mỗi lần gửi tối đa 20 file, tổng tối đa 5 GiB. Nếu 1 file lỗi, các file gửi sau trong cùng đợt sẽ dừng (Chưa thử) — không tự gửi lại.</p>
+      <input type="file" multiple accept="image/*,video/*" disabled={uploadMutation.isPending} onChange={event => setSelectedFiles(Array.from(event.target.files ?? []))} />
+      <div><Button type="primary" disabled={selectedFiles.length === 0} loading={uploadMutation.isPending} onClick={() => uploadMutation.mutate(selectedFiles)}>Tải lên{selectedFiles.length ? ` (${selectedFiles.length} file)` : ''}</Button></div>
+      {uploadMutation.error ? <Alert type="error" showIcon message={missionError(uploadMutation.error)} /> : null}
+      {uploadResults ? <Table<MediaUploadItemResult> size="small" rowKey="index" dataSource={uploadResults} pagination={false} columns={[
+        { title: 'File', dataIndex: 'fileName' },
+        { title: 'Kết quả', render: (_, item) => <Tag color={item.status === 'Completed' ? 'success' : item.status === 'Failed' ? 'error' : 'default'}>{mediaUploadStatusLabels[item.status] ?? item.status}</Tag> },
+        { title: 'Chi tiết', render: (_, item) => item.media ? fileSizeLabel(item.media.fileSizeBytes) : item.errorMessage ?? '—' },
+      ]} /> : null}
+      <Divider />
+      <h3>Media đã upload</h3>
+      {mediaQuery.isError ? <CommonState type="error" description={missionError(mediaQuery.error)} retry={() => mediaQuery.refetch()} /> : <Table<MissionMedia> size="small" rowKey="mediaId" loading={mediaQuery.isPending} dataSource={mediaQuery.data?.items ?? []} pagination={false} locale={{ emptyText: 'Chưa có media nào.' }} columns={[
+        { title: 'Loại', render: (_, media) => mediaTypeLabels[media.mediaType] ?? media.mediaType },
+        { title: 'Vai trò', render: (_, media) => mediaRoleLabels[media.mediaRole] ?? media.mediaRole },
+        { title: 'Kích thước', render: (_, media) => fileSizeLabel(media.fileSizeBytes) },
+        { title: 'Tải lên lúc', render: (_, media) => dateTime(media.createdAt) },
+        { title: 'Thao tác', render: (_, media) => <Button size="small" onClick={() => { void openMediaDownloadUrl(media.mediaId) }}>Xem / tải</Button> },
+      ]} />}
+    </section> : null}
+    {telemetryEligible ? <section className="resource-panel">
+      <h2>Decode & Import Telemetry</h2>
+      <p className="form-hint">Giải mã file log bay Blackbox (TXT/BBL), chọn (các) segment hợp lệ rồi import. Import thay toàn bộ dữ liệu telemetry hiện có của nhiệm vụ, không cộng dồn.</p>
+      <input type="file" accept=".txt,.bbl,.csv" disabled={normalizeMutation.isPending} onChange={event => setLogFile(event.target.files?.[0] ?? null)} />
+      <div><Button disabled={!logFile} loading={normalizeMutation.isPending} onClick={() => normalizeMutation.mutate()}>Giải mã (Decode)</Button></div>
+      {normalizeMutation.error ? <Alert type="error" showIcon message={missionError(normalizeMutation.error)} /> : null}
+      {normalized ? <>
+        {normalized.warnings.length > 0 ? <Alert type="warning" showIcon message="Cảnh báo khi giải mã" description={normalized.warnings.join('; ')} /> : null}
+        <Table<TelemetrySegment> size="small" rowKey="segmentIndex" dataSource={normalized.segments} pagination={false}
+          rowSelection={{ selectedRowKeys: selectedSegmentIndexes, onChange: keys => setSelectedSegmentIndexes(keys as number[]), getCheckboxProps: segment => ({ disabled: !segment.fitsPointCountLimit }) }}
+          columns={[
+            { title: 'Segment', dataIndex: 'segmentIndex' },
+            { title: 'Số điểm', render: (_, segment) => `${segment.pointCount} (gốc ${segment.sourcePointCount}, loại ${segment.rejectedPointCount})` },
+            { title: 'Thời gian', render: (_, segment) => segment.firstRecordedAt ? `${dateTime(segment.firstRecordedAt)} – ${dateTime(segment.lastRecordedAt)}` : '—' },
+            { title: 'Hợp lệ để import', render: (_, segment) => <Tag color={segment.fitsPointCountLimit ? 'success' : 'default'}>{segment.fitsPointCountLimit ? 'Đạt' : 'Không đạt (2–50.000 điểm)'}</Tag> },
+          ]} />
+        {importResult ? <Alert type="success" showIcon message={importResult.reusedOperation ? 'Telemetry đã được ghi nhận từ trước.' : 'Đã import telemetry.'} description={`${importResult.pointCount} điểm · phiên bản nhiệm vụ mới: v${importResult.missionVersion}.`} /> : null}
+        {importMutation.error ? <Alert type="error" showIcon message={missionError(importMutation.error)} /> : null}
+        <Button type="primary" disabled={selectedSegmentIndexes.length === 0} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import telemetry đã chọn</Button>
+      </> : null}
+    </section> : null}
+    {uploading ? <section className="resource-panel">
+      <h2>Hoàn tất upload</h2>
+      {readinessQuery.isPending ? <CommonState type="loading" />
+        : readinessQuery.isError ? <CommonState type="error" description={missionError(readinessQuery.error)} retry={() => readinessQuery.refetch()} />
+        : readinessQuery.data ? <>
+          <dl className="detail-list">
+            <div><dt>Ảnh gốc</dt><dd>{readinessQuery.data.rawImageCount}</dd></div>
+            <div><dt>Video gốc</dt><dd>{readinessQuery.data.rawVideoCount}</dd></div>
+            <div><dt>Điểm telemetry</dt><dd>{readinessQuery.data.telemetryPointCount}</dd></div>
+            <div><dt>Phiên upload đang mở</dt><dd>{readinessQuery.data.hasActiveUploadSessions ? 'Có' : 'Không'}</dd></div>
+          </dl>
+          {readinessQuery.data.blockers.length > 0 ? <Alert type="warning" showIcon message="Chưa thể hoàn tất upload" description={<ul>{readinessQuery.data.blockers.map(code => <li key={code}>{uploadBlockerLabel(code)}</li>)}</ul>} /> : null}
+          {finalizeMutation.error ? <Alert type="error" showIcon message={missionError(finalizeMutation.error)} /> : null}
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={() => { void readinessQuery.refetch() }}>Kiểm tra lại</Button>
+            <Button type="primary" disabled={!readinessQuery.data.canFinalize || readinessQuery.data.blockers.length > 0} loading={finalizeMutation.isPending} onClick={() => finalizeMutation.mutate()}>Hoàn tất upload</Button>
+          </Space>
+        </> : null}
+    </section> : null}
+    <section className="resource-panel">
+      <div className="resource-panel-heading"><div><strong>GPS cây (lưu nháp)</strong><span>Bước lưu nháp trước khi đưa vào hệ thống chính thức (xem mục Publish ở màn kết quả nhận diện cây). Lưu sẽ thay toàn bộ danh sách hiện có, không cộng dồn.</span></div>
+        <Button onClick={() => setPastingPlantGps(true)}>Dán danh sách cây</Button>
+      </div>
+      {plantGpsQuery.isError && isNotFound(plantGpsQuery.error) ? <CommonState type="empty" title="Nhiệm vụ này không áp dụng GPS cây" />
+        : plantGpsQuery.isError ? <CommonState type="error" description={missionError(plantGpsQuery.error)} retry={() => plantGpsQuery.refetch()} />
+        : <Table<PlantGpsTree> size="small" rowKey="treeId" loading={plantGpsQuery.isPending} dataSource={plantGpsQuery.data?.trees ?? []} pagination={false} locale={{ emptyText: 'Chưa có cây nào được lưu.' }} columns={[
+          { title: 'Mã cây', dataIndex: 'treeId' },
+          { title: 'Hàng · Cột', render: (_, tree) => `${tree.row} · ${tree.col}` },
+          { title: 'Tọa độ', render: (_, tree) => `${tree.latitude.toFixed(6)}, ${tree.longitude.toFixed(6)}` },
+          { title: 'Độ tin cậy', render: (_, tree) => tree.confidence.toFixed(2) },
+          { title: 'Trạng thái', render: (_, tree) => <Tag color={tree.status === 'DETECTED' ? 'success' : 'default'}>{tree.status === 'DETECTED' ? 'Phát hiện' : 'Thiếu'}</Tag> },
+          { title: 'Nguồn', dataIndex: 'source' },
+        ]} />}
+    </section>
     {rescheduling && version !== undefined ? <RescheduleMissionModal token={token} farmId={farmId} missionId={missionId} currentVersion={version} currentDroneId={mission.droneId}
       close={() => setRescheduling(false)} onRescheduled={async result => { await refreshAfter(result); void message.success('Đã lên lịch lại nhiệm vụ bay.') }} /> : null}
+    {pastingPlantGps ? <PlantGpsPasteModal token={token} farmId={farmId} missionId={missionId} close={() => setPastingPlantGps(false)}
+      onSaved={async result => { await client.invalidateQueries({ queryKey: ['mission-plant-gps', farmId, missionId] }); void message.success(`Đã lưu ${result.savedCount} cây.`) }} /> : null}
     {action ? <ActionModal action={action} close={() => setAction(null)} /> : null}
   </>
 }

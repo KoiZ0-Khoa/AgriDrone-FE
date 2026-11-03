@@ -1,7 +1,7 @@
 import { apiRequest } from '../../api/client'
 import type { Drone } from '../drones/types'
 import type { Page } from '../surveys/types'
-import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, MissionDetail, MissionListItem, MissionPurpose, PrepareMissionSetResult } from './missionTypes'
+import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, FinalizeUploadResult, ImportTelemetryPointInput, ImportTelemetryResult, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPurpose, NormalizedTelemetryLog, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ReplacePlantGpsResult, UploadReadiness } from './missionTypes'
 
 const farmPath = (farmId: string) => `/api/system-manager/farms/${encodeURIComponent(farmId)}`
 const missionPath = (farmId: string, missionId: string) => `${farmPath(farmId)}/missions/${encodeURIComponent(missionId)}`
@@ -46,3 +46,35 @@ export const failFlightMission = (token: string, farmId: string, missionId: stri
 // Note: this endpoint's field is `expectedVersion`, unlike `expectedMissionVersion` used by every other mission transition route.
 export const rescheduleMission = (token: string, farmId: string, missionId: string, body: { expectedVersion: number; scheduledDate: string; replacementDroneId?: string }) =>
   apiRequest<MissionDetail>(`${missionPath(farmId, missionId)}/reschedule`, { method: 'POST', token, body })
+export const getMissionPlantGps = (token: string, farmId: string, missionId: string, signal?: AbortSignal) =>
+  apiRequest<PlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, { token, signal })
+export const replaceMissionPlantGps = (token: string, farmId: string, missionId: string, trees: PlantGpsTree[]) =>
+  apiRequest<ReplacePlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, { method: 'POST', token, body: { trees } })
+
+// Separate route prefix (api/missions/{missionId}/farms/{farmId}/...) — a different controller than SystemManagerMissionsController above.
+const mediaPath = (farmId: string, missionId: string) => `/api/missions/${encodeURIComponent(missionId)}/farms/${encodeURIComponent(farmId)}/media`
+export function uploadMissionMedia(token: string, farmId: string, missionId: string, files: File[]) {
+  const form = new FormData()
+  for (const file of files) form.append('files', file)
+  return apiRequest<MediaUploadItemResult[]>(mediaPath(farmId, missionId), { method: 'POST', token, body: form })
+}
+export function getMissionMedia(token: string, farmId: string, missionId: string, pageNumber = 1, pageSize = 20, signal?: AbortSignal) {
+  return apiRequest<Page<MissionMedia>>(`${mediaPath(farmId, missionId)}?${new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize) })}`, { token, signal })
+}
+export const getMissionMediaDownloadUrl = (token: string, farmId: string, missionId: string, mediaId: string, signal?: AbortSignal) =>
+  apiRequest<MediaDownloadUrl>(`${mediaPath(farmId, missionId)}/${encodeURIComponent(mediaId)}/download-url`, { token, signal })
+
+const telemetryPath = (farmId: string, missionId: string) => `/api/missions/${encodeURIComponent(missionId)}/farms/${encodeURIComponent(farmId)}/telemetry`
+export function normalizeTelemetryLog(token: string, farmId: string, missionId: string, file: File) {
+  const form = new FormData()
+  form.append('File', file)
+  return apiRequest<NormalizedTelemetryLog>(`${telemetryPath(farmId, missionId)}/normalize`, { method: 'POST', token, body: form })
+}
+export const importMissionTelemetry = (token: string, farmId: string, missionId: string, body: { sourceFileName: string; sourceChecksum: string; expectedMissionVersion: number; segments: { segmentIndex: number; points: ImportTelemetryPointInput[] }[] }, key: string) =>
+  apiRequest<ImportTelemetryResult>(`${telemetryPath(farmId, missionId)}/imports`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
+
+const uploadPath = (farmId: string, missionId: string) => `/api/missions/${encodeURIComponent(missionId)}/farms/${encodeURIComponent(farmId)}/upload`
+export const getUploadReadiness = (token: string, farmId: string, missionId: string, signal?: AbortSignal) =>
+  apiRequest<UploadReadiness>(`${uploadPath(farmId, missionId)}/readiness`, { token, signal })
+export const finalizeMissionUpload = (token: string, farmId: string, missionId: string, expectedMissionVersion: number) =>
+  apiRequest<FinalizeUploadResult>(`${uploadPath(farmId, missionId)}/finalize`, { method: 'POST', token, body: { expectedMissionVersion } })
