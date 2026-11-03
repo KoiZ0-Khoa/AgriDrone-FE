@@ -6,12 +6,12 @@ export type MappingCandidate = {
   correctedLongitude: number | null; correctedLatitude: number | null; correctedRowIndex: number | null; correctedColumnIndex: number | null
   proposedMatchedPlantId: string | null; correctedMatchedPlantId: string | null; reviewReason: string | null; reviewedAt: string | null; treeId: string | null
 }
-export type CandidateZone = { zoneId: string; gridBearingDeg: number; rowSpacingM: number; plantSpacingM: number; candidates: MappingCandidate[] }
 export type BaseMapDraft = {
   draftId: string; farmId: string; versionNumber: number; status: string; sourceSurveyOrderId: string
   sourceMissionId: string | null; farmBoundaryVersionId: string | null; handoffId: string | null; batchId: string | null; batchStatus: string | null
   jobId: string | null; modelVersion: string | null; algorithmVersion: string | null; producedAt: string | null
-  totalCandidates: number; pendingCount: number; acceptedCount: number; rejectedCount: number; relocatedCount: number; replacedCount: number; zones: CandidateZone[]
+  totalCandidates: number; pendingCount: number; acceptedCount: number; rejectedCount: number; relocatedCount: number; replacedCount: number
+  gridBearingDeg: number; rowSpacingM: number; plantSpacingM: number; candidates: MappingCandidate[]
 }
 export type CandidateReviewBody = {
   decision: ReviewDecision; correctedLongitude: number | null; correctedLatitude: number | null

@@ -54,7 +54,7 @@ export function RequestDetailPage() {
   return <>
     <Link className="back-link" to="/system/survey-requests"><ArrowLeftOutlined /> Danh sách yêu cầu</Link>
     <section className="resource-page-heading"><div><span className="page-kicker">{requestKindLabels[request.kind]}</span><h1>Yêu cầu khảo sát · {request.farmName}</h1><p>{request.surveyServiceName}</p><CopyReference value={request.requestNumber} label="Sao chép mã yêu cầu" /></div><Tag>{requestStatusLabels[request.status]}</Tag></section>
-    {approval ? <Alert className="workflow-notice" showIcon type="success" title="Đã tạo đơn khảo sát" description={<>{approval.requiresBaselineMapping ? 'Đơn cần khảo sát bản đồ nền trước. Manager đã được phân công; Owner mới sẽ nhận lời mời qua email.' : 'Đơn khảo sát đã được tạo cho nông trại. Manager tiếp tục xác minh phạm vi và điều kiện vận hành.'}<p><Link className="workflow-detail-link" to={`/system/survey-orders/${encodeURIComponent(approval.surveyOrderId)}/authorizations`}>Quản lý giấy tờ của đơn →</Link></p></>} /> : null}
+    {approval ? <Alert className="workflow-notice" showIcon type="success" title="Đã tạo đơn khảo sát" description={<>{approval.requiresBaselineMapping ? 'Đơn cần khảo sát bản đồ nền trước. Manager đã được phân công; Owner mới sẽ nhận lời mời qua email.' : 'Đơn khảo sát đã được tạo cho nông trại. Manager tiếp tục xác minh phạm vi và điều kiện vận hành.'}<p><Link className="workflow-detail-link" to={`/system/survey-orders?farmId=${encodeURIComponent(approval.farmId)}`}>Xem đơn khảo sát →</Link></p></>} /> : null}
     <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>Thông tin tiếp nhận</strong><span>Gửi lúc {dateTime(request.createdAt)}</span></div><Button icon={<ReloadOutlined />} onClick={() => { start.reset(); void query.refetch() }}>Tải lại</Button></div>
       <dl className="detail-list">
@@ -85,7 +85,7 @@ function ReviewModal({ token, type, request, close, done }: { token: string; typ
   const [managerPage, setManagerPage] = useState(1)
   const operation = useRef<ReturnType<typeof operationFor> | null>(null)
   const needsManager = type === 'approve' && request.kind !== 'EXISTING_FARM_SURVEY'
-  const managers = useQuery({ queryKey: ['eligible-system-managers', managerPage], queryFn: ({ signal }) => api.getManagers(token, managerPage, { status: 'ACTIVE', availability: 'AVAILABLE', qualificationStatus: 'QUALIFIED' }, signal), enabled: needsManager })
+  const managers = useQuery({ queryKey: ['eligible-system-managers', managerPage], queryFn: ({ signal }) => api.getManagers(token, managerPage, { status: 'ACTIVE', availability: 'AVAILABLE' }, signal), enabled: needsManager })
   const mutation = useMutation({ mutationFn: async (values: ReviewValues) => {
     const checklist = reviewChecklist(request.checklistVersion, values, type === 'approve')
     const body = { expectedVersion: request.version, reason: values.reason.trim(), checklist }
@@ -105,11 +105,10 @@ function ReviewModal({ token, type, request, close, done }: { token: string; typ
       <fieldset className="workflow-checklist"><legend>Kiểm tra trước khi quyết định</legend>
         {Object.entries(reviewLabels).map(([code, label]) => <Form.Item key={code} name={code} valuePropName="checked"><Checkbox>{label}</Checkbox></Form.Item>)}
       </fieldset>
-      <p className="form-hint">Đánh giá khả thi chưa phải xác nhận đã có văn bản đồng ý sử dụng dữ liệu hoặc giấy phép bay.</p>
       {unsupportedChecklist ? <Alert showIcon type="error" title="Phiên bản checklist không được hỗ trợ. Đóng và tải lại yêu cầu trước khi xét duyệt." /> : null}
       {needsManager ? <><Form.Item name="managerId" label="Manager phụ trách" rules={[{ required: true, message: 'Chọn Manager phụ trách' }]}><Select showSearch optionFilterProp="label" loading={managers.isPending} options={eligible.map(manager => ({ value: manager.id, label: `${manager.fullName} · ${manager.email}` }))} placeholder="Chọn Manager đủ điều kiện" /></Form.Item>
         <Pagination size="small" current={managerPage} pageSize={20} total={managers.data?.totalCount ?? 0} showSizeChanger={false} onChange={page => { form.setFieldValue('managerId', undefined); setManagerPage(page) }} />
-        {managers.isError ? <Alert type="error" title={workflowError(managers.error)} action={<Button onClick={() => { void managers.refetch() }}>Thử lại</Button>} /> : managers.isSuccess && !eligible.length ? <Alert type="info" title="Trang này chưa có Manager đủ điều kiện. Kiểm tra hồ sơ/chứng chỉ hoặc chuyển trang." /> : null}
+        {managers.isError ? <Alert type="error" title={workflowError(managers.error)} action={<Button onClick={() => { void managers.refetch() }}>Thử lại</Button>} /> : managers.isSuccess && !eligible.length ? <Alert type="info" title="Trang này chưa có Manager đủ điều kiện. Kiểm tra hồ sơ và khả năng nhận việc hoặc chuyển trang." /> : null}
       </> : type === 'approve' ? <p className="form-hint">Giữ Manager hiện đang phụ trách nông trại này.</p> : null}
       <Form.Item label={type === 'approve' ? 'Lý do phê duyệt' : 'Lý do từ chối'} name="reason" rules={[{ required: true, whitespace: true, message: 'Nhập lý do quyết định' }, { max: 4000 }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
       <Form.Item label="Ghi chú kiểm tra" name="notes"><Input.TextArea rows={2} maxLength={4000} /></Form.Item>

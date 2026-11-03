@@ -14,7 +14,7 @@ export function BaseMapReviewDialog({ token, selection, current, disabled, close
   const decision = Form.useWatch('decision', form)
   const pending = useRef(false)
   const { snapshot, candidateIds, batch } = selection
-  const candidate = snapshot.zones.flatMap(zone => zone.candidates).find(item => item.candidateId === candidateIds[0])!
+  const candidate = snapshot.candidates.find(item => item.candidateId === candidateIds[0])!
   const stale = draftFingerprint(snapshot) !== draftFingerprint(current) || !editableDraft(current)
   const mutation = useMutation({ retry: false, mutationFn: async (values: ReviewValues) => {
     if (stale || disabled) throw new Error('Bản đồ vừa thay đổi. Đóng biểu mẫu và tải lại.')

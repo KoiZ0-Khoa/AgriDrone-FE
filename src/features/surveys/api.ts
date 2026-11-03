@@ -4,7 +4,7 @@ import type { Approval, AssignedFarm, ExistingFarmIntake, FarmManagerAssignment,
 const id = encodeURIComponent
 const adminServices = '/api/system-admin/survey-services'
 const adminRequests = '/api/system-admin/survey-requests'
-export function getManagers(token: string, page = 1, filters: { status?: string; availability?: string; qualificationStatus?: string } = {}, signal?: AbortSignal) {
+export function getManagers(token: string, page = 1, filters: { status?: string; availability?: string } = {}, signal?: AbortSignal) {
   const params = new URLSearchParams({ pageNumber: String(page), pageSize: '20' })
   for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value)
   return apiRequest<Page<Manager>>(`/api/system/managers?${params}`, { token, signal })
@@ -14,7 +14,6 @@ export const inviteManager = (token: string, email: string) => apiRequest('/api/
 export const createManager = (token: string, userId: string) => apiRequest<Manager>('/api/system/managers', { method: 'POST', token, body: { userId } })
 export const changeManagerState = (token: string, profileId: string, state: 'activate' | 'suspend', body: { reason: string; expectedVersion: number }) => apiRequest<Manager>(`/api/system/managers/${id(profileId)}/${state}`, { method: 'PUT', token, body })
 export const changeManagerAvailability = (token: string, profileId: string, body: { availability: Manager['availability']; reason: string; expectedVersion: number }) => apiRequest<Manager>(`/api/system/managers/${id(profileId)}/availability`, { method: 'PUT', token, body })
-export const changeManagerQualification = (token: string, profileId: string, body: { status: Manager['qualificationStatus']; expiresAt: string | null; reason: string; expectedVersion: number }) => apiRequest<Manager>(`/api/system/managers/${id(profileId)}/qualification`, { method: 'PUT', token, body })
 export const getServices = (token: string, signal?: AbortSignal) => apiRequest<SurveyService[]>(adminServices, { token, signal })
 export const getPublicServices = (signal?: AbortSignal) => apiRequest<PublicService[]>('/api/public/survey-services', { signal })
 export const getPriceHistory = (token: string, serviceId: string, signal?: AbortSignal) => apiRequest<PriceHistory[]>(`${adminServices}/${id(serviceId)}/prices`, { token, signal })

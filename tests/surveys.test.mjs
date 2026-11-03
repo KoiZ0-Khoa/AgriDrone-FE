@@ -28,11 +28,10 @@ test('System Manager system sessions are accepted without tenant and routed sepa
   assert.equal(navigation.loginDestination('SYSTEM_ADMIN', '/system/managers'), '/system/managers')
 })
 
-test('eligible Managers require active, available and an unexpired qualification', () => {
-  const manager = { status: 'ACTIVE', availability: 'AVAILABLE', qualificationStatus: 'QUALIFIED', qualificationExpiresAt: '2026-12-01T00:00:00Z' }
-  const now = Date.parse('2026-10-16T00:00:00Z')
-  assert.equal(workflow.isEligibleManager(manager, now), true)
-  for (const changes of [{ status: 'SUSPENDED' }, { availability: 'UNAVAILABLE' }, { qualificationStatus: 'PENDING' }, { qualificationExpiresAt: null }, { qualificationExpiresAt: 'invalid' }, { qualificationExpiresAt: '2026-10-16T00:00:00Z' }]) assert.equal(workflow.isEligibleManager({ ...manager, ...changes }, now), false)
+test('eligible Managers require active and available, without a qualification field', () => {
+  const manager = { status: 'ACTIVE', availability: 'AVAILABLE' }
+  assert.equal(workflow.isEligibleManager(manager), true)
+  for (const changes of [{ status: 'SUSPENDED' }, { availability: 'UNAVAILABLE' }]) assert.equal(workflow.isEligibleManager({ ...manager, ...changes }), false)
 })
 
 test('Manager directory filters and detail preserve server version, paging and cancellation', async () => {
@@ -42,13 +41,13 @@ test('Manager directory filters and detail preserve server version, paging and c
     assert.equal(parsed.pathname, '/api/system/managers')
     assert.equal(parsed.searchParams.get('pageNumber'), '3')
     assert.equal(parsed.searchParams.get('status'), 'ACTIVE')
-    assert.equal(parsed.searchParams.get('qualificationStatus'), 'QUALIFIED')
+    assert.equal(parsed.searchParams.has('qualificationStatus'), false)
     assert.equal(parsed.searchParams.has('availability'), false)
     assert.equal(options.signal, controller.signal)
     assert.equal(options.headers.Authorization, 'Bearer admin')
     return Response.json({ items: [{ id: 'manager', version: 23 }], totalCount: 41 })
   }
-  assert.equal((await api.getManagers('admin', 3, { status: 'ACTIVE', qualificationStatus: 'QUALIFIED', availability: '' }, controller.signal)).items[0].version, 23)
+  assert.equal((await api.getManagers('admin', 3, { status: 'ACTIVE', availability: '' }, controller.signal)).items[0].version, 23)
   globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system/managers/m%2F1'); assert.equal(options.signal, controller.signal); return Response.json({ version: 24 }) }
   assert.equal((await api.getManager('admin', 'm/1', controller.signal)).version, 24)
 })
@@ -60,7 +59,6 @@ test('Manager mutations use stable string enums, reviewed version and correct me
     [() => api.changeManagerState('admin', 'm/id', 'activate', { reason: 'Verified', expectedVersion: 18 }), '/api/system/managers/m%2Fid/activate', 'PUT', { reason: 'Verified', expectedVersion: 18 }],
     [() => api.changeManagerState('admin', 'm/id', 'suspend', { reason: 'Paused', expectedVersion: 19 }), '/api/system/managers/m%2Fid/suspend', 'PUT', { reason: 'Paused', expectedVersion: 19 }],
     [() => api.changeManagerAvailability('admin', 'm', { availability: 'AVAILABLE', reason: 'Ready', expectedVersion: 20 }), '/api/system/managers/m/availability', 'PUT', { availability: 'AVAILABLE', reason: 'Ready', expectedVersion: 20 }],
-    [() => api.changeManagerQualification('admin', 'm', { status: 'QUALIFIED', expiresAt: '2027-01-01T00:00:00Z', reason: 'Checked', expectedVersion: 21 }), '/api/system/managers/m/qualification', 'PUT', { status: 'QUALIFIED', expiresAt: '2027-01-01T00:00:00Z', reason: 'Checked', expectedVersion: 21 }],
   ]
   for (const [run, path, method, body] of calls) {
     globalThis.fetch = async (url, options) => { assert.equal(url, `http://test.local${path}`); assert.equal(options.method, method); assert.equal(options.headers.Authorization, 'Bearer admin'); assert.deepEqual(JSON.parse(options.body), body); return Response.json({ version: 22 }) }
@@ -124,22 +122,22 @@ test('survey inbox uses server filters/paging and detail keeps checklist version
   const controller = new AbortController()
   globalThis.fetch = async (url, options) => { const parsed = new URL(url); assert.equal(parsed.pathname, '/api/system-admin/survey-requests'); assert.equal(parsed.searchParams.get('status'), 'UNDER_REVIEW'); assert.equal(parsed.searchParams.get('kind'), 'NEW_CUSTOMER'); assert.equal(parsed.searchParams.get('pageNumber'), '2'); assert.equal(options.signal, controller.signal); return Response.json({ items: [], totalCount: 21 }) }
   await api.getRequests('admin', 2, { status: 'UNDER_REVIEW', kind: 'NEW_CUSTOMER' }, controller.signal)
-  globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system-admin/survey-requests/r%2F1'); assert.equal(options.headers.Authorization, 'Bearer admin'); return Response.json({ checklistVersion: 'survey-request-review.v6', version: 513 }) }
+  globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system-admin/survey-requests/r%2F1'); assert.equal(options.headers.Authorization, 'Bearer admin'); return Response.json({ checklistVersion: 'survey-request-review.v7', version: 513 }) }
   assert.equal((await api.getRequest('admin', 'r/1')).version, 513)
 })
 
-const checklist = { 'contact-valid': true, 'dragon-fruit-farm-confirmed': true, 'service-area-supported': true, 'candidate-location-sufficient': true, 'consent-feasibility': true, 'flight-permission-feasibility': true, notes: null }
-test('v6 review sends exactly six hyphenated answers; rejection can record failed conditions', () => {
-  assert.deepEqual(workflow.reviewChecklist('survey-request-review.v6', { ...checklist, notes: '  Reviewed  ', contactValid: true, 'eligible-manager-available': true, version: 'old' }, true), { ...checklist, notes: 'Reviewed' })
+const checklist = { 'contact-valid': true, 'dragon-fruit-farm-confirmed': true, 'service-area-supported': true, 'candidate-location-sufficient': true, notes: null }
+test('v7 review sends exactly four hyphenated answers; rejection can record failed conditions', () => {
+  assert.deepEqual(workflow.reviewChecklist('survey-request-review.v7', { ...checklist, notes: '  Reviewed  ', contactValid: true, 'eligible-manager-available': true, version: 'old' }, true), { ...checklist, notes: 'Reviewed' })
   for (const code of Object.keys(checklist).filter(key => key !== 'notes')) {
-    assert.throws(() => workflow.reviewChecklist('survey-request-review.v6', { ...checklist, [code]: false }, true), /sáu điều kiện/)
-    assert.equal(workflow.reviewChecklist('survey-request-review.v6', { ...checklist, [code]: false }, false)[code], false)
+    assert.throws(() => workflow.reviewChecklist('survey-request-review.v7', { ...checklist, [code]: false }, true), /bốn điều kiện/)
+    assert.equal(workflow.reviewChecklist('survey-request-review.v7', { ...checklist, [code]: false }, false)[code], false)
     const missing = { ...checklist }; delete missing[code]
-    assert.throws(() => workflow.reviewChecklist('survey-request-review.v6', missing, true), /sáu điều kiện/)
+    assert.throws(() => workflow.reviewChecklist('survey-request-review.v7', missing, true), /bốn điều kiện/)
   }
   assert.throws(() => workflow.reviewChecklist('survey-request-review.v3', checklist, true), /Checklist/)
   assert.throws(() => workflow.reviewChecklist('survey-request-review.v5', checklist, true), /Checklist/)
-  assert.throws(() => workflow.reviewChecklist('survey-request-review.v7', checklist, false), /Checklist/)
+  assert.throws(() => workflow.reviewChecklist('survey-request-review.v6', checklist, false), /Checklist/)
 })
 
 test('request review sends actual checklist/version and approval idempotency key', async () => {
