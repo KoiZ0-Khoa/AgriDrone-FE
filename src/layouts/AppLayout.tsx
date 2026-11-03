@@ -1,13 +1,9 @@
 import {
-  BarChartOutlined,
   CloseOutlined,
   DashboardOutlined,
   CreditCardOutlined,
-  DatabaseOutlined,
-  DeploymentUnitOutlined,
   DownOutlined,
   EnvironmentOutlined,
-  GlobalOutlined,
   HomeOutlined,
   LogoutOutlined,
   MenuOutlined,
@@ -20,6 +16,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
 import { WorkspaceTheme } from '../components/WorkspaceTheme'
+import { SidebarToggle, useSidebarCollapsed } from './SidebarToggle'
 
 const roleLabels = {
   SYSTEM_ADMIN: 'Quản trị hệ thống',
@@ -28,15 +25,6 @@ const roleLabels = {
   TENANT_ADMIN: 'Quản trị tenant',
   MEMBER: 'Thành viên',
 }
-
-const plannedNavigation = [
-  { label: 'Bản đồ', icon: <GlobalOutlined aria-hidden="true" /> },
-  { label: 'Cây trồng', icon: <DeploymentUnitOutlined aria-hidden="true" /> },
-  { label: 'Nhiệm vụ bay', icon: <RocketOutlined aria-hidden="true" /> },
-  { label: 'Duyệt AI', icon: <SafetyCertificateOutlined aria-hidden="true" /> },
-  { label: 'Thu hoạch', icon: <DatabaseOutlined aria-hidden="true" /> },
-  { label: 'Phân tích', icon: <BarChartOutlined aria-hidden="true" /> },
-]
 
 const activeNavigation = [
   { to: '/farms', label: 'Nông trại', icon: <HomeOutlined aria-hidden="true" /> },
@@ -57,6 +45,7 @@ function getPageTitle(pathname: string) {
 
 export function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const { collapsed, toggleSidebar } = useSidebarCollapsed()
   const { session, logout } = useAuth()
   const { pathname } = useLocation()
 
@@ -67,7 +56,7 @@ export function AppLayout() {
   ]
 
   return (
-    <WorkspaceTheme><div className="app-shell">
+    <WorkspaceTheme><div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
 
       <aside className={`app-sidebar ${menuOpen ? 'is-open' : ''}`} id="app-sidebar">
@@ -88,27 +77,19 @@ export function AppLayout() {
 
         <nav className="sidebar-navigation" aria-label="Điều hướng chính">
           <span className="sidebar-group-label">VẬN HÀNH</span>
-          <NavLink to="/dashboard" onClick={() => setMenuOpen(false)}>
+          <NavLink to="/dashboard" aria-label="Tổng quan" title="Tổng quan" onClick={() => setMenuOpen(false)}>
             <DashboardOutlined aria-hidden="true" />
             <span>Tổng quan</span>
           </NavLink>
           {activeNavigation.map((item) => (
-            <NavLink to={item.to} onClick={() => setMenuOpen(false)} key={item.to}>
+            <NavLink to={item.to} aria-label={item.label} title={item.label} onClick={() => setMenuOpen(false)} key={item.to}>
               {item.icon}
               <span>{item.label}</span>
             </NavLink>
           ))}
-          {plannedNavigation.map((item) => (
-            <span className="sidebar-navigation-item is-disabled" aria-disabled="true" title="Chưa triển khai" key={item.label}>
-              {item.icon}
-              <span>{item.label}</span>
-            </span>
-          ))}
-          {session.role === 'MEMBER' && session.tenant ? <NavLink to="/my-farms" onClick={() => setMenuOpen(false)}><HomeOutlined /><span>Nông trại được giao</span></NavLink> : null}
-          {session.role === 'OWNER' ? <NavLink to="/survey-requests/new" onClick={() => setMenuOpen(false)}><RocketOutlined /><span>Đăng ký khảo sát</span></NavLink> : null}
-          {session.role === 'OWNER' ? <NavLink to="/survey-payments" onClick={() => setMenuOpen(false)}><CreditCardOutlined /><span>Thanh toán khảo sát</span></NavLink> : null}
-          <NavLink to="/account" onClick={() => setMenuOpen(false)}><SafetyCertificateOutlined /><span>Tài khoản</span></NavLink>
-          {session.role === 'OWNER' || session.role === 'TENANT_ADMIN' ? <span className="sidebar-navigation-item is-disabled" aria-disabled="true" title="Quản lý thành viên chưa được hỗ trợ trong phiên bản hiện tại"><DeploymentUnitOutlined /><span>Thành viên</span></span> : null}
+          {session.role === 'OWNER' ? <NavLink to="/survey-requests/new" aria-label="Đăng ký khảo sát" title="Đăng ký khảo sát" onClick={() => setMenuOpen(false)}><RocketOutlined /><span>Đăng ký khảo sát</span></NavLink> : null}
+          {session.role === 'OWNER' ? <NavLink to="/survey-payments" aria-label="Thanh toán khảo sát" title="Thanh toán khảo sát" onClick={() => setMenuOpen(false)}><CreditCardOutlined /><span>Thanh toán khảo sát</span></NavLink> : null}
+          <NavLink to="/account" aria-label="Tài khoản" title="Tài khoản" onClick={() => setMenuOpen(false)}><SafetyCertificateOutlined /><span>Tài khoản</span></NavLink>
         </nav>
 
         <div className="sidebar-footer">
@@ -131,7 +112,7 @@ export function AppLayout() {
 
       <div className="app-main-column">
         <header className="app-topbar">
-          <strong>{getPageTitle(pathname)}</strong>
+          <div className="app-topbar-heading"><SidebarToggle collapsed={collapsed} onToggle={toggleSidebar} controls="app-sidebar" /><strong>{getPageTitle(pathname)}</strong></div>
           <div className="topbar-scope">
             <span>Phạm vi hiện tại</span>
             <strong>{session.tenant?.name ?? 'Toàn hệ thống'}</strong>

@@ -46,6 +46,30 @@
 .app-shell .mobile-menu-button, .app-shell .sidebar-close { min-width: 44px; min-height: 44px; }
 .app-shell .account-copy strong { font-size: 14px; }
 .app-shell .account-copy small { font-size: 12px; }
+.app-shell .sidebar-brand, .app-shell .workspace-context, .app-shell .sidebar-footer { flex-shrink: 0; }
+.app-shell .sidebar-navigation { overflow-y: auto; min-height: 0; padding-bottom: 16px; }
+.app-shell .app-topbar-heading { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.app-shell .app-topbar-heading strong { font-size: 16px; }
+.app-shell .sidebar-toggle { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 1px solid var(--cloud); border-radius: 7px; color: var(--ink); background: #fff; font-size: 20px; cursor: pointer; }
+.app-shell .sidebar-toggle:hover { color: var(--mint); background: var(--mint-soft); }
+@media (min-width: 901px) {
+  .app-shell .app-sidebar { transition: width .18s ease; }
+  .app-shell .app-main-column { transition: margin-left .18s ease; }
+  .app-shell.sidebar-collapsed .app-sidebar { width: 80px; }
+  .app-shell.sidebar-collapsed .app-main-column { margin-left: 80px; }
+  .app-shell.sidebar-collapsed .sidebar-brand { justify-content: center; padding: 0; }
+  .app-shell.sidebar-collapsed .brand-symbol { width: 48px; height: 36px; }
+  .app-shell.sidebar-collapsed :is(.brand-copy, .workspace-context, .sidebar-group-label, .account-copy, .sidebar-manager-name) { display: none; }
+  .app-shell.sidebar-collapsed .sidebar-navigation { padding: 16px 12px; }
+  .app-shell.sidebar-collapsed .sidebar-navigation a { justify-content: center; padding: 10px; min-height: 48px; }
+  .app-shell.sidebar-collapsed .sidebar-navigation a > span:not(.anticon) { display: none; }
+  .app-shell.sidebar-collapsed .sidebar-navigation a svg { font-size: 20px; }
+  .app-shell.sidebar-collapsed .sidebar-footer { padding: 12px; }
+  .app-shell.sidebar-collapsed .account-button { justify-content: center; min-height: 48px; }
+  .app-shell.sidebar-collapsed .account-button > .anticon { display: none; }
+  .app-shell.sidebar-collapsed .sidebar-logout { width: 100%; height: 44px; padding: 0; }
+  .app-shell.sidebar-collapsed .sidebar-logout > span:not(.ant-btn-icon) { display: none; }
+}
 .app-shell .dw-manager .dw-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .app-shell .dw-manager .dw-main-grid { grid-template-columns: minmax(0, 1.25fr) minmax(300px, 1fr); }
 .app-shell .dw-manager .dw-farm-row { grid-template-columns: 42px minmax(0, 1fr) 12px; }

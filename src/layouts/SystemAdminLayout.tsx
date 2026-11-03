@@ -19,6 +19,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
 import { WorkspaceTheme } from '../components/WorkspaceTheme'
+import { SidebarToggle, useSidebarCollapsed } from './SidebarToggle'
 
 const navigation = [
   { to: '/system', end: true, label: 'Tổng quan hệ thống', icon: <DashboardOutlined aria-hidden="true" /> },
@@ -53,6 +54,7 @@ function pageTitle(pathname: string) {
 
 export function SystemAdminLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const { collapsed, toggleSidebar } = useSidebarCollapsed()
   const { session, logout } = useAuth()
   const { pathname } = useLocation()
   if (!session) return null
@@ -63,7 +65,7 @@ export function SystemAdminLayout() {
     { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: logout },
   ]
 
-  return <WorkspaceTheme><div className="app-shell system-admin-shell">
+  return <WorkspaceTheme><div className={`app-shell system-admin-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
     <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
     <aside className={`app-sidebar system-admin-sidebar ${menuOpen ? 'is-open' : ''}`} id="system-admin-sidebar">
       <div className="sidebar-brand">
@@ -77,7 +79,7 @@ export function SystemAdminLayout() {
       </div>
       <nav className="sidebar-navigation" aria-label="Điều hướng quản trị hệ thống">
         <span className="sidebar-group-label">QUẢN TRỊ</span>
-        {navigation.map(item => <NavLink end={item.end} to={item.to} onClick={() => setMenuOpen(false)} key={item.to}>{item.icon}<span>{item.label}</span></NavLink>)}
+        {navigation.map(item => <NavLink end={item.end} to={item.to} aria-label={item.label} title={item.label} onClick={() => setMenuOpen(false)} key={item.to}>{item.icon}<span>{item.label}</span></NavLink>)}
       </nav>
       <div className="sidebar-footer">
         <Dropdown menu={{ items: accountMenu }} trigger={['click']} placement="topLeft">
@@ -91,7 +93,7 @@ export function SystemAdminLayout() {
     </aside>
     {menuOpen ? <button className="sidebar-backdrop" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)} /> : null}
     <div className="app-main-column">
-      <header className="app-topbar"><strong>{pageTitle(pathname)}</strong><div className="topbar-scope"><span>Phạm vi</span><strong>Toàn hệ thống</strong></div></header>
+      <header className="app-topbar"><div className="app-topbar-heading"><SidebarToggle collapsed={collapsed} onToggle={toggleSidebar} controls="system-admin-sidebar" /><strong>{pageTitle(pathname)}</strong></div><div className="topbar-scope"><span>Phạm vi</span><strong>Toàn hệ thống</strong></div></header>
       <header className="mobile-header">
         <button className="mobile-menu-button" type="button" aria-label="Mở menu" aria-controls="system-admin-sidebar" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}><MenuOutlined aria-hidden="true" /></button>
         <Link to="/" aria-label="AgriDrone - Trang chủ" onClick={() => setMenuOpen(false)}><BrandMark /></Link>
