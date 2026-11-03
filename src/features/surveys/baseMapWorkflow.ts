@@ -28,7 +28,7 @@ export function candidateReviewBody(candidate: MappingCandidate, values: ReviewV
 export function batchReviewBody(draft: BaseMapDraft, selected: string[], decision: 'CreateNew' | 'MatchExisting' | 'Reject', reason: string): BatchReviewBody {
   if (!editableDraft(draft) || !selected.length || selected.length > 500 || new Set(selected).size !== selected.length) throw new Error('Chọn từ 1 đến 500 điểm khác nhau trong bản nháp đang duyệt.')
   if (!['CreateNew', 'MatchExisting', 'Reject'].includes(decision)) throw new Error('Quyết định này cần duyệt riêng từng điểm.')
-  const candidates = new Map(draft.zones.flatMap(zone => zone.candidates).map(item => [item.candidateId, item]))
+  const candidates = new Map(draft.candidates.map(item => [item.candidateId, item]))
   return { batchReason: reason.trim() || null, reviews: selected.map(candidateId => {
     const candidate = candidates.get(candidateId)
     if (!candidate) throw new Error('Có điểm không còn nằm trong bản đồ nháp. Tải lại trước khi duyệt.')

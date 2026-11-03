@@ -15,15 +15,15 @@ test('Manager base-map UI checks assignment, renders real draft candidates and k
     const { AuthProvider } = await server.ssrLoadModule('/src/features/auth/AuthContext.tsx')
     const { ManagerBaseMapsPage } = await server.ssrLoadModule('/src/features/surveys/ManagerBaseMapsPage.tsx')
     const { ApiError } = await server.ssrLoadModule('/src/api/client.ts')
-    function render(snapshot, { role = 'SYSTEM_MANAGER', assigned = true, index = false, invalid = false } = {}) {
+    function render(snapshot, { role = 'SYSTEM_MANAGER', assigned = true, index = false, invalid = false, orderId } = {}) {
       Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => JSON.stringify({ role, fullName: 'Manager', email: 'manager@example.test', phone: null, accessToken: 'fixture', expiresAt: '2099-01-01T00:00:00Z', tenant: null }) } })
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, gcTime: Infinity, staleTime: Infinity } } })
       clients.push(client)
       client.setQueryData(['manager-assigned-farms'], assigned ? [{ farmId, name: 'Nông trại Long An' }] : [])
-      const key = ['manager-base-map-draft', farmId, draftId]
+      const key = index ? ['manager-current-base-map-draft', farmId, orderId ?? ''] : ['manager-base-map-draft', farmId, draftId]
       if (snapshot instanceof Error) client.getQueryCache().build(client, { queryKey: key }).setState({ status: 'error', error: snapshot, fetchStatus: 'idle' })
       else client.setQueryData(key, snapshot)
-      const path = `/manager/farms/${invalid ? 'invalid-id' : farmId}/base-map-drafts${index ? '' : `/${draftId}`}`
+      const path = `/manager/farms/${invalid ? 'invalid-id' : farmId}/base-map-drafts${index ? '' : `/${draftId}`}${orderId ? `?surveyOrderId=${orderId}` : ''}`
       return renderToStaticMarkup(h(QueryClientProvider, { client }, h(MemoryRouter, { initialEntries: [path] }, h(AuthProvider, null, h(Routes, null,
         h(Route, { path: '/manager/farms/:farmId/base-map-drafts', element: h(ManagerBaseMapsPage) }),
         h(Route, { path: '/manager/farms/:farmId/base-map-drafts/:draftId', element: h(ManagerBaseMapsPage) }),
@@ -38,11 +38,20 @@ test('Manager base-map UI checks assignment, renders real draft candidates and k
     assert.match(html, /Kiểm tra bản đồ/)
     assert.match(html, /<button[^>]*disabled=""[^>]*><span>Phát hành bản đồ<\/span>/)
     assert.match(html, new RegExp(`/manager/orders/${draft.sourceSurveyOrderId}`))
-    const published = render({ ...draft, status: 'Published', batchStatus: 'Approved', pendingCount: 0, zones: [{ ...draft.zones[0], candidates: [{ ...candidate, reviewDecision: 'CreateNew' }] }] })
+    const published = render({ ...draft, status: 'Published', batchStatus: 'Approved', pendingCount: 0, candidates: [{ ...candidate, reviewDecision: 'CreateNew' }] })
     assert.match(published, /Bản đồ hiện chỉ được xem/)
     assert.match(published, /Đã phát hành/)
     assert.doesNotMatch(published, /ant-checkbox-input/)
-    assert.match(render(draft, { index: true }), /Mã bản đồ nháp/)
+    assert.match(render(draft, { index: true }), /tree_r1_c2/)
+    assert.doesNotMatch(render(draft, { index: true }), /Mã bản đồ nháp|Lọc khu vực bản đồ/)
+    const empty = render(new ApiError(404, 'Draft not found', 'FarmBaseMapDraft.NotFound'), { index: true })
+    assert.match(empty, /Chưa có bản đồ nháp chờ duyệt/)
+    assert.doesNotMatch(empty, /tree_r1_c2/)
+    assert.match(render(draft, { index: true, orderId: draft.sourceSurveyOrderId }), /tree_r1_c2/)
+    assert.match(render(draft, { index: true, orderId: 'invalid' }), /Liên kết bản đồ nháp không hợp lệ/)
+    const forbidden = render(new ApiError(403, 'Forbidden', 'Access.Forbidden', 'access-trace'), { index: true })
+    assert.match(forbidden, /access-trace/)
+    assert.doesNotMatch(forbidden, /Chưa có bản đồ nháp chờ duyệt|tree_r1_c2/)
     assert.match(render(draft, { assigned: false }), /không thuộc phân công/)
     assert.doesNotMatch(render(draft, { assigned: false }), /tree_r1_c2/)
     for (const role of ['OWNER', 'MEMBER', 'SYSTEM_ADMIN']) assert.match(render(draft, { role }), /Bạn không có quyền truy cập/)

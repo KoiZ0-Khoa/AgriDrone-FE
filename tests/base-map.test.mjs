@@ -19,11 +19,34 @@ test('draft read uses assigned Manager contract, cancellation and refuses mismat
     assert.equal(url, root); assert.equal(options.headers.Authorization, 'Bearer manager'); assert.equal(options.signal, abort.signal)
     return Response.json(draft)
   }
-  assert.equal((await api.getBaseMapDraft('manager', farmId, draftId, abort.signal)).zones[0].candidates[0].treeId, 'tree_r1_c2')
+  assert.equal((await api.getBaseMapDraft('manager', farmId, draftId, abort.signal)).candidates[0].treeId, 'tree_r1_c2')
   for (const changes of [{ farmId: plantId }, { draftId: plantId }]) {
     globalThis.fetch = async () => Response.json({ ...draft, ...changes })
     await assert.rejects(api.getBaseMapDraft('manager', farmId, draftId), /không khớp/)
   }
+})
+
+test('latest draft can be discovered by Farm or survey order and refuses a result from another order', async () => {
+  const abort = new AbortController()
+  for (const orderId of [undefined, draft.sourceSurveyOrderId]) {
+    globalThis.fetch = async (url, options) => {
+      const parsed = new URL(url)
+      assert.equal(parsed.pathname, `/api/system-manager/farms/${farmId}/base-map-drafts`)
+      assert.equal(parsed.searchParams.get('surveyOrderId'), orderId ?? null)
+      assert.equal(options.headers.Authorization, 'Bearer manager')
+      assert.equal(options.signal, abort.signal)
+      return Response.json(draft)
+    }
+    assert.equal((await api.getCurrentBaseMapDraft('manager', farmId, orderId, abort.signal)).draftId, draftId)
+  }
+  for (const changes of [{ farmId: plantId }, { sourceSurveyOrderId: plantId }]) {
+    globalThis.fetch = async () => Response.json({ ...draft, ...changes })
+    await assert.rejects(api.getCurrentBaseMapDraft('manager', farmId, draft.sourceSurveyOrderId), /không khớp/)
+  }
+  let calls = 0
+  globalThis.fetch = async () => { calls++; return Response.json({ errorCode: 'FarmBaseMapDraft.NotFound' }, { status: 404 }) }
+  await assert.rejects(api.getCurrentBaseMapDraft('manager', farmId), error => error.status === 404 && error.code === 'FarmBaseMapDraft.NotFound')
+  assert.equal(calls, 1)
 })
 
 test('all review decisions preserve position order and require the correct existing plant identity', () => {
@@ -36,7 +59,7 @@ test('all review decisions preserve position order and require the correct exist
 
 test('batch reviews use the actual selected points and each point own corrected plant/position, never a shared plant ID', () => {
   const other = { ...candidate, candidateId: '40000000-0000-0000-0000-000000000002', proposedMatchedPlantId: draftId, correctedLongitude: 108.4, correctedLatitude: 11.3 }
-  const snapshot = { ...draft, zones: [{ ...draft.zones[0], candidates: [candidate, other] }] }
+  const snapshot = { ...draft, candidates: [candidate, other] }
   const body = flow.batchReviewBody(snapshot, [candidate.candidateId, other.candidateId], 'MatchExisting', ' reviewed ')
   assert.equal(body.batchReason, 'reviewed')
   assert.deepEqual(body.reviews.map(item => item.correctedMatchedPlantId), [plantId, draftId])

@@ -40,7 +40,7 @@ export function LoginPage() {
     <main className="login-page">
       <a className="skip-link" href="#login-form">Chuyển đến biểu mẫu đăng nhập</a>
       <section className="login-main" id="login-form" aria-labelledby="login-title">
-        <div className="login-brand"><BrandMark /></div>
+        <div className="login-brand"><Link to="/" aria-label="AgriDrone - Trang chủ"><BrandMark /></Link></div>
         <div className="login-card">
           {auth.tenantSelection ? (
             <>

@@ -3,12 +3,12 @@ import type { ExistingFarmIntake, Manager, NewFarmIntake, PublicIntake, ReviewCh
 
 export const requestStatusLabels: Record<string, string> = { SUBMITTED: 'Chờ xét duyệt', UNDER_REVIEW: 'Đang xét duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Đã từ chối', WITHDRAWN: 'Đã rút' }
 export const requestKindLabels: Record<string, string> = { NEW_CUSTOMER: 'Khách hàng mới', EXISTING_TENANT_NEW_FARM: 'Nông trại mới', EXISTING_FARM_SURVEY: 'Khảo sát nông trại hiện có' }
-export const managerLabels: Record<string, string> = { ACTIVE: 'Hoạt động', SUSPENDED: 'Đình chỉ', AVAILABLE: 'Sẵn sàng', UNAVAILABLE: 'Chưa sẵn sàng', PENDING: 'Chờ xác minh', QUALIFIED: 'Đủ điều kiện', REVOKED: 'Đã thu hồi' }
+export const managerLabels: Record<string, string> = { ACTIVE: 'Hoạt động', SUSPENDED: 'Đình chỉ', AVAILABLE: 'Sẵn sàng', UNAVAILABLE: 'Chưa sẵn sàng' }
 export const serviceLabels: Record<string, string> = { ACTIVE: 'Đang cung cấp', EXPERIMENTAL: 'Thử nghiệm', RETIRED: 'Ngừng cung cấp' }
 export const dateTime = (value: string | null) => value ? new Date(value).toLocaleString('vi-VN') : 'Chưa có'
 export const priceLabel = (amount: number, currency: string) => `${new Intl.NumberFormat('vi-VN', { style: 'currency', currency }).format(amount)}/trụ`
-export function isEligibleManager(manager: Manager, now = Date.now()) {
-  return manager.status === 'ACTIVE' && manager.availability === 'AVAILABLE' && manager.qualificationStatus === 'QUALIFIED' && manager.qualificationExpiresAt !== null && Date.parse(manager.qualificationExpiresAt) > now
+export function isEligibleManager(manager: Manager) {
+  return manager.status === 'ACTIVE' && manager.availability === 'AVAILABLE'
 }
 export function workflowError(error: unknown) {
   if (error instanceof ApiError && !error.code && [502, 503, 504].includes(error.status) && ['Không thể xử lý yêu cầu.', 'Bad Gateway', 'Service Unavailable', 'Gateway Timeout'].includes(error.message)) return 'Chưa kết nối được máy chủ. Vui lòng thử lại sau.'
@@ -32,19 +32,17 @@ export function workflowError(error: unknown) {
   if (error instanceof TypeError) return 'Không kết nối được máy chủ. Hãy kiểm tra kết nối và thử lại.'
   return error instanceof Error ? error.message : 'Không thể xử lý yêu cầu.'
 }
-export const checklistVersion = 'survey-request-review.v6'
+export const checklistVersion = 'survey-request-review.v7'
 export const reviewLabels: Record<ReviewCode, string> = {
   'contact-valid': 'Thông tin liên hệ hợp lệ',
   'dragon-fruit-farm-confirmed': 'Xác nhận đây là nông trại thanh long',
   'service-area-supported': 'Nông trại thuộc khu vực hỗ trợ',
   'candidate-location-sufficient': 'Vị trí cung cấp đủ để xét duyệt sơ bộ, chưa phải ranh giới được xác minh',
-  'consent-feasibility': 'Có khả năng thu thập văn bản đồng ý sử dụng dữ liệu',
-  'flight-permission-feasibility': 'Có khả năng xin giấy phép bay',
 }
 export function reviewChecklist(version: string, values: Partial<ReviewChecklist>, approve: boolean): ReviewChecklist {
   if (version !== checklistVersion) throw new Error('Checklist đã thay đổi. Tải lại yêu cầu trước khi xét duyệt.')
   const answers = Object.fromEntries(Object.keys(reviewLabels).map(code => [code, values[code as ReviewCode] === true])) as Record<ReviewCode, boolean>
-  if (approve && Object.values(answers).some(value => !value)) throw new Error('Cần xác nhận đủ sáu điều kiện trước khi phê duyệt.')
+  if (approve && Object.values(answers).some(value => !value)) throw new Error('Cần xác nhận đủ bốn điều kiện trước khi phê duyệt.')
   return { ...answers, notes: values.notes?.trim() || null }
 }
 export function validateIntake(body: NewFarmIntake) {

@@ -16,7 +16,7 @@ import {
 } from '@ant-design/icons'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
 import { useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
 import { WorkspaceTheme } from '../components/WorkspaceTheme'
@@ -72,7 +72,7 @@ export function AppLayout() {
 
       <aside className={`app-sidebar ${menuOpen ? 'is-open' : ''}`} id="app-sidebar">
         <div className="sidebar-brand">
-          <NavLink to="/dashboard" aria-label="AgriDrone - Trang tổng quan" onClick={() => setMenuOpen(false)}>
+          <NavLink to="/" aria-label="AgriDrone - Trang chủ" onClick={() => setMenuOpen(false)}>
             <BrandMark />
           </NavLink>
           <button className="sidebar-close" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)}>
@@ -148,7 +148,7 @@ export function AppLayout() {
           >
             <MenuOutlined aria-hidden="true" />
           </button>
-          <BrandMark />
+          <Link to="/" aria-label="AgriDrone - Trang chủ" onClick={() => setMenuOpen(false)}><BrandMark /></Link>
         </header>
 
         <main className="app-content" id="main-content">

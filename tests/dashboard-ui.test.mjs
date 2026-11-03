@@ -70,13 +70,13 @@ test('Dashboards render real query shapes, scoped role actions, empty/error/part
     assert.doesNotMatch(forbidden, /Đăng ký khảo sát/)
 
     const request = { id: 'request-a', requestNumber: 'SR-2026-0012', kind: 'NEW_CUSTOMER', status: 'SUBMITTED', tenantName: 'Canh tác An Phú', farmName: 'Vườn thanh long Hàm Liêm', surveyServiceCode: 'PLANT_HEALTH', createdAt: '2026-10-26T08:00:00Z' }
-    const order = { surveyOrderId: 'order-a', orderNumber: 'SO-2026-0038', farmName: 'Nông trại An Phú', surveyServiceName: 'Khảo sát sức khỏe cây', status: 'AWAITING_BASELINE_APPOINTMENT', createdAt: '2026-10-25T08:00:00Z' }
+    const order = { surveyOrderId: 'order-a', farmId: 'farm-a', orderNumber: 'SO-2026-0038', farmName: 'Nông trại An Phú', surveyServiceName: 'Khảo sát sức khỏe cây', status: 'AWAITING_BASELINE_APPOINTMENT', createdAt: '2026-10-25T08:00:00Z' }
     const adminData = [[['api-health'], true], [['system-tenants', 1], { totalCount: 18, items: [] }], [['system-managers', 1, {}], { totalCount: 6, items: [] }], [['survey-requests', 1, { status: 'SUBMITTED' }], { totalCount: 12, items: [request, { ...request, id: 'request-b', requestNumber: 'SR-2026-0011', farmName: 'Nông trại Tân An', tenantName: 'Canh tác Tân An' }, { ...request, id: 'request-c', requestNumber: 'SR-2026-0010', farmName: 'Vườn thanh long ruột đỏ', kind: 'EXISTING_TENANT_NEW_FARM' }] }], [['survey-requests', 1, { status: 'UNDER_REVIEW' }], { totalCount: 5, items: [] }], [['system-survey-orders', 1, { status: '', tenantId: '', farmId: '' }], { totalCount: 38, items: [order, { ...order, surveyOrderId: 'order-b', orderNumber: 'SO-2026-0037', farmName: 'Nông trại Hàm Thuận', status: 'AWAITING_BASELINE_DEPOSIT' }, { ...order, surveyOrderId: 'order-c', orderNumber: 'SO-2026-0036', farmName: 'Nông trại Tân An', status: 'COMPLETED' }] }], [['survey-services'], [{ status: 'ACTIVE', currentPrice: { amountPerPole: 1500 } }]]]
     const admin = render(SystemDashboardPage, 'SYSTEM_ADMIN', adminData, true)
     assert.match(admin, /Tổng quan vận hành/)
     assert.match(admin, /SR-2026-0012/)
     assert.match(admin, /href="\/system\/survey-requests\/request-a"/)
-    assert.match(admin, /href="\/system\/survey-orders\/order-a\/authorizations"/)
+    assert.match(admin, /href="\/system\/survey-orders\?farmId=farm-a"/)
     assert.match(admin, /38/)
     assert.match(admin, /Đang xét duyệt/)
     const failure = new ApiError(503, 'Dịch vụ đang tạm gián đoạn.', 'Service.Unavailable')

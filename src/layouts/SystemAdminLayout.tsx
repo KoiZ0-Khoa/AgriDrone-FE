@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
 import { useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
 import { WorkspaceTheme } from '../components/WorkspaceTheme'
@@ -67,7 +67,7 @@ export function SystemAdminLayout() {
     <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
     <aside className={`app-sidebar system-admin-sidebar ${menuOpen ? 'is-open' : ''}`} id="system-admin-sidebar">
       <div className="sidebar-brand">
-        <NavLink to="/system" aria-label="AgriDrone - Quản trị hệ thống" onClick={() => setMenuOpen(false)}><BrandMark /></NavLink>
+        <NavLink to="/" aria-label="AgriDrone - Trang chủ" onClick={() => setMenuOpen(false)}><BrandMark /></NavLink>
         <button className="sidebar-close" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)}><CloseOutlined aria-hidden="true" /></button>
       </div>
       <div className="workspace-context system-workspace-context">
@@ -94,7 +94,7 @@ export function SystemAdminLayout() {
       <header className="app-topbar"><strong>{pageTitle(pathname)}</strong><div className="topbar-scope"><span>Phạm vi</span><strong>Toàn hệ thống</strong></div></header>
       <header className="mobile-header">
         <button className="mobile-menu-button" type="button" aria-label="Mở menu" aria-controls="system-admin-sidebar" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}><MenuOutlined aria-hidden="true" /></button>
-        <BrandMark />
+        <Link to="/" aria-label="AgriDrone - Trang chủ" onClick={() => setMenuOpen(false)}><BrandMark /></Link>
       </header>
       <main className="app-content" id="main-content"><div className="page-container"><Outlet /></div></main>
     </div>

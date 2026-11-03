@@ -1,14 +1,15 @@
 import { CopyReference, readableCode } from '../../components/RecordReference'
 import { ArrowLeftOutlined, CheckCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Button, Form, Input, Modal, Select, Space, Table, Tag } from 'antd'
+import { Alert, App, Button, Input, Modal, Select, Space, Table, Tag } from 'antd'
 import { useId, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { getAssignedFarms } from './api'
-import { getBaseMapDraft, publishBaseMapDraft, validateBaseMapDraft } from './baseMapApi'
-import type { MappingCandidate, MappingValidation, PublishedBaseMap } from './baseMapTypes'
+import { getBaseMapDraft, getCurrentBaseMapDraft, publishBaseMapDraft, validateBaseMapDraft } from './baseMapApi'
+import type { BaseMapDraft, MappingCandidate, MappingValidation, PublishedBaseMap } from './baseMapTypes'
 import { canPublishDraft, decisionLabel, decisionLabels, draftFingerprint, editableDraft, stateToken, validGuid } from './baseMapWorkflow'
 import { BaseMapReviewDialog, type ReviewSelection } from './BaseMapReviewDialog'
 import { SurveyMutationError } from './SurveyMutationError'
@@ -17,14 +18,15 @@ import { dateTime, workflowError } from './workflow'
 export function ManagerBaseMapsPage() {
   const { session } = useAuth()
   const params = useParams()
+  const [searchParams] = useSearchParams()
   const farmId = params.farmId?.toLowerCase() ?? '', draftId = params.draftId?.toLowerCase()
+  const surveyOrderId = searchParams.get('surveyOrderId')?.toLowerCase()
   if (session?.role !== 'SYSTEM_MANAGER') return <CommonState type="forbidden" />
-  if (!validGuid(farmId) || (draftId !== undefined && !validGuid(draftId))) return <CommonState type="error" description="Liên kết bản đồ nháp không hợp lệ." />
-  return <AssignedBaseMap key={`${farmId}:${draftId ?? ''}`} token={session.accessToken} farmId={farmId} draftId={draftId} />
+  if (!validGuid(farmId) || (draftId !== undefined && !validGuid(draftId)) || (surveyOrderId !== undefined && !validGuid(surveyOrderId))) return <CommonState type="error" description="Liên kết bản đồ nháp không hợp lệ." />
+  return <AssignedBaseMap key={`${farmId}:${draftId ?? ''}:${surveyOrderId ?? ''}`} token={session.accessToken} farmId={farmId} draftId={draftId} surveyOrderId={surveyOrderId} />
 }
 
-function AssignedBaseMap({ token, farmId, draftId }: { token: string; farmId: string; draftId?: string }) {
-  const navigate = useNavigate()
+function AssignedBaseMap({ token, farmId, draftId, surveyOrderId }: { token: string; farmId: string; draftId?: string; surveyOrderId?: string }) {
   const assigned = useQuery({ queryKey: ['manager-assigned-farms'], queryFn: ({ signal }) => getAssignedFarms(token, signal), retry: false })
   const farm = assigned.data?.find(item => item.farmId.toLowerCase() === farmId)
   const back = <Link className="back-link" to={`/manager/farms/${farmId}`}><ArrowLeftOutlined /> Chi tiết nông trại</Link>
@@ -32,19 +34,26 @@ function AssignedBaseMap({ token, farmId, draftId }: { token: string; farmId: st
   if (assigned.isError) return <CommonState type="error" description={workflowError(assigned.error)} retry={() => assigned.refetch()} />
   if (!farm) return <>{back}<CommonState type="forbidden" description="Nông trại không thuộc phân công hiện tại của bạn." /></>
   if (draftId) return <BaseMapDraftDetail token={token} farmId={farmId} draftId={draftId} farmName={farm.name} />
-  return <>{back}<section className="resource-page-heading"><div><span className="page-kicker">{farm.name}</span><h1>Duyệt bản đồ nền</h1><p>Mở kết quả nhận diện để kiểm tra cây/trụ trước khi phát hành.</p></div></section>
-    <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Mở bản đồ nháp</strong><span>Sử dụng mã bản đồ được cung cấp sau khi xử lý kết quả khảo sát.</span></div></div>
-      <Form layout="vertical" onFinish={({ draftId: value }: { draftId: string }) => navigate(`/manager/farms/${farmId}/base-map-drafts/${value.trim().toLowerCase()}`)}><Form.Item name="draftId" label="Mã bản đồ nháp" rules={[{ required: true, message: 'Nhập mã bản đồ nháp.' }, { validator: (_, value) => validGuid((value ?? '').trim()) ? Promise.resolve() : Promise.reject(new Error('Mã bản đồ phải là GUID hợp lệ.')) }]}><Input placeholder="Nhập mã bản đồ nháp" /></Form.Item><Button type="primary" htmlType="submit">Mở bản đồ</Button></Form>
-    </section></>
+  return <CurrentBaseMapDraft token={token} farmId={farmId} farmName={farm.name} surveyOrderId={surveyOrderId} />
 }
 
-type CandidateRow = MappingCandidate & { zoneId: string }
-export function BaseMapDraftDetail({ token, farmId, draftId, farmName }: { token: string; farmId: string; draftId: string; farmName: string }) {
+function CurrentBaseMapDraft({ token, farmId, farmName, surveyOrderId }: { token: string; farmId: string; farmName: string; surveyOrderId?: string }) {
+  const query = useQuery({ queryKey: ['manager-current-base-map-draft', farmId, surveyOrderId ?? ''], queryFn: ({ signal }) => getCurrentBaseMapDraft(token, farmId, surveyOrderId, signal), retry: false })
+  if (query.data && !query.isError) return <BaseMapDraftDetail key={query.data.draftId} token={token} farmId={farmId} draftId={query.data.draftId} farmName={farmName} initialDraft={query.data} />
+  const back = <Link className="back-link" to={`/manager/farms/${farmId}`}><ArrowLeftOutlined /> Chi tiết nông trại</Link>
+  const empty = query.error instanceof ApiError && query.error.status === 404 && query.error.code === 'FarmBaseMapDraft.NotFound'
+  if (query.isPending) return <>{back}<CommonState type="loading" title="Đang tìm bản đồ nháp mới nhất" /></>
+  return <>{back}<section className="resource-page-heading"><div><span className="page-kicker">{farmName}</span><h1>Duyệt bản đồ nền</h1></div></section>
+    {empty ? <section className="resource-panel"><Alert showIcon type="info" title="Chưa có bản đồ nháp chờ duyệt" description="Bản đồ sẽ xuất hiện sau khi kết quả khảo sát được xử lý và chuyển sang bước xét duyệt." />{surveyOrderId ? <Link className="workflow-detail-link" to={`/manager/orders/${encodeURIComponent(surveyOrderId)}`}>Xem đơn khảo sát →</Link> : null}</section> : <SurveyMutationError error={query.error} />}
+    <Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => { void query.refetch() }}>Tải lại</Button></>
+}
+
+export function BaseMapDraftDetail({ token, farmId, draftId, farmName, initialDraft }: { token: string; farmId: string; draftId: string; farmName: string; initialDraft?: BaseMapDraft }) {
   const client = useQueryClient()
   const { message } = App.useApp()
   const queryKey = ['manager-base-map-draft', farmId, draftId]
-  const query = useQuery({ queryKey, queryFn: ({ signal }) => getBaseMapDraft(token, farmId, draftId, signal), retry: false })
-  const [zoneId, setZoneId] = useState(''), [decision, setDecision] = useState(''), [search, setSearch] = useState('')
+  const query = useQuery({ queryKey, queryFn: ({ signal }) => getBaseMapDraft(token, farmId, draftId, signal), initialData: initialDraft, retry: false })
+  const [decision, setDecision] = useState(''), [search, setSearch] = useState('')
   const [selected, setSelected] = useState<string[]>([]), [editor, setEditor] = useState<ReviewSelection | null>(null)
   const [validation, setValidation] = useState<{ fingerprint: string; data: MappingValidation } | null>(null)
   const [publishOpen, setPublishOpen] = useState(false), [published, setPublished] = useState<PublishedBaseMap | null>(null)
@@ -73,8 +82,8 @@ export function BaseMapDraftDetail({ token, farmId, draftId, farmName }: { token
   if (query.isPending) return <>{back}<CommonState type="loading" title="Đang tải bản đồ nháp" /></>
   if (query.isError) return <>{back}<SurveyMutationError error={query.error} /><Button onClick={() => { void refresh() }}>Tải lại bản đồ</Button></>
   const draft = query.data
-  const rows: CandidateRow[] = draft.zones.flatMap(zone => zone.candidates.map(candidate => ({ ...candidate, zoneId: zone.zoneId })))
-  const filtered = rows.filter(item => (!zoneId || item.zoneId === zoneId) && (!decision || stateToken(item.reviewDecision) === stateToken(decision)) && (!search.trim() || `${item.treeId ?? ''} ${item.candidateId}`.toLowerCase().includes(search.trim().toLowerCase())))
+  const rows = draft.candidates
+  const filtered = rows.filter(item => (!decision || stateToken(item.reviewDecision) === stateToken(decision)) && (!search.trim() || `${item.treeId ?? ''} ${item.candidateId}`.toLowerCase().includes(search.trim().toLowerCase())))
   const busy = query.isFetching || validate.isPending || publish.isPending
   const editable = editableDraft(draft) && !published && !publish.error && !validate.error
   const checked = validation?.fingerprint === draftFingerprint(draft) ? validation.data : null
@@ -87,17 +96,17 @@ export function BaseMapDraftDetail({ token, farmId, draftId, farmName }: { token
     {!editableDraft(draft) ? <Alert className="workflow-notice" showIcon type="info" title="Bản đồ hiện chỉ được xem" description={`Trạng thái: ${stateToken(draft.status) === 'PUBLISHED' ? 'Đã phát hành' : stateToken(draft.status) === 'SUPERSEDED' ? 'Đã được thay thế' : draft.status}.`} /> : null}
     <div className="mapping-summary" aria-label="Tiến độ duyệt"><div><span>Tổng số điểm</span><strong>{draft.totalCandidates}</strong></div><div><span>Chưa duyệt</span><strong>{draft.pendingCount}</strong></div><div><span>Đã xử lý</span><strong>{draft.acceptedCount + draft.relocatedCount + draft.replacedCount}</strong></div><div><span>Đã loại bỏ</span><strong>{draft.rejectedCount}</strong></div></div>
     <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Cây / trụ nhận diện</strong><span>Dữ liệu nhận lúc {dateTime(draft.producedAt)}</span></div><Link className="workflow-detail-link" to={`/manager/orders/${encodeURIComponent(draft.sourceSurveyOrderId)}`}>Xem đơn khảo sát →</Link></div>
-      <div className="workflow-toolbar mapping-filters"><Input.Search aria-label="Tìm mã cây hoặc điểm" placeholder="Tìm mã cây / điểm" value={search} onChange={event => changeFilter(() => setSearch(event.target.value))} /><Select aria-label="Lọc khu vực bản đồ" value={zoneId} onChange={value => changeFilter(() => setZoneId(value))} options={[{ value: '', label: 'Tất cả khu vực' }, ...draft.zones.map((zone, index) => ({ value: zone.zoneId, label: `Khu vực ${index + 1}` }))]} /><Select aria-label="Lọc quyết định duyệt" value={decision} onChange={value => changeFilter(() => setDecision(value))} options={[{ value: '', label: 'Tất cả quyết định' }, ...Object.entries(decisionLabels).map(([value, label]) => ({ value, label }))]} /></div>
+      <div className="workflow-toolbar mapping-filters"><Input.Search aria-label="Tìm mã cây hoặc điểm" placeholder="Tìm mã cây / điểm" value={search} onChange={event => changeFilter(() => setSearch(event.target.value))} /><Select aria-label="Lọc quyết định duyệt" value={decision} onChange={value => changeFilter(() => setDecision(value))} options={[{ value: '', label: 'Tất cả quyết định' }, ...Object.entries(decisionLabels).map(([value, label]) => ({ value, label }))]} /></div>
       <Space className="workflow-toolbar" wrap><Button disabled={!editable || busy || !selected.length || selected.length > 500 || !!editor} onClick={() => openReview(selected, true)}>Duyệt {selected.length ? `${selected.length} điểm` : 'các điểm đã chọn'}</Button>{selected.length > 0 ? <Button onClick={() => setSelected([])}>Bỏ chọn</Button> : null}<span className="form-hint">Duyệt hàng loạt tối đa 500 điểm mỗi lượt.</span></Space>
-      <Table<CandidateRow> rowKey="candidateId" dataSource={filtered} loading={query.isFetching} scroll={{ x: 1050 }} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} locale={{ emptyText: 'Không có điểm phù hợp.' }} rowSelection={editable ? { selectedRowKeys: selected, onChange: keys => setSelected(keys.map(String)), preserveSelectedRowKeys: true, getCheckboxProps: () => ({ disabled: busy || !!editor }) } : undefined} columns={[
-        { title: 'Cây / điểm', render: (_, item) => <><strong>{readableCode(item.treeId) ?? 'Điểm nhận diện'}</strong></> },
+      <Table<MappingCandidate> rowKey="candidateId" dataSource={filtered} loading={query.isFetching} scroll={{ x: 1050 }} pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }} locale={{ emptyText: 'Không có điểm phù hợp.' }} rowSelection={editable ? { selectedRowKeys: selected, onChange: keys => setSelected(keys.map(String)), preserveSelectedRowKeys: true, getCheckboxProps: () => ({ disabled: busy || !!editor }) } : undefined} columns={[
+        { title: 'Cây / điểm', render: (_, item) => <strong>{readableCode(item.treeId) ?? 'Điểm nhận diện'}</strong> },
         { title: 'Hàng / cột', render: (_, item) => `${item.correctedRowIndex ?? item.proposedRowIndex ?? '—'} / ${item.correctedColumnIndex ?? item.proposedColumnIndex ?? '—'}` },
         { title: 'Kinh độ / vĩ độ', render: (_, item) => <>{item.correctedLongitude ?? item.longitude}<br />{item.correctedLatitude ?? item.latitude}</> },
         { title: 'Ranh giới', render: (_, item) => <Tag color={item.boundaryClassification === 'IN_BOUNDARY' ? 'success' : 'warning'}>{({ IN_BOUNDARY: 'Trong ranh giới', OUT_OF_BOUNDARY: 'Ngoài ranh giới', NEEDS_REVIEW: 'Cần kiểm tra' } as Record<string, string>)[item.boundaryClassification] ?? item.boundaryClassification}</Tag> },
         { title: 'Độ tin cậy', render: (_, item) => `${(item.positionConfidence * 100).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%` },
         { title: 'Quyết định', render: (_, item) => <Tag>{decisionLabel(item.reviewDecision)}</Tag> },
         { title: 'Thao tác', render: (_, item) => <Button disabled={!editable || busy || !!editor} onClick={() => openReview([item.candidateId], false)}>Xem và duyệt</Button> },
-      ]} expandable={{ expandedRowRender: item => <dl className="detail-list"><div><dt>Khu vực</dt><dd>Khu vực {draft.zones.findIndex(zone => zone.zoneId === item.zoneId) + 1}</dd></div><div><dt>Cây được ghép</dt><dd>{(item.correctedMatchedPlantId ?? item.proposedMatchedPlantId) ? <CopyReference value={item.correctedMatchedPlantId ?? item.proposedMatchedPlantId} label="Sao chép mã cây được ghép" /> : 'Chưa có'}</dd></div><div><dt>Vị trí gốc</dt><dd>{item.longitude}, {item.latitude}</dd></div><div><dt>Ghi chú duyệt</dt><dd>{item.reviewReason ?? 'Không có'}</dd></div><div><dt>Duyệt lúc</dt><dd>{dateTime(item.reviewedAt)}</dd></div></dl> }} />
+      ]} expandable={{ expandedRowRender: item => <dl className="detail-list"><div><dt>Cây được ghép</dt><dd>{(item.correctedMatchedPlantId ?? item.proposedMatchedPlantId) ? <CopyReference value={item.correctedMatchedPlantId ?? item.proposedMatchedPlantId} label="Sao chép mã cây được ghép" /> : 'Chưa có'}</dd></div><div><dt>Vị trí gốc</dt><dd>{item.longitude}, {item.latitude}</dd></div><div><dt>Ghi chú duyệt</dt><dd>{item.reviewReason ?? 'Không có'}</dd></div><div><dt>Duyệt lúc</dt><dd>{dateTime(item.reviewedAt)}</dd></div></dl> }} />
     </section>
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Kết quả kiểm tra</strong><span>Kiểm tra lại sau mỗi lần chỉnh sửa hoặc tải lại bản đồ.</span></div></div><SurveyMutationError error={validate.error ?? publish.error} />
       {checked ? <><Alert showIcon type={checked.isValid ? 'success' : 'warning'} title={checked.isValid ? `Hợp lệ · ${checked.confirmedPublishablePoleCount} trụ có thể phát hành` : 'Còn lỗi cần xử lý trước khi phát hành'} /><Table rowKey={(_, index) => String(index)} dataSource={checked.issues} pagination={{ pageSize: 10, hideOnSinglePage: true }} locale={{ emptyText: 'Không có lỗi kiểm tra.' }} columns={[{ title: 'Mức độ', render: (_, issue) => stateToken(issue.severity) === 'ERROR' ? 'Lỗi' : 'Lưu ý' }, { title: 'Điểm', render: (_, issue) => readableCode(rows.find(row => row.candidateId === issue.candidateId)?.treeId) ?? (issue.candidateId ? 'Điểm cần kiểm tra' : 'Toàn bản đồ') }, { title: 'Chi tiết', dataIndex: 'message' }, { title: 'Thao tác', render: (_, issue) => issue.candidateId && rows.some(row => row.candidateId === issue.candidateId) ? <Button disabled={!editable || busy || !!editor} onClick={() => openReview([issue.candidateId!], false)}>Xử lý</Button> : null }]} /></> : <p className="form-hint">Bấm Kiểm tra bản đồ để xem kết quả từ máy chủ. Chỉ phát hành khi không còn điểm chưa duyệt và không có lỗi chặn.</p>}

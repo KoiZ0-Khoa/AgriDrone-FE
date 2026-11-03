@@ -54,19 +54,19 @@ export function SystemDashboardPage() {
         <ol className="dw-flow-list">
           {[{ label: 'Chờ xét duyệt', query: requests }, { label: 'Đang xét duyệt', query: reviewing }, { label: 'Đã tạo đơn', query: orders }].map((step, index) => <li key={step.label}><span className="dw-flow-step" aria-hidden="true">{index + 1}</span><div><strong>{step.label}</strong>{step.query.isError ? <small>Chưa tải được</small> : null}</div><b aria-busy={step.query.isPending}>{step.query.data ? dashboardNumber(step.query.data.totalCount) : '—'}</b></li>)}
         </ol>
-        <Link className="dw-button dw-button-light" to="/system/survey-orders">Quản lý đơn & giấy tờ <ArrowRightOutlined aria-hidden="true" /></Link>
+        <Link className="dw-button dw-button-light" to="/system/survey-orders">Quản lý đơn khảo sát <ArrowRightOutlined aria-hidden="true" /></Link>
       </aside>
     </div>
 
     <section className="dw-panel dw-bottom-panel">
       <DashboardSectionHeading title="Đơn khảo sát gần đây" to="/system/survey-orders" />
-      {!orders.data && orders.isPending ? <DashboardState loading empty="" /> : !orders.data && orders.isError ? <DashboardState empty="" error={workflowError(orders.error)} retry={() => { void orders.refetch() }} /> : !recentOrders.length ? <DashboardState empty="Chưa có đơn khảo sát"><p>Đơn khảo sát được tạo sau khi yêu cầu được phê duyệt.</p></DashboardState> : <div className="dw-order-list">{recentOrders.slice(0, 4).map(order => <Link className="dw-order-row" key={order.surveyOrderId} to={'/system/survey-orders/' + encodeURIComponent(order.surveyOrderId) + '/authorizations'}>
+      {!orders.data && orders.isPending ? <DashboardState loading empty="" /> : !orders.data && orders.isError ? <DashboardState empty="" error={workflowError(orders.error)} retry={() => { void orders.refetch() }} /> : !recentOrders.length ? <DashboardState empty="Chưa có đơn khảo sát"><p>Đơn khảo sát được tạo sau khi yêu cầu được phê duyệt.</p></DashboardState> : <div className="dw-order-list">{recentOrders.slice(0, 4).map(order => <Link className="dw-order-row" key={order.surveyOrderId} to={'/system/survey-orders?farmId=' + encodeURIComponent(order.farmId)}>
         <span className="dw-order-icon" aria-hidden="true"><FileTextOutlined /></span><span className="dw-row-copy"><span className="dw-row-code">{readableCode(order.orderNumber) ?? dateTime(order.createdAt)}</span><strong>{order.farmName}</strong></span><span className="dw-order-service">{order.surveyServiceName}<small>{dateTime(order.createdAt)}</small></span><span className={'dw-badge ' + (order.status === 'COMPLETED' ? 'is-green' : order.status === 'CANCELLED' ? 'is-neutral' : 'is-amber')}>{orderStatusLabels[order.status] ?? order.status}</span><ArrowRightOutlined className="dw-row-arrow" aria-hidden="true" />
       </Link>)}</div>}
     </section>
 
     <section className="dw-admin-tools" aria-label="Công cụ quản trị">
-      <Link className="dw-shortcut" to="/system/managers"><span className="dw-shortcut-icon"><TeamOutlined aria-hidden="true" /></span><span><strong>Đội ngũ vận hành</strong><small>{managers.data ? dashboardNumber(managers.data.totalCount) + ' hồ sơ System Manager' : 'Quản lý hồ sơ và chứng chỉ'}</small></span><ArrowRightOutlined aria-hidden="true" /></Link>
+      <Link className="dw-shortcut" to="/system/managers"><span className="dw-shortcut-icon"><TeamOutlined aria-hidden="true" /></span><span><strong>Đội ngũ vận hành</strong><small>{managers.data ? dashboardNumber(managers.data.totalCount) + ' hồ sơ System Manager' : 'Quản lý hồ sơ và nhận việc'}</small></span><ArrowRightOutlined aria-hidden="true" /></Link>
       <Link className="dw-shortcut" to="/system/survey-services"><span className="dw-shortcut-icon"><MedicineBoxOutlined aria-hidden="true" /></span><span><strong>Dịch vụ & đơn giá</strong><small>{activeServices !== undefined ? activeServices + ' dịch vụ hoạt động, đã có giá' : 'Kiểm tra dịch vụ và đơn giá'}</small></span><ArrowRightOutlined aria-hidden="true" /></Link>
       <Link className="dw-shortcut" to="/system/tenants"><span className="dw-shortcut-icon"><BankOutlined aria-hidden="true" /></span><span><strong>Quản lý đơn vị</strong><small>Thông tin, trạng thái và Owner</small></span><ArrowRightOutlined aria-hidden="true" /></Link>
     </section>
