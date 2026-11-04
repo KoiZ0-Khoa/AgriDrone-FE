@@ -176,6 +176,12 @@ test('intake rejects invalid coordinates, pole count and incomplete/reversed tim
   for (const change of [{ longitude: NaN }, { latitude: 91 }, { approximateAreaHa: 0 }, { estimatedPoleCount: 1.5 }, { estimatedPoleCount: 2147483648 }, { preferredStartAt: '2026-10-17T00:00:00Z' }, { preferredStartAt: 'invalid', preferredEndAt: 'invalid' }, { preferredStartAt: '2026-10-18T00:00:00Z', preferredEndAt: '2026-10-17T00:00:00Z' }]) assert.throws(() => workflow.validateIntake({ ...body, ...change }))
 })
 
+test('preferredWindowForDate turns the single preferred day into a whole Asia/Ho_Chi_Minh day, or no preference at all', () => {
+  assert.deepEqual(workflow.preferredWindowForDate(''), [null, null])
+  assert.deepEqual(workflow.preferredWindowForDate('2026-11-03'), ['2026-11-02T17:00:00.000Z', '2026-11-03T17:00:00.000Z'])
+  for (const invalid of ['invalid', '2026-13-40']) assert.throws(() => workflow.preferredWindowForDate(invalid))
+})
+
 test('public intake requires both tenant fields and preserves an actionable duplicate-code error', async () => {
   assert.doesNotThrow(() => workflow.validatePublicTenant({ tenantCode: 'ANPHU', tenantName: 'An Phu' }))
   for (const body of [{ tenantCode: ' ', tenantName: 'Name' }, { tenantCode: 'CODE', tenantName: '' }, { tenantCode: 'A'.repeat(51), tenantName: 'Name' }, { tenantCode: 'CODE', tenantName: 'A'.repeat(151) }]) assert.throws(() => workflow.validatePublicTenant(body))

@@ -10,10 +10,10 @@ import { useAuth } from '../auth/AuthContext'
 import { getFarms } from '../farms/farmsApi'
 import * as api from './api'
 import type { PublicIntake } from './types'
-import { operationFor, priceLabel, validateIntake, validatePublicTenant, validateRequestWindow, workflowError } from './workflow'
+import { operationFor, preferredWindowForDate, priceLabel, validateIntake, validatePublicTenant, validateRequestWindow, workflowError } from './workflow'
 import { intakeArea, intakeCoordinate } from './intakeNumbers'
 
-type IntakeValues = Omit<PublicIntake, 'approximateAreaHa' | 'longitude' | 'latitude'> & { farmId?: string; approximateAreaHa: string | number; longitude: string | number; latitude: string | number }
+type IntakeValues = Omit<PublicIntake, 'approximateAreaHa' | 'longitude' | 'latitude' | 'preferredStartAt' | 'preferredEndAt'> & { farmId?: string; approximateAreaHa: string | number; longitude: string | number; latitude: string | number; preferredDate?: string }
 export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
   const { session } = useAuth()
   const [params] = useSearchParams()
@@ -26,7 +26,8 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
   const serviceId = Form.useWatch('surveyServiceId', form)
   const selectedService = services.data?.find(service => service.surveyServiceId === serviceId)
   const mutation = useMutation({ mutationFn: async (values: IntakeValues) => {
-    const common = { surveyServiceId: values.surveyServiceId, estimatedPoleCount: values.estimatedPoleCount ?? null, preferredStartAt: values.preferredStartAt ? new Date(values.preferredStartAt).toISOString() : null, preferredEndAt: values.preferredEndAt ? new Date(values.preferredEndAt).toISOString() : null, notes: values.notes?.trim() || null }
+    const [preferredStartAt, preferredEndAt] = preferredWindowForDate(values.preferredDate ?? '')
+    const common = { surveyServiceId: values.surveyServiceId, estimatedPoleCount: values.estimatedPoleCount ?? null, preferredStartAt, preferredEndAt, notes: values.notes?.trim() || null }
     validateRequestWindow(common)
     if (owner && mode === 'existing') {
       if (!values.farmId) throw new Error('Hãy chọn nông trại.')
@@ -65,8 +66,8 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
             <Form.Item name="estimatedPoleCount" label="Số trụ ước tính (không bắt buộc)"><InputNumber min={1} max={2147483647} precision={0} /></Form.Item>
           </>}
           <h2 className="workflow-form-heading">Thời gian mong muốn</h2>
-          <p className="form-hint">Có thể để trống cả hai thời điểm. Lịch khảo sát chính thức sẽ được xác nhận sau.</p>
-          <div className="form-two-columns"><Form.Item name="preferredStartAt" label="Từ lúc"><Input type="datetime-local" /></Form.Item><Form.Item name="preferredEndAt" label="Đến lúc"><Input type="datetime-local" /></Form.Item></div>
+          <p className="form-hint">Có thể để trống. Lịch khảo sát chính thức sẽ được xác nhận sau.</p>
+          <Form.Item name="preferredDate" label="Ngày mong muốn (không bắt buộc)"><Input type="date" /></Form.Item>
           <Form.Item name="notes" label="Ghi chú"><Input.TextArea rows={3} maxLength={4000} showCount /></Form.Item>
           {mutation.isError ? <Alert className="workflow-notice" showIcon type="error" title={workflowError(mutation.error)} /> : null}
           <Button type="primary" htmlType="submit" loading={mutation.isPending} disabled={owner && mode === 'existing' && !farms.isSuccess}>Gửi yêu cầu khảo sát</Button>

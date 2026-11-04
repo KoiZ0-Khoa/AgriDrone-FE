@@ -9,7 +9,7 @@ import { useAuth } from '../auth/AuthContext'
 import { getAssignedOrder, getAssignedOrders, getOrderScope } from './orderApi'
 import type { Appointment, AssignedOrder } from './orderTypes'
 import { appointmentStatusLabels, baselineStageNotices, matchingOrderSnapshot, orderStatusLabels } from './orderWorkflow'
-import { dateTime, workflowError } from './workflow'
+import { appointmentScheduleLabel, dateTime, workflowError } from './workflow'
 import { AppointmentModal, BoundaryVerificationModal } from './OrderActionModals'
 import { BoundaryCapturePanel } from './BoundaryCapturePanel'
 import { OrthophotoCornersModal } from './BaselineModals'
@@ -74,7 +74,7 @@ export function ManagerOrderDetailPage() {
         {consistent && scope.requiresBaselineMapping && scope.orderStatus === 'AWAITING_BASELINE_REVIEW' ? <Button type="primary" disabled={busy} onClick={() => setAction('corners')}>Đánh dấu 4 góc trên ảnh trực giao</Button> : null}
         {missionPurpose ? <Button disabled={busy} onClick={() => setAction('prepare-mission')}>Chuẩn bị nhiệm vụ bay · {missionPurposeLabels[missionPurpose]}</Button> : null}</Space>
       {scope.requiresBaselineMapping ? <><p className="form-hint">Chốt lịch khảo sát bản đồ trước. Owner xác nhận lịch và thanh toán cọc trước khi thực hiện. Sau khi có ảnh trực giao, đối chiếu bốn góc ranh giới trước khi duyệt bản đồ nền.</p><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/base-map-drafts?surveyOrderId=${encodeURIComponent(order.surveyOrderId)}`}>Duyệt bản đồ nền →</Link></> : null}
-      {appointment?.surveyOrderId === orderId && appointment.appointmentId === order.currentAppointmentId && order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch, chờ Owner xác nhận" description={`${dateTime(appointment.proposedStartAt)} – ${dateTime(appointment.proposedEndAt)}`} /> : null}
+      {appointment?.surveyOrderId === orderId && appointment.appointmentId === order.currentAppointmentId && order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch, chờ Owner xác nhận" description={appointmentScheduleLabel(appointment.scheduledDate, appointment.scheduledStartDate, appointment.scheduledEndDate, appointment.proposedStartAt, appointment.proposedEndAt)} /> : null}
     </section>
     {stage ? <Alert className="workflow-notice" type={stage.type} showIcon title={stage.title} description={stage.description} /> : null}
     {consistent && order.boundaryCaptureSessionId ? <BoundaryCapturePanel key={orderId} token={token} orderId={orderId} farmId={order.farmId} sessionId={order.boundaryCaptureSessionId} /> : null}

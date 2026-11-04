@@ -15,7 +15,7 @@ import { money } from './paymentWorkflow'
 import { appointmentStatusLabels, orderStatusLabels } from './orderWorkflow'
 import { SurveyMutationError } from './SurveyMutationError'
 import { SurveyPaymentPanel } from './SurveyPaymentPanel'
-import { dateTime, workflowError } from './workflow'
+import { appointmentScheduleLabel, dateTime, workflowError } from './workflow'
 
 export function OwnerPaymentsPage() {
   const { session } = useAuth()
@@ -84,7 +84,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
     <SurveyMutationError error={query.isError ? query.error : null} />
     {!validOwnerVersion(order.orderVersion) ? <Alert className="workflow-notice" showIcon type="warning" title="Thông tin đơn chưa đầy đủ. Tải lại trước khi xác nhận lịch hoặc thanh toán." /> : null}
     <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Lịch khảo sát</strong><span>{appointment?.purpose === 'BASELINE_MAPPING' ? 'Khảo sát bản đồ nền' : appointment?.purpose === 'PAID_SERVICE' ? 'Khảo sát dịch vụ' : 'Thời gian do Manager đề xuất'}</span></div>{appointment ? <Tag>{appointmentStatusLabels[appointment.status] ?? appointment.status}</Tag> : null}</div>
-      {appointment ? <><dl className="detail-list"><div><dt>Bắt đầu</dt><dd>{dateTime(appointment.startAt)}</dd></div><div><dt>Kết thúc</dt><dd>{dateTime(appointment.endAt)}</dd></div></dl>
+      {appointment ? <><dl className="detail-list"><div><dt>Lịch khảo sát</dt><dd>{appointmentScheduleLabel(appointment.scheduledDate, appointment.scheduledStartDate, appointment.scheduledEndDate, appointment.startAt, appointment.endAt)}</dd></div></dl>
         <Space wrap>{canConfirmOwnerAppointment(order) ? <Button type="primary" disabled={busy || !!action} onClick={() => { setNotice(''); setAction({ kind: 'confirm', snapshot: order }) }}>Xác nhận lịch</Button> : null}
           <Button disabled={busy || !!action || history.isFetching || history.isPending || history.isError || !canRescheduleOwnerAppointment(order, history.data)} onClick={() => { setNotice(''); setAction({ kind: 'reschedule', snapshot: order }) }}>Yêu cầu đổi lịch</Button>
         </Space>

@@ -6,6 +6,22 @@ export const requestKindLabels: Record<string, string> = { NEW_CUSTOMER: 'Khách
 export const managerLabels: Record<string, string> = { ACTIVE: 'Hoạt động', SUSPENDED: 'Đình chỉ', AVAILABLE: 'Sẵn sàng', UNAVAILABLE: 'Chưa sẵn sàng' }
 export const serviceLabels: Record<string, string> = { ACTIVE: 'Đang cung cấp', EXPERIMENTAL: 'Thử nghiệm', RETIRED: 'Ngừng cung cấp' }
 export const dateTime = (value: string | null) => value ? new Date(value).toLocaleString('vi-VN') : 'Chưa có'
+// A Propose Appointment window is always a whole Asia/Ho_Chi_Minh day (00:00 -> 00:00 the next day), matching MissionScheduleWindow.ForDate.
+// Show it as that one day instead of a range that visually crosses into the next calendar date.
+export function appointmentWindowLabel(startAt: string, endAt: string): string {
+  const start = Date.parse(startAt), end = Date.parse(endAt)
+  const isFullDay = Number.isFinite(start) && Number.isFinite(end) && end - start === 24 * 3600_000 && (start + 7 * 3600_000) % (24 * 3600_000) === 0
+  if (!isFullDay) return `${dateTime(startAt)} – ${dateTime(endAt)}`
+  return `Ngày ${new Date(start).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })} (cả ngày, giờ Việt Nam)`
+}
+const vnDateOnlyLabel = (value: string) => { const [year, month, day] = value.split('-'); return `${Number(day)}/${Number(month)}/${year}` }
+// Prefer BE's own ScheduledDate/ScheduledStartDate/ScheduledEndDate (SurveyAppointmentWindow.ToLocalDates) over deriving the day
+// from raw UTC timestamps on the FE; fall back to the UTC-derived label only for older windows BE could not resolve to a clean day.
+export function appointmentScheduleLabel(scheduledDate: string | null, scheduledStartDate: string | null, scheduledEndDate: string | null, startAt: string, endAt: string): string {
+  if (scheduledDate) return `Ngày ${vnDateOnlyLabel(scheduledDate)} (giờ Việt Nam)`
+  if (scheduledStartDate && scheduledEndDate) return `${vnDateOnlyLabel(scheduledStartDate)} – ${vnDateOnlyLabel(scheduledEndDate)} (giờ Việt Nam)`
+  return appointmentWindowLabel(startAt, endAt)
+}
 export const priceLabel = (amount: number, currency: string) => `${new Intl.NumberFormat('vi-VN', { style: 'currency', currency }).format(amount)}/trụ`
 export function isEligibleManager(manager: Manager) {
   return manager.status === 'ACTIVE' && manager.availability === 'AVAILABLE'
@@ -56,6 +72,17 @@ export function validatePublicTenant(body: Pick<PublicIntake, 'tenantCode' | 'te
 export function validateRequestWindow(body: ExistingFarmIntake) {
   if (body.estimatedPoleCount !== null && (!Number.isInteger(body.estimatedPoleCount) || body.estimatedPoleCount < 1 || body.estimatedPoleCount > 2147483647)) throw new Error('Số trụ ước tính phải là số nguyên dương hợp lệ.')
   if (Boolean(body.preferredStartAt) !== Boolean(body.preferredEndAt) || (body.preferredStartAt && body.preferredEndAt && (!Number.isFinite(Date.parse(body.preferredStartAt)) || !Number.isFinite(Date.parse(body.preferredEndAt)) || Date.parse(body.preferredEndAt) <= Date.parse(body.preferredStartAt)))) throw new Error('Hãy chọn đủ khoảng thời gian, với giờ kết thúc sau giờ bắt đầu.')
+}
+// Turns the single "preferred day" picked on intake into the non-binding whole Asia/Ho_Chi_Minh day BE's
+// PreferredStartAt/PreferredEndAt pair expects (fixed UTC+7, no DST); empty input means no preference at all.
+export function preferredWindowForDate(date: string): [string | null, string | null] {
+  if (!date) return [null, null]
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Chọn ngày mong muốn hợp lệ.')
+  const [year, month, day] = date.split('-').map(Number)
+  const calendarCheck = new Date(Date.UTC(year, month - 1, day))
+  if (calendarCheck.getUTCFullYear() !== year || calendarCheck.getUTCMonth() !== month - 1 || calendarCheck.getUTCDate() !== day) throw new Error('Chọn ngày mong muốn hợp lệ.')
+  const startAt = new Date(Date.UTC(year, month - 1, day) - 7 * 3600_000)
+  return [startAt.toISOString(), new Date(startAt.getTime() + 24 * 3600_000).toISOString()]
 }
 // Keep the key for a retry of the same payload; edited submissions are separate operations.
 export function operationFor(previous: { payload: string; key: string } | null, body: unknown) {
