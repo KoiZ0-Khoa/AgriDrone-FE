@@ -15,7 +15,7 @@ import { money } from './paymentWorkflow'
 import { appointmentStatusLabels, orderStatusLabels } from './orderWorkflow'
 import { SurveyMutationError } from './SurveyMutationError'
 import { SurveyPaymentPanel } from './SurveyPaymentPanel'
-import { dateTime, workflowError } from './workflow'
+import { appointmentScheduleLabel, dateTime, workflowError } from './workflow'
 
 export function OwnerPaymentsPage() {
   const { session } = useAuth()
@@ -84,7 +84,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
     <SurveyMutationError error={query.isError ? query.error : null} />
     {!validOwnerVersion(order.orderVersion) ? <Alert className="workflow-notice" showIcon type="warning" title="Thông tin đơn chưa đầy đủ. Tải lại trước khi xác nhận lịch hoặc thanh toán." /> : null}
     <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Lịch khảo sát</strong><span>{appointment?.purpose === 'BASELINE_MAPPING' ? 'Khảo sát bản đồ nền' : appointment?.purpose === 'PAID_SERVICE' ? 'Khảo sát dịch vụ' : 'Thời gian do Manager đề xuất'}</span></div>{appointment ? <Tag>{appointmentStatusLabels[appointment.status] ?? appointment.status}</Tag> : null}</div>
-      {appointment ? <><dl className="detail-list"><div><dt>Bắt đầu</dt><dd>{dateTime(appointment.startAt)}</dd></div><div><dt>Kết thúc</dt><dd>{dateTime(appointment.endAt)}</dd></div></dl>
+      {appointment ? <><dl className="detail-list"><div><dt>Lịch khảo sát</dt><dd>{appointmentScheduleLabel(appointment.scheduledDate, appointment.scheduledStartDate, appointment.scheduledEndDate, appointment.startAt, appointment.endAt)}</dd></div></dl>
         <Space wrap>{canConfirmOwnerAppointment(order) ? <Button type="primary" disabled={busy || !!action} onClick={() => { setNotice(''); setAction({ kind: 'confirm', snapshot: order }) }}>Xác nhận lịch</Button> : null}
           <Button disabled={busy || !!action || history.isFetching || history.isPending || history.isError || !canRescheduleOwnerAppointment(order, history.data)} onClick={() => { setNotice(''); setAction({ kind: 'reschedule', snapshot: order }) }}>Yêu cầu đổi lịch</Button>
         </Space>
@@ -93,8 +93,8 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
         {rescheduleBlockedByPayment ? <p className="form-hint">Đơn đã có giao dịch đang hiệu lực. Liên hệ hỗ trợ nếu cần đổi lịch dịch vụ.</p> : null}
       </> : <p>Chờ Manager đề xuất lịch. Khi có lịch, bạn có thể xác nhận hoặc gửi yêu cầu đổi thời gian.</p>}
     </section>
-    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Chi phí khảo sát</strong><span>Số tiền theo thông tin của hệ thống</span></div><CreditCardOutlined aria-hidden="true" /></div><dl className="detail-list">{showDeposit ? <div><dt>Cọc bản đồ nền</dt><dd>{money(order.depositAmount, order.currency)}</dd></div> : null}<div><dt>Tổng tiền dịch vụ</dt><dd>{money(order.totalAmount, order.currency)}</dd></div><div><dt>Số tiền còn lại</dt><dd>{money(order.remainingAmount, order.currency)}</dd></div></dl></section>
     <div className="workflow-section"><SurveyPaymentPanel order={order} history={history} refreshOrder={refreshOrder} disabled={busy || !!action} /></div>
+    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Chi phí khảo sát</strong><span>Số tiền theo thông tin của hệ thống</span></div><CreditCardOutlined aria-hidden="true" /></div><dl className="detail-list">{showDeposit ? <div><dt>Cọc bản đồ nền</dt><dd>{money(order.depositAmount, order.currency)}</dd></div> : null}<div><dt>Tổng tiền dịch vụ</dt><dd className={order.totalAmount === null ? 'is-pending' : undefined}>{money(order.totalAmount, order.currency)}</dd></div><div><dt>Số tiền còn lại</dt><dd className={order.remainingAmount === null ? 'is-pending' : undefined}>{money(order.remainingAmount, order.currency)}</dd></div></dl></section>
     {action ? <OwnerAppointmentDialog token={token} tenantId={tenantId} action={action} current={order} history={history.isError ? undefined : history.data} disabled={query.isFetching || query.isError || history.isFetching} close={() => { setAction(null); void refresh() }} done={async () => {
       setNotice(action.kind === 'confirm' ? 'Đã xác nhận lịch. Kiểm tra khoản thanh toán bên dưới.' : 'Đã gửi yêu cầu đổi lịch. Chờ Manager đề xuất lại.')
       setAction(null); await refresh()

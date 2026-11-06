@@ -1,5 +1,6 @@
 export type OwnerAppointment = {
   appointmentId: string; purpose: 'BASELINE_MAPPING' | 'PAID_SERVICE'; startAt: string; endAt: string; status: string; appointmentVersion: number
+  scheduledDate: string | null; scheduledStartDate: string | null; scheduledEndDate: string | null
 }
 export type OwnerSurveyOrder = {
   surveyOrderId: string; orderNumber: string; farmId: string; farmName: string; status: string; orderVersion: number

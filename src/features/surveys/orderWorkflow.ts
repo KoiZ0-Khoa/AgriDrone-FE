@@ -20,15 +20,23 @@ export function matchingOrderSnapshot(order: AssignedOrder, scope: OrderScope) {
   return order.surveyOrderId === scope.surveyOrderId && order.farmId === scope.farmId && order.tenantId === scope.tenantId && order.orderVersion === scope.orderVersion && order.status === scope.orderStatus && order.requiresBaselineMapping === scope.requiresBaselineMapping && Number.isSafeInteger(scope.orderVersion) && scope.orderVersion > 0
 }
 
-export function appointmentBody(order: AssignedOrder, scope: OrderScope, start: string, end: string, now = Date.now()): AppointmentBody {
+function isValidScheduledDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+}
+
+// Sends the chosen day as-is; BE (SurveyAppointmentWindow.TryResolveForDate) resolves it to the
+// full Asia/Ho_Chi_Minh day Prepare Mission Set expects, so FE no longer does its own UTC/timezone math.
+export function appointmentBody(order: AssignedOrder, scope: OrderScope, scheduledDate: string): AppointmentBody {
   if (!matchingOrderSnapshot(order, scope)) throw new Error('Dữ liệu đơn không đồng nhất hoặc thiếu version. Tải lại trước khi đề xuất lịch.')
   const purpose = scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' && scope.requiresBaselineMapping ? 'BASELINE_MAPPING' : scope.orderStatus === 'AWAITING_PAID_APPOINTMENT' ? 'PAID_SERVICE' : null
   if (!purpose) throw new Error('Trạng thái đơn chưa cho phép đề xuất lịch.')
   if (order.currentAppointmentId && (order.currentAppointmentStatus !== 'RESCHEDULE_REQUESTED' || !Number.isSafeInteger(order.currentAppointmentVersion) || order.currentAppointmentVersion! < 1)) throw new Error('Đơn đã có lịch đang hoạt động hoặc thiếu version lịch. Tải lại để kiểm tra.')
   if (!order.currentAppointmentId && order.currentAppointmentVersion !== null) throw new Error('Dữ liệu lịch không đồng nhất. Tải lại trước khi tiếp tục.')
-  const startMs = Date.parse(start), endMs = Date.parse(end)
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs <= now || endMs <= startMs) throw new Error('Chọn thời gian bắt đầu trong tương lai và kết thúc sau bắt đầu.')
-  return { purpose, proposedStartAt: new Date(startMs).toISOString(), proposedEndAt: new Date(endMs).toISOString(), expectedOrderVersion: scope.orderVersion, expectedCurrentAppointmentId: order.currentAppointmentId, expectedCurrentAppointmentVersion: order.currentAppointmentVersion }
+  if (!isValidScheduledDate(scheduledDate)) throw new Error('Chọn ngày khảo sát hợp lệ.')
+  return { purpose, scheduledDate, expectedOrderVersion: scope.orderVersion, expectedCurrentAppointmentId: order.currentAppointmentId, expectedCurrentAppointmentVersion: order.currentAppointmentVersion }
 }
 
 export function polygonFromPoints(points: { longitude: number; latitude: number }[], interiorRings: number[][][] = []): GeoJsonPolygon {

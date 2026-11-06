@@ -32,3 +32,40 @@ export type MissionDetail = {
 export type PreflightChecklistItem = { key: string; prompt: string; required: boolean }
 export type ActiveMissionChecklist = { definitionId: string; code: string; versionNumber: number; items: PreflightChecklistItem[] }
 export type CompleteMissionPreflightResult = { mission: MissionDetail; reusedOperation: boolean }
+
+export type PlantGpsTree = { treeId: string; row: number; col: number; latitude: number; longitude: number; confidence: number; status: 'DETECTED' | 'MISSING'; source: string }
+export type PlantGpsResult = { missionId: string; savedCount: number; trees: PlantGpsTree[] }
+export type ReplacePlantGpsResult = { missionId: string; savedCount: number; boundaryPointCount: number; boundaryId: string | null; boundaryVersionNumber: number | null; boundaryStatus: string | null }
+
+// Literal strings, not enum JSON — verified against UploadMissionMediaItemResponse (api/missions/{missionId}/farms/{farmId}/media).
+export type MediaUploadStatus = 'Completed' | 'Failed' | 'NotAttempted'
+export type CompletedMediaUpload = { uploadSessionId: string; mediaAssetId: string; status: string; mimeType: string; fileSizeBytes: number; sha256Checksum: string; reusedCompletion: boolean }
+export type MediaUploadItemResult = { index: number; fileName: string; status: MediaUploadStatus; media: CompletedMediaUpload | null; errorCode: string | null; errorMessage: string | null }
+export type MissionMediaType = 'IMAGE' | 'VIDEO'
+export type MissionMediaRole = 'RAW_VIDEO' | 'RAW_IMAGE' | 'PROCESSED_IMAGE' | 'THUMBNAIL' | 'OTHER'
+export type MissionMedia = {
+  mediaId: string; missionId: string; mediaType: MissionMediaType; mediaRole: MissionMediaRole
+  mimeType: string | null; fileSizeBytes: number | null; sha256Checksum: string | null
+  widthPx: number | null; heightPx: number | null; durationMs: number | null
+  capturedAt: string | null; telemetryTimeOffsetMs: number | null; captureClockSource: string | null; createdAt: string
+}
+export type MediaDownloadUrl = { mediaId: string; downloadUrl: string; expiresAt: string }
+
+export type TelemetryPoint = { sequenceNumber: number; recordedAt: string; longitude: number; latitude: number; altitudeM: number | null; headingDeg: number | null; speedMps: number | null; horizontalAccuracyM: number | null }
+export type TelemetrySegment = {
+  segmentIndex: number; sourcePointCount: number; rejectedPointCount: number; pointCount: number
+  firstRecordedAt: string | null; lastRecordedAt: string | null; fitsPointCountLimit: boolean; warnings: string[]; points: TelemetryPoint[]
+}
+export type NormalizedTelemetryLog = { sourceFileName: string; sourceChecksum: string; warnings: string[]; segments: TelemetrySegment[] }
+export type AltitudeReference = 'RelativeToTakeoff' | 'Agl' | 'Msl' | 'Unknown'
+export type ImportTelemetryPointInput = {
+  sequenceNumber: number; recordedAt: string; longitude: number; latitude: number; altitudeM: number | null
+  altitudeReference: AltitudeReference | null; headingDeg: number | null; speedMps: number | null; horizontalAccuracyM: number | null
+}
+export type ImportTelemetryResult = { telemetryImportId: string; missionId: string; pointCount: number; firstRecordedAt: string; lastRecordedAt: string; missionVersion: number; reusedOperation: boolean }
+
+export type UploadReadiness = {
+  missionId: string; missionVersion: number; status: string; canFinalize: boolean
+  rawImageCount: number; rawVideoCount: number; telemetryPointCount: number; hasActiveUploadSessions: boolean; blockers: string[]
+}
+export type FinalizeUploadResult = { missionId: string; status: string; mediaCount: number; telemetryPointCount: number; missionVersion: number }

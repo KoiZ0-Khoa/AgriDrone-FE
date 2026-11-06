@@ -17,14 +17,14 @@ const cannotRetry = (error: Error | null) => error instanceof ApiError && [403, 
 
 export function AppointmentModal({ token, order, scope, close, done }: { token: string; order: AssignedOrder; scope: OrderScope; close: () => void; done: (result: Appointment) => Promise<void> }) {
   const [snapshot] = useState(() => ({ order, scope }))
-  const [form] = Form.useForm<{ start: string; end: string }>()
-  const mutation = useMutation({ retry: false, mutationFn: (values: { start: string; end: string }) => proposeAppointment(token, snapshot.scope.surveyOrderId, appointmentBody(snapshot.order, snapshot.scope, values.start, values.end)), onSuccess: done })
+  const [form] = Form.useForm<{ date: string }>()
+  const mutation = useMutation({ retry: false, mutationFn: (values: { date: string }) => proposeAppointment(token, snapshot.scope.surveyOrderId, appointmentBody(snapshot.order, snapshot.scope, values.date)), onSuccess: done })
   const locked = cannotRetry(mutation.error)
   return <Modal open title="Đề xuất lịch khảo sát" okText="Gửi đề xuất lịch" cancelText={locked ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
-    <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p><p>Đề xuất lịch {snapshot.scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' ? 'bay bản đồ nền' : 'dịch vụ'}. Lịch chỉ chính thức khi Owner xác nhận.</p>
+    <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p><p>Đề xuất lịch {snapshot.scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' ? 'bay bản đồ nền' : 'dịch vụ'}. Lịch chỉ chính thức khi Owner xác nhận. Lịch áp dụng trọn ngày (00:00 → 24:00 giờ Việt Nam) theo quy định chuẩn bị nhiệm vụ bay.</p>
     <Form form={form} layout="vertical" disabled={mutation.isPending || locked} onFinish={values => { if (!mutation.isPending && !locked) mutation.mutate(values) }}>
       <FormSubmit disabled={mutation.isPending || locked} />
-      <Form.Item name="start" label="Bắt đầu (giờ địa phương)" rules={[{ required: true }]}><Input type="datetime-local" /></Form.Item><Form.Item name="end" label="Kết thúc (giờ địa phương)" rules={[{ required: true }]}><Input type="datetime-local" /></Form.Item>
+      <Form.Item name="date" label="Ngày khảo sát (giờ Việt Nam)" rules={[{ required: true }]}><Input type="date" /></Form.Item>
     </Form>
     <MutationError error={mutation.error} />
   </Modal>
