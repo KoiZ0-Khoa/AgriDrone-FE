@@ -4,6 +4,7 @@ import { Alert, App, Button, Checkbox, Divider, Form, Input, Space, Table, Tag }
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
+import { CopyReference } from '../../components/RecordReference'
 import { ActionModal } from '../../management/ActionModal'
 import { text, type Action } from '../../management/actions'
 import { useAuth } from '../auth/AuthContext'
@@ -24,6 +25,19 @@ const recoveryDecisionOptions = [
   { value: 'ABORT', label: 'Hủy, không bay lại' },
   { value: 'RESCHEDULE_REQUIRED', label: 'Cần lên lịch lại' },
 ]
+// Backend accepts any file count per request, capped at 5 GiB total — split by that size instead of an arbitrary file count.
+const maxUploadBatchBytes = 5 * 1024 * 1024 * 1024
+function batchFilesBySize(files: File[], maxBytes: number): File[][] {
+  const batches: File[][] = []
+  let current: File[] = [], currentBytes = 0
+  for (const file of files) {
+    if (current.length > 0 && currentBytes + file.size > maxBytes) { batches.push(current); current = []; currentBytes = 0 }
+    current.push(file)
+    currentBytes += file.size
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
 
 export function ManagerMissionDetailPage() {
   const { message } = App.useApp()
@@ -31,7 +45,7 @@ export function ManagerMissionDetailPage() {
   const { farmId = '', missionId = '' } = useParams()
   const client = useQueryClient()
   const [answers, setAnswers] = useState<Record<string, boolean>>({})
-  const [suitableForFlight, setSuitableForFlight] = useState(true)
+  const [suitableForFlight, setSuitableForFlight] = useState(false)
   const [notes, setNotes] = useState('')
   const [operation, setOperation] = useState<{ payload: string; key: string } | null>(null)
   // Tracks the freshest Mission snapshot across preflight/start/complete-flight/cancel/fail/reschedule responses, overriding the list-based fetch below.
@@ -41,6 +55,7 @@ export function ManagerMissionDetailPage() {
   const [pastingPlantGps, setPastingPlantGps] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [uploadResults, setUploadResults] = useState<MediaUploadItemResult[] | null>(null)
+  const [showAllMedia, setShowAllMedia] = useState(false)
   const [logFile, setLogFile] = useState<File | null>(null)
   const [normalized, setNormalized] = useState<NormalizedTelemetryLog | null>(null)
   const [selectedSegmentIndexes, setSelectedSegmentIndexes] = useState<number[]>([])
@@ -58,7 +73,7 @@ export function ManagerMissionDetailPage() {
   const preflightDone = Boolean(latest?.preflightConfirmedAt)
   const droneQuery = useQuery({ queryKey: ['mission-drone', farmId, mission?.droneId], queryFn: ({ signal }) => api.getFarmDroneDetails(token, farmId, mission!.droneId, signal), enabled: Boolean(mission) })
   const checklistQuery = useQuery({ queryKey: ['mission-checklist', farmId, missionId], queryFn: ({ signal }) => api.getActivePreflightChecklist(token, farmId, missionId, signal), enabled: scheduled && !preflightDone })
-  const currentAnswers = checklistQuery.data ? { ...Object.fromEntries(checklistQuery.data.items.map(item => [item.key, true])), ...answers } : answers
+  const currentAnswers = checklistQuery.data ? { ...Object.fromEntries(checklistQuery.data.items.map(item => [item.key, false])), ...answers } : answers
   const plantGpsQuery = useQuery({ queryKey: ['mission-plant-gps', farmId, missionId], queryFn: ({ signal }) => api.getMissionPlantGps(token, farmId, missionId, signal) })
   const postFlight = ['FLIGHT_COMPLETED', 'UPLOADING', 'READY_FOR_PROCESSING', 'PROCESSING', 'AWAITING_REVIEW', 'COMPLETED'].includes(status ?? '')
   const telemetryEligible = status === 'FLIGHT_COMPLETED' || status === 'UPLOADING'
@@ -93,15 +108,22 @@ export function ManagerMissionDetailPage() {
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
       const results: MediaUploadItemResult[] = []
-      for (let start = 0; start < files.length; start += 20) {
-        const batch = files.slice(start, start + 20)
+      let offset = 0
+      for (const batch of batchFilesBySize(files, maxUploadBatchBytes)) {
         const batchResults = await api.uploadMissionMedia(token, farmId, missionId, batch)
-        results.push(...batchResults)
+        results.push(...batchResults.map(item => ({ ...item, index: offset + item.index })))
+        offset += batch.length
         if (batchResults.some(item => item.status !== 'Completed')) break
       }
       return results
     },
-    onSuccess: async results => { setUploadResults(results); await client.invalidateQueries({ queryKey: ['mission-media', farmId, missionId] }) },
+    onSuccess: async results => {
+      setUploadResults(results)
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['mission-media', farmId, missionId] }),
+        client.invalidateQueries({ queryKey: ['mission-readiness', farmId, missionId] }),
+      ])
+    },
   })
   async function openMediaDownloadUrl(mediaId: string) {
     try {
@@ -134,7 +156,10 @@ export function ManagerMissionDetailPage() {
     onSuccess: async data => {
       setImportResult(data)
       setLatest(previous => previous ? { ...previous, version: data.missionVersion, status: 'UPLOADING' } : previous)
-      await client.invalidateQueries({ queryKey: ['mission-detail', farmId, missionId] })
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['mission-detail', farmId, missionId] }),
+        client.invalidateQueries({ queryKey: ['mission-readiness', farmId, missionId] }),
+      ])
       void message.success(data.reusedOperation ? 'Telemetry đã được ghi nhận từ trước.' : 'Đã import telemetry.')
     },
   })
@@ -188,7 +213,7 @@ export function ManagerMissionDetailPage() {
   return <>
     {back}
     <section className="resource-page-heading">
-      <div><span className="page-kicker">NHIỆM VỤ BAY</span><h1>{mission.missionCode}</h1>{latest?.purpose ? <p>{missionPurposeLabel(latest.purpose)}</p> : null}</div>
+      <div><span className="page-kicker">NHIỆM VỤ BAY</span><h1>{latest?.purpose ? missionPurposeLabel(latest.purpose) : 'Nhiệm vụ bay'}</h1>{droneQuery.data ? <p>{droneQuery.data.name}</p> : null}<CopyReference value={mission.missionCode} label="Sao chép mã nhiệm vụ" /></div>
       <Space wrap><Tag color="blue">{missionStatusLabel(status ?? mission.status)}</Tag><Button icon={<ReloadOutlined />} onClick={() => { void missionQuery.refetch(); void checklistQuery.refetch() }}>Tải lại</Button></Space>
     </section>
     <section className="resource-panel">
@@ -200,14 +225,6 @@ export function ManagerMissionDetailPage() {
     </section>
     {!draft && !scheduled && !inFlight && !flightFailed && !postFlight ? <Alert className="workflow-notice" type="info" showIcon message={`Nhiệm vụ đang ở trạng thái "${missionStatusLabel(status ?? mission.status)}", không ở bước có thao tác trong phạm vi đã triển khai.`} /> : null}
     {flightFailed ? <Alert className="workflow-notice" type="warning" showIcon message="Chuyến bay trước đã lỗi." description="Chỉ lên lịch lại được nếu quyết định khắc phục khi báo lỗi là &quot;Cần lên lịch lại&quot;." /> : null}
-    {draft || scheduled || inFlight || flightFailed ? <section className="resource-panel">
-      <h2>Thao tác khác</h2>
-      <Space wrap>
-        {draft || scheduled ? <Button danger onClick={() => setAction(cancelAction())}>Hủy nhiệm vụ</Button> : null}
-        {scheduled || flightFailed ? <Button onClick={() => setRescheduling(true)}>Lên lịch lại</Button> : null}
-        {inFlight ? <Button danger onClick={() => setAction(failFlightAction())}>Báo lỗi chuyến bay</Button> : null}
-      </Space>
-    </section> : null}
     {scheduled ? <section className="resource-panel">
       {preflightDone ? <Alert type="success" showIcon message="Đã hoàn tất checklist preflight." description={`Phù hợp để bay: ${latest?.preflightSuitableForFlight ? 'Có' : 'Không'}.`} />
         : checklistQuery.isPending ? <CommonState type="loading" />
@@ -231,7 +248,8 @@ export function ManagerMissionDetailPage() {
           <Button type="primary" loading={preflightMutation.isPending} onClick={() => preflightMutation.mutate()}>Hoàn tất checklist</Button>
         </> : null}
     </section> : null}
-    {scheduled ? <section className="resource-panel">
+    {scheduled && !preflightDone ? <Alert className="workflow-notice" type="info" showIcon message="Hoàn tất checklist trước khi bay để mở bước &quot;Bắt đầu bay&quot;." /> : null}
+    {scheduled && preflightDone ? <section className="resource-panel">
       <h2>Bắt đầu bay</h2>
       <p className="form-hint">Chỉ bắt đầu được trong khung giờ đã lên lịch và lịch hẹn Owner đã xác nhận, sau khi checklist preflight đã hoàn tất với kết quả phù hợp để bay.</p>
       {startMutation.error ? <Alert type="error" showIcon message={missionError(startMutation.error)} /> : null}
@@ -245,8 +263,11 @@ export function ManagerMissionDetailPage() {
     </section> : null}
     {postFlight ? <section className="resource-panel">
       <h2>Upload ảnh/video</h2>
-      <p className="form-hint">Chọn ảnh/video từ drone. Mỗi lần gửi tối đa 20 file, tổng tối đa 5 GiB. Nếu 1 file lỗi, các file gửi sau trong cùng đợt sẽ dừng (Chưa thử) — không tự gửi lại.</p>
-      <input type="file" multiple accept="image/*,video/*" disabled={uploadMutation.isPending} onChange={event => setSelectedFiles(Array.from(event.target.files ?? []))} />
+      <p className="form-hint">Chọn ảnh/video từ drone, hoặc chọn cả một thư mục để lấy toàn bộ file bên trong. Tổng dung lượng mỗi lần gửi tối đa 5 GiB (tự động chia đợt nếu vượt). Nếu 1 file lỗi, các file gửi sau trong cùng đợt sẽ dừng (Chưa thử) — không tự gửi lại.</p>
+      <Space direction="vertical">
+        <div><input type="file" multiple accept="image/*,video/*" disabled={uploadMutation.isPending} onChange={event => setSelectedFiles(Array.from(event.target.files ?? []))} /></div>
+        <div><span className="form-hint">Hoặc chọn cả thư mục: </span><input type="file" multiple disabled={uploadMutation.isPending} ref={el => { if (el) el.webkitdirectory = true }} onChange={event => setSelectedFiles(Array.from(event.target.files ?? []))} /></div>
+      </Space>
       <div><Button type="primary" disabled={selectedFiles.length === 0} loading={uploadMutation.isPending} onClick={() => uploadMutation.mutate(selectedFiles)}>Tải lên{selectedFiles.length ? ` (${selectedFiles.length} file)` : ''}</Button></div>
       {uploadMutation.error ? <Alert type="error" showIcon message={missionError(uploadMutation.error)} /> : null}
       {uploadResults ? <Table<MediaUploadItemResult> size="small" rowKey="index" dataSource={uploadResults} pagination={false} columns={[
@@ -255,14 +276,14 @@ export function ManagerMissionDetailPage() {
         { title: 'Chi tiết', render: (_, item) => item.media ? fileSizeLabel(item.media.fileSizeBytes) : item.errorMessage ?? '—' },
       ]} /> : null}
       <Divider />
-      <h3>Media đã upload</h3>
-      {mediaQuery.isError ? <CommonState type="error" description={missionError(mediaQuery.error)} retry={() => mediaQuery.refetch()} /> : <Table<MissionMedia> size="small" rowKey="mediaId" loading={mediaQuery.isPending} dataSource={mediaQuery.data?.items ?? []} pagination={false} locale={{ emptyText: 'Chưa có media nào.' }} columns={[
+      <div className="resource-panel-heading"><div><strong>Media đã upload</strong>{mediaQuery.data ? <span>{mediaQuery.data.totalCount} file</span> : null}</div><Button onClick={() => setShowAllMedia(value => !value)}>{showAllMedia ? 'Ẩn danh sách' : 'Xem toàn bộ'}</Button></div>
+      {showAllMedia ? (mediaQuery.isError ? <CommonState type="error" description={missionError(mediaQuery.error)} retry={() => mediaQuery.refetch()} /> : <Table<MissionMedia> size="small" rowKey="mediaId" loading={mediaQuery.isPending} dataSource={mediaQuery.data?.items ?? []} pagination={false} locale={{ emptyText: 'Chưa có media nào.' }} columns={[
         { title: 'Loại', render: (_, media) => mediaTypeLabels[media.mediaType] ?? media.mediaType },
         { title: 'Vai trò', render: (_, media) => mediaRoleLabels[media.mediaRole] ?? media.mediaRole },
         { title: 'Kích thước', render: (_, media) => fileSizeLabel(media.fileSizeBytes) },
         { title: 'Tải lên lúc', render: (_, media) => dateTime(media.createdAt) },
         { title: 'Thao tác', render: (_, media) => <Button size="small" onClick={() => { void openMediaDownloadUrl(media.mediaId) }}>Xem / tải</Button> },
-      ]} />}
+      ]} />) : null}
     </section> : null}
     {telemetryEligible ? <section className="resource-panel">
       <h2>Decode & Import Telemetry</h2>
@@ -319,6 +340,14 @@ export function ManagerMissionDetailPage() {
           { title: 'Nguồn', dataIndex: 'source' },
         ]} />}
     </section>
+    {draft || scheduled || inFlight || flightFailed ? <section className="resource-panel">
+      <h2>Thao tác khác</h2>
+      <Space wrap>
+        {draft || scheduled ? <Button danger onClick={() => setAction(cancelAction())}>Hủy nhiệm vụ</Button> : null}
+        {scheduled || flightFailed ? <Button onClick={() => setRescheduling(true)}>Lên lịch lại</Button> : null}
+        {inFlight ? <Button danger onClick={() => setAction(failFlightAction())}>Báo lỗi chuyến bay</Button> : null}
+      </Space>
+    </section> : null}
     {rescheduling && version !== undefined ? <RescheduleMissionModal token={token} farmId={farmId} missionId={missionId} currentVersion={version} currentDroneId={mission.droneId}
       close={() => setRescheduling(false)} onRescheduled={async result => { await refreshAfter(result); void message.success('Đã lên lịch lại nhiệm vụ bay.') }} /> : null}
     {pastingPlantGps ? <PlantGpsPasteModal token={token} farmId={farmId} missionId={missionId} close={() => setPastingPlantGps(false)}
