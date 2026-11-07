@@ -3,6 +3,7 @@
 Nguồn:
 - `BE2-Prepare-to-Upload-Finalize-API.md` (người dùng cung cấp, 30/10/2026) — luồng Prepare→Preflight→Flight→Upload→Finalize (nhiệm vụ 0-10).
 - `AgriDrone Docs.md` (UC04, người dùng cung cấp, 31/10/2026) — luồng tiếp theo sau Finalize: Ghép bản đồ trực giao (Metashape/ODM), cắt tiles, nhận diện cây bằng YOLO, tải CSV và đưa cây vào hệ thống chính thức (nhiệm vụ 11-15).
+- `AgriDrone Docs (1).md` (người dùng cung cấp, 06/11/2026) — bản cập nhật của UC04, phần Pha 1-6 giữ nguyên; bổ sung luồng mới "Bản đồ sức khỏe cây + Duyệt bệnh" (UC-28/29/30a/b/c, nhiệm vụ 17-20), vận hành downstream của bước Publish (nhiệm vụ 15).
 
 Phạm vi: FE web (`AgriDrone-FE`). Không đổi BE. **FE không gọi trực tiếp service Python (localhost:8000)** — mọi thao tác ghép bản đồ/AI đều qua .NET API. Team không cần cài Metashape hay thư viện Python; khi cần test, BE sẽ cung cấp sẵn ảnh/orthophoto mẫu.
 
@@ -193,7 +194,7 @@ Phạm vi: FE web (`AgriDrone-FE`). Không đổi BE. **FE không gọi trực t
 ---
 
 ## 10. System Manager — Upload readiness + Finalize
-**Trạng thái:** [~] Đã code xong trong `ManagerMissionDetailPage` (hiện khi Mission `Uploading`): hiện số ảnh/video/điểm telemetry + danh sách blockers tiếng Việt, nút "Hoàn tất upload" chỉ bật khi `canFinalize=true` và hết blockers. **Lưu ý đã xử lý đúng:** response Finalize cũng trả `status` PascalCase thô (như Prepare) — đã chuẩn hóa qua `toScreamingSnakeCase()` trước khi lưu vào state, nếu không các điều kiện `status === 'READY_FOR_PROCESSING'`/postFlight sẽ không khớp nữa sau khi finalize. Tự test: typecheck ✓, 162/162 test (thêm `tests/mission-upload-finalize.test.mjs`, 3 test) ✓, build ✓. Chưa test tay với BE thật.
+**Trạng thái:** [x] Đã code và người dùng đã test tay xong.
 
 - API: `GET .../upload/readiness` → `{ missionId, missionVersion, status, canFinalize, rawImageCount, rawVideoCount, telemetryPointCount, hasActiveUploadSessions, blockers: string[] }`. `blockers` là **mã lỗi** (không phải câu mô tả) — map sang tiếng Việt bằng bảng dưới, không hiển thị mã thô cho Manager.
 - `POST .../upload/finalize` body `{ expectedMissionVersion }` → `{ missionId, status, mediaCount, telemetryPointCount, missionVersion }`. **`status` ở cả 2 API này là PascalCase thô** (`"Uploading"`, `"ReadyForProcessing"`...) do BE dùng `Status.ToString()` trực tiếp — cùng kiểu lộ casing như response Prepare (nhiệm vụ 3), chuẩn hóa qua `missionStatusLabel()` đã có.
@@ -209,7 +210,16 @@ Phạm vi: FE web (`AgriDrone-FE`). Không đổi BE. **FE không gọi trực t
 ---
 
 ## 11. System Manager — Ghép bản đồ trực giao (Metashape/ODM) + theo dõi tiến độ
-**Trạng thái:** [ ]
+**Trạng thái:** [~] Đã code xong trong `ManagerMissionDetailPage`: chọn engine (Metashape/ODM), nút "Ghép bản đồ" chỉ hiện khi Mission ở `ReadyForProcessing`/`AwaitingReview`/`ProcessingFailed` (đúng gate thật từ `ProcessMetashapeCommandHandler`, không phải "≥ ReadyForProcessing" như ghi trước đó); khi `Processing` tự poll `orthophoto-status` mỗi 7s tới khi `COMPLETED`/`ERROR`, hiện ảnh preview + nút tải GeoTIFF khi xong. Tự test: typecheck ✓, 161/161 test (thêm `tests/mission-orthophoto.test.mjs`, 4 test) ✓, build ✓. Chưa test tay với BE thật.
+**Phát hiện quan trọng khi đọc `ProcessMetashapeCommandHandler`/`GetMissionOrthophotoStatusQueryHandler`:**
+- Yêu cầu Mission đã có ảnh gốc (`RawImage`) upload trước — lỗi `ProcessMetashape.NoImages` nếu chưa có.
+- `status` của `orthophoto-status` là **chuỗi riêng từ service xử lý ảnh** (`NOT_STARTED`/`COMPLETED`/`ERROR` xác nhận được, các trạng thái đang chạy khác do service Python trả, không liệt kê hết được từ source) — **không phải trạng thái Mission**, không chuẩn hóa qua `toScreamingSnakeCase`/`missionStatusLabel`, có bảng nhãn riêng (`orthophotoStatusLabel`).
+- `GET orthophoto-status` có side effect thật: tự lưu media đã ghép vào DB và chuyển Mission sang `AwaitingReview` khi phát hiện hoàn tất — poll lặp lại là an toàn và cần thiết, không chỉ để hiển thị.
+- Lỗi `ProcessMetashape.AlreadyProcessing`/`InvalidStatus` đã có sẵn thông báo tiếng Việt từ BE — không viết đè bản dịch, chỉ dùng fallback `error.message`.
+
+**2026-11-06 — lỗ hổng điều hướng chặn test tay (người dùng báo "không tìm thấy màn hình"):** Trang Đơn khảo sát (`ManagerOrderDetailPage.tsx`) chỉ hiện nút "Chuẩn bị nhiệm vụ bay" — **link duy nhất** tới màn chi tiết Mission (nơi có nhiệm vụ 11-16) — khi `missionPurposeFor()` trả về giá trị, tức chỉ ở đúng lúc đơn `BASELINE_READY`/`READY_FOR_PAID_SERVICE`. Qua khỏi bước đó (ví dụ đang `BASELINE_IN_PROGRESS` = "Đang bay bản đồ"), nút biến mất và không còn cách nào quay lại màn Mission — chặn test mọi nhiệm vụ 11-16, với **mọi** đơn, không riêng 1 lần. Đã sửa: thêm `findMissionsBySurveyOrder()` trong `missionApi.ts`, tra theo `missionCode` (tất định từ `surveyOrderId` — xem `PrepareMissionSetCommandHandler.BuildMissionCode`: `ORD-{surveyOrderId:N}-{BASE|HEALTH|READY}`), phân trang danh sách Mission của farm (cùng kiểu bounded 25 trang như `findMissionById`) — chỉ đọc, không gọi API tạo/sửa gì. `ManagerOrderDetailPage` giờ luôn hiện link "Nhiệm vụ bay: ... →" theo mã Mission + trạng thái, không phụ thuộc trạng thái đơn. Tự test: typecheck ✓, 179/179 test (thêm 2 test trong `tests/mission-preflight.test.mjs`) ✓, build ✓.
+
+**2026-11-06:** Đã thử thêm giới hạn 20 file/đợt vào hàm chia đợt upload (nhiệm vụ 8) dựa trên `[MaxLength(20)]` đọc được từ source lúc đó — **người dùng xác nhận BE đã bỏ giới hạn này**, đã hoàn tác, giữ nguyên hàm chia đợt chỉ theo dung lượng (5 GiB) như trước. Không sửa lại nữa trừ khi có xác nhận mới từ BE.
 
 - API kích hoạt: `POST .../missions/{missionId}/farms/{farmId}/process-metashape` (Metashape, mặc định) hoặc `POST .../process-odm` (OpenDroneMap — phương án mã nguồn mở thay thế, cùng request/response). Body tùy chọn `{ cameraType?, alignAccuracy?, genericPreselection? }` (bỏ trống dùng cấu hình mặc định BE). Response `{ missionId, taskId, status, message }`.
 - API poll: `GET .../orthophoto-status` → `{ missionId, taskId, status, progress, processingTimeMs, previewUrl, tifUrl, bounds: {minLat,maxLat,minLon,maxLon}, corners: {northWest,northEast,southEast,southWest mỗi cái {latitude,longitude}}, errorMessage }`. Chỉ xác nhận đúng các giá trị `status` thật (ví dụ `COMPLETED`) khi đọc response lúc test tay — chưa có enum liệt kê sẵn từ source, không đoán trước danh sách đầy đủ.
@@ -221,7 +231,8 @@ Phạm vi: FE web (`AgriDrone-FE`). Không đổi BE. **FE không gọi trực t
 ---
 
 ## 12. System Manager — Vẽ ranh giới vườn trên ảnh trực giao + cắt tiles
-**Trạng thái:** [ ] — dùng `leaflet`/`react-leaflet` đã thêm (xem mục "Quyết định" cuối tài liệu).
+**Trạng thái:** [~] Đã code xong: [BoundaryTilingPanel.tsx](AgriDrone-FE/src/features/missions/BoundaryTilingPanel.tsx) mới dùng `react-leaflet` (`MapContainer` + `ImageOverlay` phủ `previewUrl`/`bounds` từ nhiệm vụ 11, `CircleMarker`/`Polygon`/`Polyline` vẽ điểm/viền — không dùng `Marker` mặc định nên tránh được lỗi icon asset quen thuộc của Leaflet khi bundler). Đủ 3 nút theo đúng mô tả UC04 (Xóa điểm cuối/Xóa hết/Khóa viền), danh sách tọa độ `#n: lat, lng`, diện tích ước tính (công thức phẳng quanh vĩ độ trung tâm, đủ dùng cho quy mô 1 vườn, không phải tính geodesic chính xác). Chỉ hiện khi `orthophoto-status` đã `COMPLETED` và có `previewUrl`/`bounds`. Tự test: typecheck ✓, 164/164 test (thêm `tests/mission-tiling.test.mjs`, 3 test) ✓, build ✓ (chunk `ManagerMissionDetailPage` ~181 kB gzip 54 kB do thêm Leaflet, vẫn lazy-load riêng không ảnh hưởng trang khác). Chưa test tay với BE thật.
+**Phát hiện khi đọc `SliceMissionTilesCommandHandler`:** API `tiling-slice` **không gate theo trạng thái Mission** (chỉ cần quyền farm + Mission tồn tại) và tự tìm file TIF đã lưu từ nhiệm vụ 11 nếu không truyền `tifStorageKey` — FE không cần tự quản lý storage key.
 
 - API: `POST .../missions/{missionId}/farms/{farmId}/tiling-slice`, body `{ tileSize=640, overlap=64, dualScale=true, polygonGeoJson, tifStorageKey?, uploadToMinio? }` (polygon GeoJSON `Polygon`, vòng tọa độ `[lng, lat]`, tự khép kín điểm cuối = điểm đầu). Response `{ missionId, totalTiles, totalTiles640, totalTiles1280, dualScale, tiles: [{tileIndex, tileSize, colOff, rowOff, width, height, fileName, storageKey, url, bounds, corners, affineTransform}] }`.
 - UI theo đúng hành vi UC04 mô tả (cần bản đồ tương tác trên `previewUrl` của nhiệm vụ 11):
@@ -235,7 +246,7 @@ Phạm vi: FE web (`AgriDrone-FE`). Không đổi BE. **FE không gọi trực t
 ---
 
 ## 13. System Manager — Nhận diện cây bằng YOLO + chọn cây neo
-**Trạng thái:** [ ] — phụ thuộc nhiệm vụ 12 (cùng dùng Leaflet cho phần chọn cây neo trên bản đồ).
+**Trạng thái:** [x] Đã code và người dùng đã test tay xong.
 
 - API: `POST .../missions/{missionId}/farms/{farmId}/yolo-detect`, body `{ confidenceThreshold=0.25, rowSpacing=2.8, colSpacing=2.5, anchorLat?, anchorLon?, customAngleDeg?, polygonGeoJson }` (để trống `anchorLat/anchorLon` → BE tự chọn cây góc trên-trái làm neo). Response `{ missionId, modelName, totalTilesScanned, totalRawDetections, totalUniqueTrees, totalMissingTrees, suggestedRowSpacing, suggestedColSpacing, maxRow, maxCol, csvDownloadUrl, activeTrees: [...], missingTrees: [...] }`, mỗi cây `{ id, row, col, lat, lon, confidence, status, source, isAnchor }`.
 - UI: form tham số (confidence/rowSpacing/colSpacing — có nút "Dùng gợi ý" điền `suggestedRowSpacing/suggestedColSpacing` sau lần chạy trước); nút "Chọn cây neo" chuyển map sang chế độ chờ click 1 cây (đánh dấu nổi bật, có nút "Hủy" quay về tự động); chạy xong vẽ `activeTrees` (xanh) và `missingTrees` (vị trí nội suy) lên map.
@@ -246,7 +257,8 @@ Phạm vi: FE web (`AgriDrone-FE`). Không đổi BE. **FE không gọi trực t
 ---
 
 ## 14. System Manager — Tải CSV kết quả cây
-**Trạng thái:** [ ]
+**Trạng thái:** [~] Đã code xong: nút "Tải CSV kết quả cây" hiện sau khi đã chạy YOLO (nhiệm vụ 13). API này trả **file stream thật, không phải JSON** (`Results.File(...)` bên BE) nên không dùng được `apiRequest` sẵn có — đã thêm `apiRequestFile()` dùng chung trong `src/api/client.ts` (đọc `Content-Disposition` lấy tên file, cùng cách parse lỗi ProblemDetails như `apiRequest`), tạo blob URL và click `<a download>` ẩn để trình duyệt lưu file, không mở tab mới. Tự test: typecheck ✓, 171/171 test (thêm `tests/mission-yolo-csv.test.mjs`, 4 test) ✓, build ✓. Chưa test tay với BE thật.
+**Phát hiện khi đọc `DownloadMissionTreesCsvQueryHandler`:** lỗi `DownloadCsv.NotFound` khi chưa chạy YOLO lần nào — đã map rõ ràng, và UI cũng tự ẩn nút khi chưa có `yoloResult` nên trường hợp này hiếm khi xảy ra qua UI.
 
 - API: `GET .../missions/{missionId}/farms/{farmId}/yolo-csv` → file `text/csv`, tên `trees_{missionId}.csv`, cột `tree_id,row,col,latitude,longitude,confidence,status,source`.
 - UI: nút "Tải CSV" sau khi đã chạy YOLO (nhiệm vụ 13) — tải trực tiếp file về máy, không cần hiển thị nội dung trong app.
@@ -256,23 +268,19 @@ Phạm vi: FE web (`AgriDrone-FE`). Không đổi BE. **FE không gọi trực t
 ---
 
 ## 15. System Manager — Publish danh sách cây vào hệ thống chính thức
-**Trạng thái:** [ ]
+**Trạng thái:** [~] Đã code xong trong `ManagerMissionDetailPage`, mục YOLO (nhiệm vụ 13), ngay dưới nút "Tải CSV": bấm 1 nút "Đưa vào hệ thống chính thức" sẽ tự **lưu nháp lại** (`replaceMissionPlantGps`, nhiệm vụ 7) từ `yoloResult.activeTrees/missingTrees` hiện tại rồi gọi publish ngay với **cùng** mảng cây vừa gửi (không đọc lại từ GET) — tránh lệch dữ liệu vì BE so khớp từng field tuyệt đối giữa `candidates` và dòng đã lưu (`MissionPlantGpsPublisher`). Form nhập `rowSpacingM`/`plantSpacingM`/`gridBearingDeg` (mặc định đúng theo default của BE record: 3.0 / 2.5 / 0.0). Tự test: typecheck ✓, 183/183 test (thêm `tests/mission-plant-gps-publish.test.mjs`, 6 test) ✓, build ✓. Chưa test tay với BE thật.
 
-- API: `POST /api/system-manager/farms/{farmId}/missions/{missionId}/plant-gps/publish` (đã xác minh đúng prefix từ `SystemManagerMissionsController`, khác với path UC04 ghi nhầm) — cần header `Idempotency-Key` (UUID). Body bọc trong `payload`:
-  ```json
-  { "payload": { "surveyOrderId": "...", "rowSpacingM": 3.0, "plantSpacingM": 2.5, "gridBearingDeg": 0.0,
-      "candidates": [{ "treeId": "...", "row": 1, "col": 1, "latitude": ..., "longitude": ..., "confidence": ..., "status": "DETECTED", "source": "YOLO" }] } }
-  ```
-  Response thành công `{ missionId, messageId, status: "QUEUED" }` — xếp vào Outbox, không tạo Cây thật ngay lập tức (xử lý nền). `candidates` phải khớp các dòng đã lưu nháp qua API `plant-gps` (nhiệm vụ 7) — không tự dựng danh sách khác.
-- Trước khi publish: lưu nháp kết quả YOLO (nhiệm vụ 13) vào `plant-gps` (nhiệm vụ 7) bằng `activeTrees`/`missingTrees` (đổi `lat/lon` → `latitude/longitude` cho khớp field của API `plant-gps`).
-- UI: nút "Đưa vào hệ thống chính thức" trên cùng màn với kết quả YOLO, bật sau khi đã lưu nháp; sau publish hiển thị trạng thái "Đã xếp hàng xử lý", nhắc Manager dùng `GET /api/system-manager/farms/{farmId}/missions/{missionId}/plant-gps` (nhiệm vụ 7) để xem lại khi cây thật đã được tạo xong (xử lý nền, không có mốc thời gian cố định).
+**Phát hiện khi đọc `MissionPlantGpsPublisher.PublishAsync`:**
+- Endpoint này **chỉ áp dụng cho Mission có `purpose = BaselineMapping`** — nếu khác, BE trả 409 Conflict "Payload survey order does not match a baseline mapping mission." UI đã thêm cảnh báo vàng khi `latest.purpose` đã biết và khác Baseline Mapping, nhưng không chặn cứng (để lỗi 409 thật từ BE là nguồn đúng).
+- Response lỗi (404/409/400) **không có `errorCode`** như các endpoint khác trong Mission module (Conflict trả `{errors: [string]}` thô, ValidationProblem trả `{errors: {payload: [string]}}` chuẩn ASP.NET, NotFound trả body rỗng) — không thể map theo `error.code` như `missionError()` thường làm. Đã thêm `publishPlantGpsError()` riêng trong `missionWorkflow.ts`, khớp theo đúng câu tiếng Anh cố định (6 câu đã liệt kê hết từ source) rồi mới fallback `missionError()`.
+- **Lỗ hổng dữ liệu cũ vẫn còn:** `surveyOrderId` chỉ có trong `latest` (state cục bộ, chỉ được set sau 1 mutation Mission trả `MissionDetail` đầy đủ trong phiên hiện tại) — System Manager chưa có API GET 1 mission đầy đủ, nên nếu tải lại trang đúng lúc đang ở bước YOLO/Publish, `latest` sẽ `null` và nút Publish báo lỗi rõ ràng yêu cầu publish trong cùng phiên hoặc bổ sung API BE (không tự chế giải pháp vá tạm).
 
-**Cách test:** Lưu nháp danh sách cây → Publish → nhận `status=QUEUED`; gọi lại GET plant-gps sau một lúc để kiểm tra dữ liệu còn khớp (không tự coi QUEUED là đã xong).
+**Cách test:** Chạy YOLO xong → bấm "Đưa vào hệ thống chính thức" → nhận `status=QUEUED` + `messageId`; gọi lại GET plant-gps (mục "GPS cây lưu nháp") sau một lúc để kiểm tra dữ liệu còn khớp (không tự coi QUEUED là đã xong — Cây thật được tạo nền, không có mốc thời gian cố định).
 
 ---
 
 ## 16. Kiểm thử tổng thể end-to-end
-**Trạng thái:** [ ]
+**Trạng thái:** [~] Mục 7 (tự động) đã chạy lại sau khi làm nhiệm vụ 15, trên toàn bộ codebase tích lũy từ nhiệm vụ 0-15: `npm run typecheck` ✓, `npm test` 183/183 ✓, `npm run build` ✓. Mục 1-6 (click tay toàn luồng với 1 SurveyOrder thật, có Drone/tài khoản thật) **chưa làm** — ngoài khả năng của tôi (không có quyền BE/tài khoản thật để thao tác tay), cần người dùng tự thực hiện.
 
 Chạy lại toàn bộ theo đúng thứ tự trên **một SurveyOrder thật** đã đặt cọc/thanh toán xong, từ bước 0 đến 15, không bỏ bước nào:
 
@@ -285,6 +293,78 @@ Chạy lại toàn bộ theo đúng thứ tự trên **một SurveyOrder thật*
 7. `npm run build`, `npm test`, `npm run typecheck` đều đạt trước khi coi là xong.
 
 **Ghi chú:** Cập nhật trạng thái `[ ]/[~]/[x]` ở từng mục khi làm đến đó, để theo dõi tiến độ qua các lần làm việc tiếp theo.
+
+---
+
+## 17. System Manager — Bản đồ sức khỏe cây (tổng quan nông trại)
+**Trạng thái:** [ ] — nguồn: `AgriDrone Docs (1).md` (người dùng cung cấp, 2026-11-06), mục "Lấy Bản Đồ Nền & Trạng Thái Sức Khỏe Cây Trồng" — **mới hoàn toàn**, không trùng với `PlantHealthPage.tsx`/`plantHealthApi.ts` hiện có (đó là danh mục nhãn/hướng dẫn cấp hệ thống, khác luồng này). Đã xác minh đủ 7 API của mục 17-20 từ `FarmPlantHealthController.cs`/`PlantHealthReviewController.cs` và các Command/Query Handler thật trong `Application/Features/PlantHealth/` + `Processing/GetFarmPlantHealthMap/`.
+
+- API: `GET /api/farms/{farmId}/plant-health-map?tenantId={tenantId}` — **không yêu cầu đăng nhập** (`[AllowAnonymous]` trong source, khác với doc ghi "cần Bearer token"); gửi token kèm theo vẫn an toàn, không bắt buộc. Response thật **nhiều hơn** mẫu trong doc, có thêm `boundaryGeoJson` và `zones` (danh sách vùng bệnh đầy đủ, dùng cho nhiệm vụ 20):
+  ```json
+  { "farmId", "tenantId", "boundaryGeoJson": "...",
+    "baseMap": { "sourceMissionId", "status", "previewUrl", "bounds", "gridBearingDeg", "plantSpacingM", "rowSpacingM" } | null,
+    "summary": { "totalPlants", "normalPlants", "healthyFruitPlants", "diseasePlants", "diseaseBreakdown": {"<tên bệnh>": n} },
+    "plants": [{ "id", "plantCode", "row", "col", "lat", "lon", "lifecycleStatus", "healthStatus", "observations": [{ "id", "missionId", "className", "classNameVi", "confidence", "gpsDistanceM", "imageName", "cropImageUrl", "annotatedImageUrl", "detectionId" }] }],
+    "zones": [{ "id", "zoneKey", "status", "alertType", "diseaseName", "diseaseNameVi", "totalTrees", "centerLat", "centerLon", "radiusMeters", "geometryGeoJson", "diseaseBreakdown", "trees": [{ "plantId", "plantCode", "row", "col", "lat", "lon" }] }] }
+  ```
+  `healthStatus` chỉ có đúng 3 giá trị xác nhận từ source: `NORMAL` (xanh), `HEALTHY_FRUIT` (có trái khỏe), `DISEASE` (đỏ). Zone `status`: `PROPOSED | REVIEWED | REJECTED` (xác nhận qua các handler ở nhiệm vụ 20). `alertType` đọc thẳng từ dữ liệu, chưa liệt kê hết giá trị — không đoán, hiển thị nguyên văn nếu chưa có nhãn.
+- UI: trang mới (ví dụ `/manager/farms/:farmId/plant-health`), dùng lại `react-leaflet` như nhiệm vụ 12: `ImageOverlay` ảnh nền từ `baseMap.previewUrl`/`bounds`, `CircleMarker` cho từng cây tô màu theo `healthStatus` (xanh/vàng/đỏ), click cây mở Drawer xem `observations` kèm `cropImageUrl`/`annotatedImageUrl`. Panel tổng quan hiển thị `summary` + `diseaseBreakdown`. Vẽ `zones` bằng `L.geoJSON(JSON.parse(zone.geometryGeoJson))` (theo đúng khuyến nghị FE Checklist của doc — **không** vẽ `L.circle` cứng dù có `centerLat/centerLon/radiusMeters`, vì khi đã Reshape (nhiệm vụ 20) hình dạng thật từ PostGIS mới đúng).
+- Sau bất kỳ API ghi nào ở nhiệm vụ 18-20 thành công, chỉ cần gọi lại GET này để làm mới toàn bộ bản đồ (đúng theo "Lưu Ý Chung" của doc) — không tự suy luận lại màu/trạng thái ở FE.
+
+**Cách test:** Mở trang với 1 farm đã publish base map (qua nhiệm vụ 15) → thấy đúng số cây theo `summary`, màu cây khớp `healthStatus`, click cây ra đúng ảnh crop.
+
+---
+
+## 18. System Manager — Duyệt vết bệnh/trái trên cây (UC-28)
+**Trạng thái:** [ ]
+
+- API: `PUT /api/system-manager/farms/{farmId}/plant-health/observations/{observationId}/review`, body `{ decision: "CONFIRMED" | "REJECTED", reason, correctedConditionCode? }` → `{ observationId, newStatus, resolvedPlantId, reason }`. `decision` chỉ nhận đúng 2 giá trị này (BE tự uppercase, nhưng FE nên gửi đúng hoa để rõ ràng); sai giá trị khác bị từ chối.
+- Hiệu ứng nghiệp vụ đã xác nhận từ handler: `CONFIRMED` → cây chuyển health level `MODERATE` (trừ khi lớp AI nhận là "Healthy..." thì giữ `HEALTHY`); `REJECTED` → nếu cây không còn vết `CONFIRMED`/`MATCHED` nào khác thì tự hoàn `HEALTHY`. `correctedConditionCode` chỉ áp dụng khi `decision=CONFIRMED`.
+- Lỗi: `ReviewObservation.FarmAccessDenied`, `ReviewObservation.InvalidDecision`, `ReviewObservation.NotFound`. Gọi lại với cùng `decision` đã áp dụng trả kết quả idempotent (không lỗi).
+- UI: trong Drawer chi tiết cây (nhiệm vụ 17) hoặc màn riêng liệt kê observation theo trạng thái, mỗi observation có ảnh crop + 2 nút Xác nhận/Bác bỏ, bắt buộc nhập lý do.
+
+**Cách test:** Confirm 1 vết bệnh trên cây đang `NORMAL` → cây chuyển `DISEASE` (gọi lại nhiệm vụ 17 để thấy); Reject vết đó → cây hoàn `NORMAL` nếu không còn vết nào khác.
+
+---
+
+## 19. System Manager — Xử lý vết lệch tọa độ (UC-29)
+**Trạng thái:** [ ]
+
+- API xem danh sách: `GET /api/system-manager/farms/{farmId}/plant-health/flagged-observations` → `{ farmId, count, items: [{ observationId, missionId, detectedLat, detectedLon, gpsDistanceMeters, detectionConfidence, matchingParametersJson, suggestedPlantId }] }` — chỉ gồm observation đang `PENDING` (lệch >2.5m so với trụ gần nhất, chưa khớp cây nào).
+- API xử lý: `POST .../plant-health/observations/{observationId}/resolve-flag`, body `{ action: "SNAP" | "CREATE_NEW_PLANT" | "DISMISS", targetPlantId?, newPlantCode?, zoneId?, reason }`.
+  - `SNAP` bắt buộc `targetPlantId` (phải là cây `ACTIVE` trong farm) — lỗi `ResolveFlagged.TargetPlantRequired`/`TargetPlantNotFound`.
+  - `CREATE_NEW_PLANT` tạo cây mới tại đúng tọa độ phát hiện; BE tự kiểm tra điểm có nằm trong ranh giới farm đã duyệt không (`ResolveFlagged.OutsideBoundary` nếu ngoài — FE không tự validate thay, chỉ hiển thị lỗi), và mã cây trùng bị chặn (`ResolveFlagged.PlantCodeExists`); để trống `newPlantCode` BE tự sinh mã.
+  - `DISMISS` chỉ cần `reason`.
+  - Chỉ xử lý được observation đang `PENDING`, gọi lại khi đã xử lý nhận lỗi `ResolveFlagged.NotPending`.
+- UI: danh sách/markers màu tím nét đứt kèm `gpsDistanceMeters` (theo đúng mô tả doc), mở từng điểm cho chọn 1 trong 3 hành động; `SNAP` cần chọn cây đích (từ danh sách `plants` đã có ở nhiệm vụ 17, ví dụ các cây gần nhất).
+
+**Cách test:** Với 1 observation PENDING mẫu: thử SNAP vào 1 cây có sẵn → cây đó chuyển `DISEASE`; thử DISMISS 1 observation khác → biến mất khỏi danh sách flagged; thử CREATE_NEW_PLANT với tọa độ ngoài ranh giới farm → nhận đúng lỗi `OutsideBoundary`, không tạo cây.
+
+---
+
+## 20. System Manager — Quản lý vùng bệnh: Gộp / Chỉnh viền / Thành viên (UC-30a/b/c)
+**Trạng thái:** [ ]
+
+**Luật bất biến chung (đã xác nhận từ cả 3 handler):** cả 3 thao tác dưới đây chỉ áp dụng được khi vùng đang ở trạng thái `PROPOSED` — lỗi `*.InvalidStatus` nếu không. Sau khi Chỉnh viền hoặc Thêm/bớt thành viên thành công, vùng tự chuyển sang `REVIEWED` và **khóa vĩnh viễn** với cả 3 API này (kể cả Gộp) — đúng "Khóa bất biến sau duyệt" trong FE Checklist của doc.
+
+- **Gộp vùng (20a):** `POST .../plant-health/disease-zones/merge`, body `{ zoneIds: Guid[] (≥2), mergedGeometry: GeoJSON Polygon }` → `{ mergedZoneId, totalTrees, mergedZoneCount }`. Yêu cầu tất cả `zoneIds` đang `PROPOSED` và cùng farm; vùng mới kế thừa toàn bộ cây thành viên (khử trùng), các vùng nguồn chuyển `REJECTED` (giữ lịch sử, không xóa cứng). Lỗi: `MergeZones.MinimumZones`, `ZoneNotFound`, `InvalidStatus`, `EmptyMembership`.
+- **Chỉnh viền (20b):** `PUT .../plant-health/disease-zones/{zoneId}/boundary`, body `{ newGeometry: GeoJSON Polygon }` → `{ zoneId, geometryGeoJson, totalEnclosedTrees }`. BE tự cắt polygon theo đúng ranh giới farm (PostGIS `ST_Intersection`) và tính lại chính xác số cây nằm trong bằng `ST_Contains` — FE không tự đếm cây, chỉ hiển thị `totalEnclosedTrees` trả về.
+- **Thêm/bớt thành viên (20c):** `PATCH .../plant-health/disease-zones/{zoneId}/memberships`, body `{ addPlantIds: Guid[], removePlantIds: Guid[] }` → `{ zoneId, totalEnclosedTrees, addedCount, removedCount }`. Cây thêm vào phải `ACTIVE` trong đúng farm (lỗi `PlantNotFound` nếu không); không gửi gì (cả 2 mảng rỗng) thì không đổi gì và vùng giữ nguyên `PROPOSED`.
+- UI (20b cần vẽ/chỉnh polygon trên bản đồ): **tái dùng đúng cách tương tác đã làm ở nhiệm vụ 12** (danh sách điểm + Xóa điểm cuối/Xóa hết, không cần thêm thư viện vẽ-kéo-điểm như `leaflet-draw`) — nạp sẵn các điểm từ `zone.geometryGeoJson` hiện có, cho sửa rồi gửi `newGeometry`. 20a/20c là thao tác chọn (zone list, plant list), không cần vẽ.
+
+**Cách test:** Tạo 2 vùng PROPOSED mẫu (qua pipeline AI hoặc dữ liệu test) → Gộp lại → đúng `mergedZoneCount=2`; Chỉnh viền 1 vùng PROPOSED khác → `totalEnclosedTrees` đổi đúng theo polygon mới, vùng chuyển `REVIEWED`; thử Gộp lại vùng vừa Chỉnh viền → bị chặn `InvalidStatus` (đã khóa).
+
+---
+
+## 21. System Manager — Reset upload
+**Trạng thái:** [~] Nguồn: commit BE `d9fb0a5` ("resetupload", 06/11/2026) — tính năng mới hoàn toàn, không thuộc 2 tài liệu nguồn ban đầu, phát hiện khi đọc `git log` theo yêu cầu người dùng. Đã code xong trong `ManagerMissionDetailPage`: section "Reset upload" mới, hiện cùng lúc với (không lồng trong) mục "Hoàn tất upload" (nhiệm vụ 10) và "Ghép bản đồ trực giao" (nhiệm vụ 11) khi Mission ở `Uploading`/`UploadFailed`/`ReadyForProcessing`/`ProcessingFailed` — dùng `ActionModal`/`Action` có sẵn (cùng pattern với "Hủy nhiệm vụ bay"/"Báo lỗi chuyến bay"), xác nhận trước khi xóa (destructive), có lựa chọn "Xóa luôn dữ liệu telemetry?". Tự test: typecheck ✓, 181/181 test (thêm 2 test trong `tests/mission-upload-finalize.test.mjs`) ✓, build ✓. Chưa test tay với BE thật.
+
+- API: `POST /api/missions/{missionId}/farms/{farmId}/upload/reset`, body `{ expectedMissionVersion?: number, resetTelemetry?: boolean }` (cả 2 optional, FE luôn gửi cả 2 — `expectedMissionVersion` theo đúng convention optimistic concurrency chung của dự án dù BE cho phép bỏ trống) → `{ missionId, status, deletedMediaCount, telemetryReset, missionVersion }`. `status` trả về là PascalCase thô (`enum.ToString()`, giống Prepare/Finalize) — đã chuẩn hóa qua `toScreamingSnakeCase()` trước khi lưu vào `latest.status`.
+- Chỉ áp dụng khi Mission đang `Uploading`/`UploadFailed`/`ReadyForProcessing`/`ProcessingFailed`. Xóa toàn bộ file ảnh/video trên MinIO + record `MissionMedia`/`MediaAssets`/`MediaUploadSessions`, đưa Mission **về lại `Uploading`**. Nếu `resetTelemetry=true`: xóa luôn toàn bộ điểm + lần import telemetry đã lưu, xóa `FlightRoute`.
+- **Phát hiện phụ:** `UPLOAD_FAILED` trước đây không được bất kỳ section nào trong `ManagerMissionDetailPage` xử lý (không nằm trong mảng trạng thái `postFlight`, cũng không nằm trong `canStartOrthophoto`) — Mission rơi vào trạng thái này sẽ chỉ thấy cảnh báo chung "không ở bước có thao tác trong phạm vi đã triển khai". Section Reset upload mới cho `UPLOAD_FAILED` một nơi để thao tác tiếp; đã cập nhật điều kiện cảnh báo chung để không hiện trùng khi `canResetUpload` đúng.
+- Lỗi mới: `MissionUpload.CannotResetInCurrentStatus`, `MissionUpload.MissionNotOrderBound` (2 mã còn lại — `FarmAccessDenied`, `ConcurrentUpdate` — đã có sẵn bản dịch từ trước, dùng lại).
+
+**Cách test:** Ở Mission đang `Uploading`/`ReadyForProcessing`/`ProcessingFailed` → bấm "Reset upload" → xác nhận → Mission quay về `Uploading`, danh sách media/readiness rỗng lại; thử lại lần 2 ngay sau Finalize mà chưa upload ảnh mới → readiness báo thiếu ảnh như upload lần đầu.
 
 ---
 

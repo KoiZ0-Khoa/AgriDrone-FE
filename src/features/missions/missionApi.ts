@@ -1,7 +1,7 @@
-import { apiRequest } from '../../api/client'
+import { apiRequest, apiRequestFile } from '../../api/client'
 import type { Drone } from '../drones/types'
 import type { Page } from '../surveys/types'
-import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, FinalizeUploadResult, ImportTelemetryPointInput, ImportTelemetryResult, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPurpose, NormalizedTelemetryLog, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ReplacePlantGpsResult, UploadReadiness } from './missionTypes'
+import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPurpose, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, ReplacePlantGpsResult, ResetMissionUploadResult, SliceTilesResult, UploadReadiness } from './missionTypes'
 
 const farmPath = (farmId: string) => `/api/system-manager/farms/${encodeURIComponent(farmId)}`
 const missionPath = (farmId: string, missionId: string) => `${farmPath(farmId)}/missions/${encodeURIComponent(missionId)}`
@@ -29,6 +29,20 @@ export async function findMissionById(token: string, farmId: string, missionId: 
   }
   return null
 }
+// No GET-by-surveyOrderId endpoint either. missionCode is deterministic from surveyOrderId
+// (see PrepareMissionSetCommandHandler.BuildMissionCode: `ORD-{surveyOrderId:N}-{BASE|HEALTH|READY}`,
+// surveyOrderId:N = lowercase, no dashes — under the 50-char cap for every purpose, so never truncated),
+// so page through the farm's mission list and match by that prefix instead of mutating via prepare-mission-set.
+export async function findMissionsBySurveyOrder(token: string, farmId: string, surveyOrderId: string, signal?: AbortSignal): Promise<MissionListItem[]> {
+  const prefix = `ORD-${surveyOrderId.replace(/-/g, '')}-`
+  const matches: MissionListItem[] = []
+  for (let page = 1; page <= 25; page++) {
+    const result = await getFarmMissions(token, farmId, page, 50, signal)
+    matches.push(...result.items.filter(item => item.missionCode.startsWith(prefix)))
+    if (!result.hasNextPage) break
+  }
+  return matches
+}
 export const getMissionVersion = (token: string, farmId: string, missionId: string, signal?: AbortSignal) =>
   apiRequest<{ id: string; version: number }>(`${missionPath(farmId, missionId)}/version`, { token, signal })
 export const getActivePreflightChecklist = (token: string, farmId: string, missionId: string, signal?: AbortSignal) =>
@@ -50,6 +64,8 @@ export const getMissionPlantGps = (token: string, farmId: string, missionId: str
   apiRequest<PlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, { token, signal })
 export const replaceMissionPlantGps = (token: string, farmId: string, missionId: string, trees: PlantGpsTree[]) =>
   apiRequest<ReplacePlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, { method: 'POST', token, body: { trees } })
+export const publishMissionPlantGps = (token: string, farmId: string, missionId: string, payload: PlantGpsPublishPayload, key: string) =>
+  apiRequest<PlantGpsPublishResult>(`${missionPath(farmId, missionId)}/plant-gps/publish`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body: { payload } })
 
 // Separate route prefix (api/missions/{missionId}/farms/{farmId}/...) — a different controller than SystemManagerMissionsController above.
 const mediaPath = (farmId: string, missionId: string) => `/api/missions/${encodeURIComponent(missionId)}/farms/${encodeURIComponent(farmId)}/media`
@@ -78,3 +94,19 @@ export const getUploadReadiness = (token: string, farmId: string, missionId: str
   apiRequest<UploadReadiness>(`${uploadPath(farmId, missionId)}/readiness`, { token, signal })
 export const finalizeMissionUpload = (token: string, farmId: string, missionId: string, expectedMissionVersion: number) =>
   apiRequest<FinalizeUploadResult>(`${uploadPath(farmId, missionId)}/finalize`, { method: 'POST', token, body: { expectedMissionVersion } })
+export const resetMissionUpload = (token: string, farmId: string, missionId: string, expectedMissionVersion: number, resetTelemetry: boolean) =>
+  apiRequest<ResetMissionUploadResult>(`${uploadPath(farmId, missionId)}/reset`, { method: 'POST', token, body: { expectedMissionVersion, resetTelemetry } })
+
+const processingPath = (farmId: string, missionId: string) => `/api/missions/${encodeURIComponent(missionId)}/farms/${encodeURIComponent(farmId)}`
+export const processMetashape = (token: string, farmId: string, missionId: string, options?: ProcessMetashapeOptions) =>
+  apiRequest<ProcessMetashapeResult>(`${processingPath(farmId, missionId)}/process-metashape`, { method: 'POST', token, body: options ?? {} })
+export const processOdm = (token: string, farmId: string, missionId: string, options?: ProcessMetashapeOptions) =>
+  apiRequest<ProcessMetashapeResult>(`${processingPath(farmId, missionId)}/process-odm`, { method: 'POST', token, body: options ?? {} })
+export const getOrthophotoStatus = (token: string, farmId: string, missionId: string, signal?: AbortSignal) =>
+  apiRequest<OrthophotoStatus>(`${processingPath(farmId, missionId)}/orthophoto-status`, { token, signal })
+export const sliceMissionTiles = (token: string, farmId: string, missionId: string, polygonGeoJson: GeoJsonPolygon, options: { tileSize?: number; overlap?: number; dualScale?: boolean } = {}) =>
+  apiRequest<SliceTilesResult>(`${processingPath(farmId, missionId)}/tiling-slice`, { method: 'POST', token, body: { tileSize: options.tileSize ?? 640, overlap: options.overlap ?? 64, dualScale: options.dualScale ?? true, polygonGeoJson } })
+export const detectMissionTrees = (token: string, farmId: string, missionId: string, options: DetectMissionTreesOptions = {}) =>
+  apiRequest<DetectMissionTreesResult>(`${processingPath(farmId, missionId)}/yolo-detect`, { method: 'POST', token, body: options })
+export const downloadMissionTreesCsv = (token: string, farmId: string, missionId: string) =>
+  apiRequestFile(`${processingPath(farmId, missionId)}/yolo-csv`, { token, fallbackFileName: `trees_${missionId}.csv` })

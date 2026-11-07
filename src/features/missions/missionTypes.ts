@@ -37,6 +37,10 @@ export type PlantGpsTree = { treeId: string; row: number; col: number; latitude:
 export type PlantGpsResult = { missionId: string; savedCount: number; trees: PlantGpsTree[] }
 export type ReplacePlantGpsResult = { missionId: string; savedCount: number; boundaryPointCount: number; boundaryId: string | null; boundaryVersionNumber: number | null; boundaryStatus: string | null }
 
+// Candidates must exactly match the rows just saved via ReplacePlantGpsResult above (same shape) — verified against MissionPlantGpsPublisher.
+export type PlantGpsPublishPayload = { surveyOrderId: string; candidates: PlantGpsTree[]; rowSpacingM: number; plantSpacingM: number; gridBearingDeg: number }
+export type PlantGpsPublishResult = { missionId: string; messageId: string; status: string }
+
 // Literal strings, not enum JSON — verified against UploadMissionMediaItemResponse (api/missions/{missionId}/farms/{farmId}/media).
 export type MediaUploadStatus = 'Completed' | 'Failed' | 'NotAttempted'
 export type CompletedMediaUpload = { uploadSessionId: string; mediaAssetId: string; status: string; mimeType: string; fileSizeBytes: number; sha256Checksum: string; reusedCompletion: boolean }
@@ -69,3 +73,35 @@ export type UploadReadiness = {
   rawImageCount: number; rawVideoCount: number; telemetryPointCount: number; hasActiveUploadSessions: boolean; blockers: string[]
 }
 export type FinalizeUploadResult = { missionId: string; status: string; mediaCount: number; telemetryPointCount: number; missionVersion: number }
+// status is raw enum.ToString() (PascalCase) like Finalize/Prepare — normalize with toScreamingSnakeCase before storing.
+export type ResetMissionUploadResult = { missionId: string; status: string; deletedMediaCount: number; telemetryReset: boolean; missionVersion: number }
+
+export type ProcessMetashapeOptions = { cameraType?: string; alignAccuracy?: string; genericPreselection?: boolean }
+export type ProcessMetashapeResult = { missionId: string; taskId: string; status: string; message: string }
+export type OrthophotoBounds = { minLat: number; maxLat: number; minLon: number; maxLon: number }
+export type OrthophotoCorners = {
+  northWest: { latitude: number; longitude: number }; northEast: { latitude: number; longitude: number }
+  southEast: { latitude: number; longitude: number }; southWest: { latitude: number; longitude: number }
+}
+// status is a plain string from the external photogrammetry service (NOT_STARTED/QUEUED/.../COMPLETED/ERROR) — never run through toScreamingSnakeCase, it is not a Mission status.
+export type OrthophotoStatus = {
+  missionId: string; taskId: string | null; status: string; progress: number; processingTimeMs: number
+  previewUrl: string | null; tifUrl: string | null; bounds: OrthophotoBounds | null; corners: OrthophotoCorners | null; errorMessage: string | null
+  stage: string | null
+}
+
+// GeoJSON ring order is [lng, lat] throughout the tiling/YOLO contracts below.
+export type GeoJsonPolygon = { type: 'Polygon'; coordinates: [number, number][][] }
+export type MissionTile = {
+  tileIndex: number; tileSize: number | null; colOff: number; rowOff: number; width: number; height: number
+  fileName: string; storageKey: string | null; url: string | null; bounds: OrthophotoBounds; corners: OrthophotoCorners; affineTransform: number[]
+}
+export type SliceTilesResult = { missionId: string; totalTiles: number; totalTiles640: number; totalTiles1280: number; dualScale: boolean; tiles: MissionTile[] }
+
+export type DetectedTree = { id: string; row: number; col: number; lat: number; lon: number; confidence: number; status: string; source: string; isAnchor: boolean }
+export type DetectMissionTreesOptions = { confidenceThreshold?: number; rowSpacing?: number; colSpacing?: number; anchorLat?: number; anchorLon?: number; customAngleDeg?: number; polygonGeoJson?: GeoJsonPolygon }
+export type DetectMissionTreesResult = {
+  missionId: string; modelName: string; totalTilesScanned: number; totalRawDetections: number; totalUniqueTrees: number; totalMissingTrees: number
+  suggestedRowSpacing: number | null; suggestedColSpacing: number | null; maxRow: number; maxCol: number; csvDownloadUrl: string | null
+  activeTrees: DetectedTree[]; missingTrees: DetectedTree[]
+}

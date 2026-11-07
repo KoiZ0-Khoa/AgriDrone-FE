@@ -32,6 +32,27 @@ export class ApiError extends Error {
 
 type ApiRequestOptions = Omit<RequestInit, 'body'> & { body?: unknown; token?: string }
 
+async function throwIfError(response: Response): Promise<never> {
+  let problem: ProblemDetails | undefined
+  try {
+    const payload: unknown = await response.json()
+    problem = typeof payload === 'string' ? { detail: payload } : payload as ProblemDetails
+  } catch {
+    problem = undefined
+  }
+
+  const firstValidationMessage = problem?.errors
+    ? Object.values(problem.errors).flat()[0]
+    : undefined
+  throw new ApiError(
+    response.status,
+    firstValidationMessage ?? problem?.detail ?? problem?.title ?? 'Không thể xử lý yêu cầu.',
+    problem?.errorCode,
+    problem?.traceId,
+    problem?.errors,
+  )
+}
+
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { body, token, headers, ...requestOptions } = options
   const multipart = body instanceof FormData
@@ -46,29 +67,20 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     body: multipart ? body : body === undefined ? undefined : JSON.stringify(body),
   })
 
-  if (!response.ok) {
-    let problem: ProblemDetails | undefined
-    try {
-      const payload: unknown = await response.json()
-      problem = typeof payload === 'string' ? { detail: payload } : payload as ProblemDetails
-    } catch {
-      problem = undefined
-    }
-
-    const firstValidationMessage = problem?.errors
-      ? Object.values(problem.errors).flat()[0]
-      : undefined
-    throw new ApiError(
-      response.status,
-      firstValidationMessage ?? problem?.detail ?? problem?.title ?? 'Không thể xử lý yêu cầu.',
-      problem?.errorCode,
-      problem?.traceId,
-      problem?.errors,
-    )
-  }
-
+  if (!response.ok) return throwIfError(response)
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
+}
+
+// For endpoints that return a raw file stream (e.g. Results.File(...)) instead of JSON.
+export async function apiRequestFile(path: string, options: { token?: string; fallbackFileName: string }): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}) },
+  })
+  if (!response.ok) return throwIfError(response)
+  const disposition = response.headers.get('Content-Disposition')
+  const match = disposition ? /filename="?([^";]+)"?/i.exec(disposition) : null
+  return { blob: await response.blob(), fileName: match?.[1] ?? options.fallbackFileName }
 }
 
 export async function checkApiHealth(): Promise<boolean> {

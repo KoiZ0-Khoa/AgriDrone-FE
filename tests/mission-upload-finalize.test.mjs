@@ -30,6 +30,25 @@ test('readiness and finalize hit the missionId-first upload route', async () => 
   ])
 })
 
+test('resetMissionUpload POSTs expectedMissionVersion and resetTelemetry to the missionId-first upload/reset route', async () => {
+  let captured
+  globalThis.fetch = async (url, options) => {
+    captured = { path: new URL(url).pathname, method: options.method, body: JSON.parse(options.body) }
+    return Response.json({ missionId: 'mission-1', status: 'Uploading', deletedMediaCount: 4, telemetryReset: true, missionVersion: 7 })
+  }
+  const result = await api.resetMissionUpload('manager', 'farm-1', 'mission-1', 6, true)
+  assert.equal(captured.path, '/api/missions/mission-1/farms/farm-1/upload/reset')
+  assert.equal(captured.method, 'POST')
+  assert.deepEqual(captured.body, { expectedMissionVersion: 6, resetTelemetry: true })
+  assert.deepEqual(result, { missionId: 'mission-1', status: 'Uploading', deletedMediaCount: 4, telemetryReset: true, missionVersion: 7 })
+})
+
+test('MissionUpload reset error codes translate to actionable Vietnamese messages', async () => {
+  const { ApiError } = await import(clientUrl)
+  assert.match(workflow.missionError(new ApiError(409, 'x', 'MissionUpload.CannotResetInCurrentStatus')), /Chỉ reset được khi/)
+  assert.match(workflow.missionError(new ApiError(409, 'x', 'MissionUpload.MissionNotOrderBound')), /không gắn đơn khảo sát/)
+})
+
 test('uploadBlockerLabel translates known blocker codes and falls back to the raw code otherwise', () => {
   assert.match(workflow.uploadBlockerLabel('MissionUpload.TelemetryMissing'), /telemetry/)
   assert.match(workflow.uploadBlockerLabel('MissionUpload.RequiredMediaMissing'), /Thiếu ảnh/)

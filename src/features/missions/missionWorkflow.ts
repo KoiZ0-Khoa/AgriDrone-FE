@@ -41,6 +41,33 @@ const uploadBlockerLabelsByCode: Record<string, string> = {
 }
 export const uploadBlockerLabel = (code: string) => uploadBlockerLabelsByCode[code] ?? code
 
+// Task-level status from the external photogrammetry service — a separate vocabulary from Mission status, never normalized through toScreamingSnakeCase.
+const orthophotoStatusLabelsByCode: Record<string, string> = { NOT_STARTED: 'Chưa bắt đầu', QUEUED: 'Đang chờ xử lý', COMPLETED: 'Đã hoàn tất', ERROR: 'Lỗi xử lý', FAILED: 'Xử lý thất bại' }
+export const orthophotoStatusLabel = (raw: string) => orthophotoStatusLabelsByCode[raw] ?? raw
+export const isOrthophotoTerminal = (raw: string) => raw === 'COMPLETED' || raw === 'ERROR' || raw === 'FAILED'
+
+// Auto-closes the ring (first point repeated at the end) only when building the GeoJSON to send — the on-map point list stays open/distinct.
+export function closedBoundaryPolygon(points: [number, number][]) {
+  if (points.length < 3) throw new Error('Cần tối thiểu 3 điểm để tạo ranh giới.')
+  const coordinates = [...points, points[0]] as [number, number][]
+  return { type: 'Polygon' as const, coordinates: [coordinates] }
+}
+// Planar equirectangular approximation around the centroid latitude — adequate for farm-scale plots, not a geodesic calculation.
+export function estimateAreaHectares(points: [number, number][]) {
+  if (points.length < 3) return 0
+  const avgLat = points.reduce((sum, point) => sum + point[1], 0) / points.length
+  const metersPerDegLat = 111_320
+  const metersPerDegLon = 111_320 * Math.cos(avgLat * Math.PI / 180)
+  const projected = points.map(([lng, lat]) => [lng * metersPerDegLon, lat * metersPerDegLat])
+  let area = 0
+  for (let i = 0; i < projected.length; i++) {
+    const [x1, y1] = projected[i]
+    const [x2, y2] = projected[(i + 1) % projected.length]
+    area += x1 * y2 - x2 * y1
+  }
+  return Math.abs(area) / 2 / 10_000
+}
+
 // Mirrors PrepareMissionSetCommandHandler: BASELINE_READY needs BaselineMapping; READY_FOR_PAID_SERVICE needs the order's own service purpose.
 export function missionPurposeFor(order: AssignedOrder, orderStatus: string): MissionPurpose | null {
   if (orderStatus === 'BASELINE_READY') return 'BaselineMapping'
@@ -123,6 +150,15 @@ export function missionError(error: unknown) {
       'TelemetryImport.ConcurrentUpdate': 'Nhiệm vụ hoặc dữ liệu telemetry vừa thay đổi. Tải lại và thử lại.',
       'MissionUpload.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
       'MissionUpload.ConcurrentUpdate': 'Nhiệm vụ vừa thay đổi. Tải lại và thử lại.',
+      'MissionUpload.CannotResetInCurrentStatus': 'Chỉ reset được khi nhiệm vụ đang Đang tải lên, Lỗi tải lên, Sẵn sàng xử lý, hoặc Lỗi xử lý.',
+      'MissionUpload.MissionNotOrderBound': 'Nhiệm vụ cũ không gắn đơn khảo sát, không thể reset upload.',
+      'OrthophotoStatus.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
+      'ProcessMetashape.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
+      'ProcessMetashape.NoImages': 'Nhiệm vụ chưa có ảnh gốc nào để ghép bản đồ. Upload ảnh trước.',
+      'SliceTiles.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
+      'DetectTrees.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
+      'DownloadCsv.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
+      'DownloadCsv.NotFound': 'Chưa có file CSV. Hãy chạy nhận diện cây (YOLO) trước.',
     }
     if (error.code && messages[error.code]) return messages[error.code]
     if (error.code === 'Mission.ConcurrentUpdate' || (error.status === 409 && error.code?.includes('ConcurrentUpdate'))) return 'Nhiệm vụ bay đã được cập nhật bởi người khác. Tải lại và kiểm tra trước khi tiếp tục.'
@@ -135,6 +171,21 @@ export function missionError(error: unknown) {
 
 export function isNotFound(error: unknown) {
   return error instanceof ApiError && error.status === 404
+}
+
+// PublishPlantGps' Conflict/Invalid responses carry no errorCode (see MissionPlantGpsPublisher) — match the known literal
+// English messages instead so the user still sees a Vietnamese explanation for the most likely cases.
+const publishPlantGpsMessagesByText: Record<string, string> = {
+  'Payload survey order does not match a baseline mapping mission.': 'Chỉ đưa GPS cây vào hệ thống chính thức cho nhiệm vụ Khảo sát bản đồ nền (Baseline Mapping).',
+  'No saved plant GPS rows were found for this mission.': 'Chưa có GPS cây nào được lưu nháp cho nhiệm vụ này.',
+  'Payload candidates must match every saved CSV tree_id exactly once.': 'Danh sách cây vừa gửi không khớp với dữ liệu đã lưu nháp (thiếu/dư/trùng mã cây). Hãy nhận diện lại rồi thử lại.',
+  'Payload candidate fields must match the saved plant GPS rows.': 'Dữ liệu cây vừa gửi không khớp với dữ liệu đã lưu nháp. Hãy nhận diện lại rồi thử lại.',
+  'Each candidate must include valid row, col, coordinates, confidence, status, and source.': 'Có cây với dữ liệu không hợp lệ (hàng/cột/tọa độ/độ tin cậy/trạng thái/nguồn).',
+  'Idempotency-Key has already been used for another event.': 'Mã gửi (Idempotency-Key) đã được dùng cho một yêu cầu khác. Hãy thử lại để tạo mã mới.',
+}
+export function publishPlantGpsError(error: unknown) {
+  if (error instanceof ApiError && error.message && publishPlantGpsMessagesByText[error.message]) return publishPlantGpsMessagesByText[error.message]
+  return missionError(error)
 }
 
 // Mirrors the validation in SystemManagerMissionsController.ReplacePlantGps.
