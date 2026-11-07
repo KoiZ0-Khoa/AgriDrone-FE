@@ -1,0 +1,11 @@
+.farm-location-picker { margin: 12px 0 20px; }
+.farm-location-picker .form-hint { margin: 10px 0; }
+.farm-location-picker .ant-btn { min-height: 44px; }
+.farm-location-map { margin-top: 16px; border: 1px solid #dce3dc; border-radius: 8px; overflow: hidden; }
+.farm-location-map .leaflet-container { width: 100%; height: min(420px, 50vh); min-height: 240px; background: #eef2ec; }
+.farm-location-map .leaflet-control-attribution { font-size: 11px; }
+.farm-location-pin { background: none; border: none; }
+.farm-location-pin > span { display: block; width: 28px; height: 28px; background: #08764e; border: 3px solid white; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 2px 8px #0005; }
+.farm-location-pin > span::after { content: ''; position: absolute; width: 8px; height: 8px; background: white; border-radius: 50%; inset: 7px; }
+.farm-location-map-summary { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-top: 16px; }
+@media (max-width: 480px) { .farm-location-picker .ant-space, .farm-location-picker .ant-space-item, .farm-location-picker .ant-btn { width: 100%; } }
