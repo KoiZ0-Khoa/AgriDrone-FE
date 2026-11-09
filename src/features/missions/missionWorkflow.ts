@@ -1,6 +1,29 @@
 import { ApiError } from '../../api/client'
 import type { AssignedOrder } from '../surveys/orderTypes'
-import type { MissionPurpose, PlantGpsTree } from './missionTypes'
+import type { MissionPurpose, OrthophotoBounds, PlantGpsTree } from './missionTypes'
+
+// Bắt buộc người dùng chỉ chấm điểm (ranh giới, chấm thêm trụ...) trong phạm vi ảnh orthophoto, không phải trên nền vệ tinh/OSM xung quanh.
+export function isWithinOrthophotoBounds(lat: number, lon: number, bounds: OrthophotoBounds) {
+  return lat >= bounds.minLat && lat <= bounds.maxLat && lon >= bounds.minLon && lon <= bounds.maxLon
+}
+
+// Ngược lại với BuildMissionCode (`ORD-{surveyOrderId:N}-{BASE|HEALTH|READY}`, N = 32 hex chữ thường không dấu gạch — xem
+// findMissionsBySurveyOrder trong missionApi.ts). missionCode luôn có sẵn từ GET .../missions (kể cả sau khi tải lại trang),
+// khác surveyOrderId chỉ có trong MissionDetail (chỉ tới từ response của 1 mutation trong cùng phiên) — tách lại GUID gốc từ
+// đây để publish-plant-gps vẫn hoạt động sau khi tải lại trang, không cần thêm API GET 1 Mission riêng.
+// Cùng lý do với surveyOrderIdFromMissionCode ở trên: latest.purpose chỉ có trong cùng phiên (MissionListItem — nguồn
+// sống sót qua tải lại trang — không có field purpose). Hậu tố cuối của missionCode (BASE|HEALTH|READY) mã hoá đúng
+// purpose nên dùng được làm fallback khi latest đã mất.
+export function isBaselineMappingMissionCode(missionCode: string): boolean {
+  return /-BASE$/.test(missionCode)
+}
+
+export function surveyOrderIdFromMissionCode(missionCode: string): string | null {
+  const match = /^ORD-([0-9a-f]{32})-/i.exec(missionCode)
+  if (!match) return null
+  const hex = match[1].toLowerCase()
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
 
 export const missionPurposeLabels: Record<MissionPurpose, string> = {
   BaselineMapping: 'Khảo sát bản đồ nền',
@@ -159,6 +182,11 @@ export function missionError(error: unknown) {
       'DetectTrees.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
       'DownloadCsv.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',
       'DownloadCsv.NotFound': 'Chưa có file CSV. Hãy chạy nhận diện cây (YOLO) trước.',
+      // Trả về khi lưu nháp GPS cây có kèm boundary (set/đổi ranh giới farm trong cùng request) — mã lỗi xác minh trực
+      // tiếp từ FarmError.cs/FarmZoneError.cs (BE), không đoán theo tên hàm C#.
+      'FarmZone.BoundaryOutsideFarm': 'Ranh giới vừa vẽ không bao trọn 1 khu vực (Zone) đã có sẵn của nông trại. Vẽ lại ranh giới rộng hơn hoặc xử lý khu vực đó trước.',
+      'FarmBoundary.ConcurrentModification': 'Ranh giới nông trại vừa được cập nhật bởi thao tác khác (có thể do publish 2 lần liên tiếp). Tải lại trang rồi thử lại.',
+      'FarmBoundary.UnmappedRequiresCaptureSession': 'Nông trại chưa có ranh giới và cần đi qua luồng thu thập ranh giới (capture session) trước, không thể set trực tiếp ở đây.',
     }
     if (error.code && messages[error.code]) return messages[error.code]
     if (error.code === 'Mission.ConcurrentUpdate' || (error.status === 409 && error.code?.includes('ConcurrentUpdate'))) return 'Nhiệm vụ bay đã được cập nhật bởi người khác. Tải lại và kiểm tra trước khi tiếp tục.'

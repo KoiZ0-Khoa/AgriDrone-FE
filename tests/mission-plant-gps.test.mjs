@@ -51,3 +51,26 @@ test('404 (Mission has no plant-gps slot) is recognized as isNotFound, not a har
   assert.equal(workflow.isNotFound(new ApiError(403, 'x')), false)
   assert.match(workflow.missionError(new ApiError(404, 'x')), /Không tìm thấy/)
 })
+
+test('replaceMissionPlantGps sends boundary alongside trees when provided (sets/updates the farm boundary in the same request), and omits it when not given or empty', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push(JSON.parse(options.body))
+    return Response.json({ missionId: 'mission-1', savedCount: 1, boundaryPointCount: 4, boundaryId: 'boundary-1', boundaryVersionNumber: 1, boundaryStatus: 'Approved' })
+  }
+  const boundary = [{ longitude: 106.49, latitude: 10.46 }, { longitude: 106.50, latitude: 10.46 }, { longitude: 106.50, latitude: 10.47 }]
+  const saved = await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree], boundary)
+  assert.equal(saved.boundaryId, 'boundary-1')
+  assert.deepEqual(calls[0], { trees: [sampleTree], boundary })
+  await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree])
+  assert.deepEqual(calls[1], { trees: [sampleTree] })
+  await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree], [])
+  assert.deepEqual(calls[2], { trees: [sampleTree] })
+})
+
+test('boundary-related error codes from replacing plant GPS with a boundary translate to actionable Vietnamese messages', async () => {
+  const { ApiError } = await import(clientUrl)
+  assert.match(workflow.missionError(new ApiError(400, 'x', 'FarmZone.BoundaryOutsideFarm')), /không bao trọn/)
+  assert.match(workflow.missionError(new ApiError(409, 'x', 'FarmBoundary.ConcurrentModification')), /vừa được cập nhật bởi thao tác khác/)
+  assert.match(workflow.missionError(new ApiError(409, 'x', 'FarmBoundary.UnmappedRequiresCaptureSession')), /capture session/)
+})

@@ -35,6 +35,8 @@ export type CompleteMissionPreflightResult = { mission: MissionDetail; reusedOpe
 
 export type PlantGpsTree = { treeId: string; row: number; col: number; latitude: number; longitude: number; confidence: number; status: 'DETECTED' | 'MISSING'; source: string }
 export type PlantGpsResult = { missionId: string; savedCount: number; trees: PlantGpsTree[] }
+// Tối thiểu 3 điểm khác nhau; không cần tự khép vòng, BE tự đóng. Chỉ gửi kèm khi muốn set/đổi ranh giới farm trong cùng request.
+export type MissionPlantGpsBoundaryPoint = { longitude: number; latitude: number }
 export type ReplacePlantGpsResult = { missionId: string; savedCount: number; boundaryPointCount: number; boundaryId: string | null; boundaryVersionNumber: number | null; boundaryStatus: string | null }
 
 // Candidates must exactly match the rows just saved via ReplacePlantGpsResult above (same shape) — verified against MissionPlantGpsPublisher.

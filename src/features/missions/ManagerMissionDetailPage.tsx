@@ -1,21 +1,34 @@
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Button, Checkbox, Divider, Form, Input, InputNumber, Radio, Space, Table, Tag } from 'antd'
-import { useState } from 'react'
+import { Alert, App, Button, Checkbox, Divider, Form, Input, InputNumber, Radio, Space, Steps, Table, Tag } from 'antd'
+import { useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { CopyReference } from '../../components/RecordReference'
 import { ActionModal } from '../../management/ActionModal'
 import { text, type Action } from '../../management/actions'
 import { useAuth } from '../auth/AuthContext'
+import { getFarmContext } from '../surveys/farmOperationsApi'
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
-import type { DetectMissionTreesResult, GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, SliceTilesResult, TelemetrySegment } from './missionTypes'
-import { dateTime, fileSizeLabel, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, toScreamingSnakeCase, uploadBlockerLabel } from './missionWorkflow'
+import type { DetectMissionTreesResult, GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, SliceTilesResult, TelemetrySegment } from './missionTypes'
+import { dateTime, fileSizeLabel, isBaselineMappingMissionCode, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel } from './missionWorkflow'
 import { BoundaryTilingPanel } from './BoundaryTilingPanel'
 import { PlantGpsPasteModal } from './PlantGpsPasteModal'
 import { RescheduleMissionModal } from './RescheduleMissionModal'
+import { StepSection } from './StepSection'
 import { YoloDetectionPanel } from './YoloDetectionPanel'
+
+const missionStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Ghép bản đồ', 'Ranh giới, YOLO & Publish GPS']
+function missionStepIndex(status: string, preflightDone: boolean) {
+  if (status === 'DRAFT') return 0
+  if (status === 'SCHEDULED') return preflightDone ? 1 : 0
+  if (status === 'IN_FLIGHT' || status === 'FLIGHT_FAILED') return 1
+  if (status === 'FLIGHT_COMPLETED' || status === 'UPLOADING' || status === 'UPLOAD_FAILED') return 2
+  if (status === 'READY_FOR_PROCESSING' || status === 'PROCESSING' || status === 'PROCESSING_FAILED') return 3
+  if (status === 'AWAITING_REVIEW' || status === 'COMPLETED') return 4
+  return 0
+}
 
 const incidentTypeOptions = [
   { value: 'SIGNAL_LOSS', label: 'Mất tín hiệu điều khiển' },
@@ -42,6 +55,32 @@ function batchFilesBySize(files: File[], maxBytes: number, maxFiles: number): Fi
   return batches
 }
 
+// Kéo-thả cả thư mục vào vùng upload: trình duyệt chỉ trao FileSystemEntry (không phải File) cho
+// thư mục, nên phải tự đọc đệ quy. Dùng khi kéo-thả thay vì input[webkitdirectory] để nút "Chọn
+// tệp" chỉ cần làm đúng 1 việc (mở hộp thoại chọn file) — không cần hỏi trước người dùng muốn chọn
+// file hay thư mục.
+async function readDirectoryFiles(entry: FileSystemEntry): Promise<File[]> {
+  if (entry.isFile) {
+    return [await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject))]
+  }
+  if (entry.isDirectory) {
+    const reader = (entry as FileSystemDirectoryEntry).createReader()
+    const files: File[] = []
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject))
+      if (batch.length === 0) break
+      for (const child of batch) files.push(...await readDirectoryFiles(child))
+    }
+    return files
+  }
+  return []
+}
+async function filesFromDrop(dataTransfer: DataTransfer): Promise<File[]> {
+  const entries = Array.from(dataTransfer.items).map(item => item.webkitGetAsEntry?.()).filter((entry): entry is FileSystemEntry => entry != null)
+  if (entries.length === 0) return Array.from(dataTransfer.files)
+  return (await Promise.all(entries.map(readDirectoryFiles))).flat()
+}
+
 export function ManagerMissionDetailPage() {
   const { message } = App.useApp()
   const token = useAuth().session!.accessToken
@@ -57,6 +96,8 @@ export function ManagerMissionDetailPage() {
   const [rescheduling, setRescheduling] = useState(false)
   const [pastingPlantGps, setPastingPlantGps] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const mediaInputRef = useRef<HTMLInputElement>(null)
+  const [mediaDropActive, setMediaDropActive] = useState(false)
   const [uploadResults, setUploadResults] = useState<MediaUploadItemResult[] | null>(null)
   const [showAllMedia, setShowAllMedia] = useState(false)
   const [logFile, setLogFile] = useState<File | null>(null)
@@ -73,6 +114,7 @@ export function ManagerMissionDetailPage() {
   const [gridBearingDeg, setGridBearingDeg] = useState(0)
   const [publishOperation, setPublishOperation] = useState<{ payload: string; key: string } | null>(null)
   const [publishResult, setPublishResult] = useState<PlantGpsPublishResult | null>(null)
+  const [boundaryUpdateResult, setBoundaryUpdateResult] = useState<ReplacePlantGpsResult | null>(null)
 
   const missionQuery = useQuery({ queryKey: ['mission-detail', farmId, missionId], queryFn: ({ signal }) => api.findMissionById(token, farmId, missionId, signal) })
   const mission = missionQuery.data
@@ -87,6 +129,12 @@ export function ManagerMissionDetailPage() {
   const checklistQuery = useQuery({ queryKey: ['mission-checklist', farmId, missionId], queryFn: ({ signal }) => api.getActivePreflightChecklist(token, farmId, missionId, signal), enabled: scheduled && !preflightDone })
   const currentAnswers = checklistQuery.data ? { ...Object.fromEntries(checklistQuery.data.items.map(item => [item.key, false])), ...answers } : answers
   const plantGpsQuery = useQuery({ queryKey: ['mission-plant-gps', farmId, missionId], queryFn: ({ signal }) => api.getMissionPlantGps(token, farmId, missionId, signal) })
+  // Dùng để quyết định có cần gửi kèm boundary trong lần publish GPS cây đầu tiên không (farm chưa có ranh giới nào) — cùng queryKey với ManagerFarmDetailPage/ManagerPlantHealthMapPage nên cache dùng chung.
+  const farmContextQuery = useQuery({ queryKey: ['manager-farm-context', farmId], queryFn: ({ signal }) => getFarmContext(token, farmId, signal) })
+  // latest.purpose chỉ có trong cùng phiên (giống surveyOrderId) — mất sau khi tải lại trang. Suy từ hậu tố missionCode
+  // (luôn có sẵn từ GET .../missions) làm fallback, tránh im lặng không set được boundary vì isBaselineMapping sai thành false.
+  const isBaselineMapping = latest?.purpose ? toScreamingSnakeCase(latest.purpose) === 'BASELINE_MAPPING' : Boolean(mission && isBaselineMappingMissionCode(mission.missionCode))
+  const farmBoundaryMissing = farmContextQuery.data ? !farmContextQuery.data.approvedBoundary : false
   const postFlight = ['FLIGHT_COMPLETED', 'UPLOADING', 'READY_FOR_PROCESSING', 'PROCESSING', 'AWAITING_REVIEW', 'COMPLETED'].includes(status ?? '')
   const telemetryEligible = status === 'FLIGHT_COMPLETED' || status === 'UPLOADING'
   const uploading = status === 'UPLOADING'
@@ -153,37 +201,56 @@ export function ManagerMissionDetailPage() {
       window.open(result.downloadUrl, '_blank', 'noopener,noreferrer')
     } catch (error) { void message.error(missionError(error)) }
   }
-  const downloadCsvMutation = useMutation({
-    mutationFn: () => api.downloadMissionTreesCsv(token, farmId, missionId),
-    onSuccess: ({ blob, fileName }) => {
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
-    },
-  })
+  // Sinh CSV ngay từ yoloResult hiện có (có thể đã sửa tay trong YoloDetectionPanel) thay vì gọi API yolo-csv,
+  // vốn chỉ phản ánh lần yolo-detect cuối lưu trên server và sẽ lệch với các chỗ đã sửa tay trên FE.
+  function downloadTreesCsv() {
+    if (!yoloResult) return
+    const header = 'tree_id,row,col,latitude,longitude,confidence,status,source'
+    const rows = [...yoloResult.activeTrees, ...yoloResult.missingTrees].map(tree => [tree.id, tree.row, tree.col, tree.lat, tree.lon, tree.confidence, tree.status, tree.source].join(','))
+    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `trees_${missionId}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
   const publishPlantGpsMutation = useMutation({
     mutationFn: async () => {
       if (!yoloResult) throw new Error('Chưa có kết quả nhận diện cây.')
-      if (!latest?.surveyOrderId) throw new Error('Thiếu mã đơn khảo sát (surveyOrderId) của nhiệm vụ — trang vừa được tải lại nên chưa có đủ dữ liệu. Hệ thống chưa có API lấy lại chi tiết 1 nhiệm vụ cho System Manager; hãy publish trong cùng phiên vừa hoàn tất chuyến bay/upload, hoặc liên hệ dev bổ sung API.')
+      // latest.surveyOrderId chỉ có trong cùng phiên vừa hoàn tất chuyến bay/upload (MissionDetail không có API GET riêng).
+      // Sau khi tải lại trang, suy ngược lại từ missionCode (luôn có sẵn từ GET .../missions) thay vì chặn hẳn thao tác publish.
+      const surveyOrderId = latest?.surveyOrderId ?? (mission ? surveyOrderIdFromMissionCode(mission.missionCode) : null)
+      if (!surveyOrderId) throw new Error('Thiếu mã đơn khảo sát (surveyOrderId) của nhiệm vụ — không suy ra được từ mã nhiệm vụ. Hãy publish trong cùng phiên vừa hoàn tất chuyến bay/upload, hoặc liên hệ dev kiểm tra.')
       const trees: PlantGpsTree[] = [
         ...yoloResult.activeTrees.map(tree => ({ treeId: tree.id, row: tree.row, col: tree.col, latitude: tree.lat, longitude: tree.lon, confidence: tree.confidence, status: 'DETECTED' as const, source: tree.source })),
         ...yoloResult.missingTrees.map(tree => ({ treeId: tree.id, row: tree.row, col: tree.col, latitude: tree.lat, longitude: tree.lon, confidence: tree.confidence, status: 'MISSING' as const, source: tree.source })),
       ]
       if (trees.length === 0) throw new Error('Không có cây nào trong kết quả nhận diện để đưa vào hệ thống chính thức.')
+      // Chỉ gửi kèm boundary khi: đúng mission Khảo sát bản đồ nền (ranh giới vẽ trên ảnh mission này mới có ý nghĩa
+      // là ranh giới chính thức farm) VÀ farm hiện chưa có ranh giới nào — tránh gửi lại mỗi lần publish, ghi đè
+      // ranh giới farm đã đúng bằng polygon vẽ hơi khác ở lần chạy YOLO lại.
+      const shouldSetFarmBoundary = isBaselineMapping && farmBoundaryMissing && Boolean(boundaryPolygon)
+      const boundary: MissionPlantGpsBoundaryPoint[] | undefined = shouldSetFarmBoundary
+        ? boundaryPolygon!.coordinates[0].map(([longitude, latitude]) => ({ longitude, latitude }))
+        : undefined
       // Stage first so the saved rows exactly match the candidates below — PublishPlantGps requires a byte-identical match.
-      await api.replaceMissionPlantGps(token, farmId, missionId, trees)
+      const replaceResult = await api.replaceMissionPlantGps(token, farmId, missionId, trees, boundary)
       await client.invalidateQueries({ queryKey: ['mission-plant-gps', farmId, missionId] })
-      const payload = { surveyOrderId: latest.surveyOrderId, candidates: trees, rowSpacingM, plantSpacingM, gridBearingDeg }
+      if (boundary) await client.invalidateQueries({ queryKey: ['manager-farm-context', farmId] })
+      const payload = { surveyOrderId, candidates: trees, rowSpacingM, plantSpacingM, gridBearingDeg }
       const next = operationFor(publishOperation, payload)
       setPublishOperation(next)
-      return api.publishMissionPlantGps(token, farmId, missionId, payload, next.key)
+      const publishResult = await api.publishMissionPlantGps(token, farmId, missionId, payload, next.key)
+      return { publishResult, replaceResult }
     },
-    onSuccess: data => { setPublishResult(data); void message.success('Đã lưu nháp và gửi yêu cầu đưa vào hệ thống chính thức.') },
+    onSuccess: ({ publishResult, replaceResult }) => {
+      setPublishResult(publishResult)
+      setBoundaryUpdateResult(replaceResult)
+      void message.success(replaceResult.boundaryId ? 'Đã lưu nháp, set ranh giới nông trại và gửi yêu cầu đưa vào hệ thống chính thức.' : 'Đã lưu nháp và gửi yêu cầu đưa vào hệ thống chính thức.')
+    },
   })
   const normalizeMutation = useMutation({
     mutationFn: () => { if (!logFile) throw new Error('Chọn file log bay (TXT/BBL).'); return api.normalizeTelemetryLog(token, farmId, missionId, logFile) },
@@ -306,14 +373,15 @@ export function ManagerMissionDetailPage() {
         <div><dt>Phiên bản</dt><dd>v{version}</dd></div>
       </dl>
     </section>
+    <Steps className="mission-steps" size="small" current={missionStepIndex(status ?? mission.status, preflightDone)} items={missionStepTitles.map(title => ({ title }))} />
     {!draft && !scheduled && !inFlight && !flightFailed && !postFlight && !orthophotoEligible && !canResetUpload ? <Alert className="workflow-notice" type="info" showIcon message={`Nhiệm vụ đang ở trạng thái "${missionStatusLabel(status ?? mission.status)}", không ở bước có thao tác trong phạm vi đã triển khai.`} /> : null}
     {flightFailed ? <Alert className="workflow-notice" type="warning" showIcon message="Chuyến bay trước đã lỗi." description="Chỉ lên lịch lại được nếu quyết định khắc phục khi báo lỗi là &quot;Cần lên lịch lại&quot;." /> : null}
-    {scheduled ? <section className="resource-panel">
+    {!draft ? <StepSection title="Checklist trước khi bay" status={scheduled && !preflightDone ? 'active' : 'done'} summary={preflightDone ? `Phù hợp để bay: ${latest?.preflightSuitableForFlight ? 'Có' : 'Không'}.` : undefined}>
       {preflightDone ? <Alert type="success" showIcon message="Đã hoàn tất checklist preflight." description={`Phù hợp để bay: ${latest?.preflightSuitableForFlight ? 'Có' : 'Không'}.`} />
         : checklistQuery.isPending ? <CommonState type="loading" />
         : checklistQuery.isError ? <CommonState type="error" description={missionError(checklistQuery.error)} retry={() => checklistQuery.refetch()} />
         : checklistQuery.data ? <>
-          <h2>Checklist trước khi bay · v{checklistQuery.data.versionNumber}</h2>
+          <p className="form-hint">Checklist trước khi bay · v{checklistQuery.data.versionNumber}</p>
           <Form layout="vertical">
             <fieldset className="workflow-checklist">
               <legend>Các điều kiện cần đạt</legend>
@@ -330,27 +398,38 @@ export function ManagerMissionDetailPage() {
           {preflightMutation.error ? <Alert type="error" showIcon message={missionError(preflightMutation.error)} /> : null}
           <Button type="primary" loading={preflightMutation.isPending} onClick={() => preflightMutation.mutate()}>Hoàn tất checklist</Button>
         </> : null}
-    </section> : null}
+    </StepSection> : null}
     {scheduled && !preflightDone ? <Alert className="workflow-notice" type="info" showIcon message="Hoàn tất checklist trước khi bay để mở bước &quot;Bắt đầu bay&quot;." /> : null}
-    {scheduled && preflightDone ? <section className="resource-panel">
-      <h2>Bắt đầu bay</h2>
+    {preflightDone ? <StepSection title="Bắt đầu bay" status={scheduled ? 'active' : 'done'} summary="Đã bắt đầu bay.">
       <p className="form-hint">Chỉ bắt đầu được trong khung giờ đã lên lịch và lịch hẹn Owner đã xác nhận, sau khi checklist preflight đã hoàn tất với kết quả phù hợp để bay.</p>
       {startMutation.error ? <Alert type="error" showIcon message={missionError(startMutation.error)} /> : null}
       <Button type="primary" loading={startMutation.isPending} onClick={() => startMutation.mutate()}>Bắt đầu bay</Button>
-    </section> : null}
-    {inFlight ? <section className="resource-panel">
-      <h2>Kết thúc chuyến bay</h2>
+    </StepSection> : null}
+    {inFlight || postFlight || orthophotoEligible || canResetUpload ? <StepSection title="Kết thúc chuyến bay" status={inFlight ? 'active' : 'done'} summary="Đã kết thúc chuyến bay.">
       <p className="form-hint">Xác nhận chuyến bay đã kết thúc an toàn. Upload ảnh và dữ liệu bay được thực hiện ở bước riêng sau khi kết thúc.</p>
       {completeFlightMutation.error ? <Alert type="error" showIcon message={missionError(completeFlightMutation.error)} /> : null}
       <Button type="primary" loading={completeFlightMutation.isPending} onClick={() => completeFlightMutation.mutate()}>Kết thúc chuyến bay</Button>
-    </section> : null}
-    {postFlight ? <section className="resource-panel">
-      <h2>Upload ảnh/video</h2>
-      <p className="form-hint">Chọn ảnh/video từ drone, hoặc chọn cả một thư mục để lấy toàn bộ file bên trong. Tổng dung lượng mỗi lần gửi tối đa 5 GiB (tự động chia đợt nếu vượt). Nếu 1 file lỗi, các file gửi sau trong cùng đợt sẽ dừng (Chưa thử) — không tự gửi lại.</p>
-      <Space direction="vertical">
-        <div><input type="file" multiple accept="image/*,video/*" disabled={uploadMutation.isPending} onChange={event => setSelectedFiles(Array.from(event.target.files ?? []))} /></div>
-        <div><span className="form-hint">Hoặc chọn cả thư mục: </span><input type="file" multiple disabled={uploadMutation.isPending} ref={el => { if (el) el.webkitdirectory = true }} onChange={event => setSelectedFiles(Array.from(event.target.files ?? []))} /></div>
-      </Space>
+    </StepSection> : null}
+    {postFlight ? <StepSection title="Upload ảnh/video" status={status === 'FLIGHT_COMPLETED' || status === 'UPLOADING' || status === 'UPLOAD_FAILED' ? 'active' : 'done'} summary={mediaQuery.data ? `${mediaQuery.data.totalCount} file đã upload.` : undefined}>
+      <p className="form-hint">Chọn ảnh/video từ drone, hoặc kéo-thả cả thư mục vào đây để lấy toàn bộ file bên trong.</p>
+      <input ref={mediaInputRef} type="file" multiple accept="image/*,video/*" style={{ display: 'none' }} disabled={uploadMutation.isPending}
+        onChange={event => setSelectedFiles(Array.from(event.target.files ?? []))} />
+      <div
+        style={{ border: `1px dashed ${mediaDropActive ? 'var(--mint)' : 'var(--line, #d9d9d9)'}`, borderRadius: 6, minHeight: 96, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', background: mediaDropActive ? 'var(--mint-soft)' : undefined }}
+        onDragOver={event => { event.preventDefault(); if (!uploadMutation.isPending) setMediaDropActive(true) }}
+        onDragLeave={() => setMediaDropActive(false)}
+        onDrop={event => {
+          event.preventDefault()
+          setMediaDropActive(false)
+          if (uploadMutation.isPending) return
+          void filesFromDrop(event.dataTransfer).then(setSelectedFiles)
+        }}
+      >
+        <Space>
+          <Button disabled={uploadMutation.isPending} onClick={() => mediaInputRef.current?.click()}>Chọn tệp</Button>
+          <span className="form-hint">{selectedFiles.length ? `${selectedFiles.length} file đã chọn` : 'Chưa chọn tệp nào'}</span>
+        </Space>
+      </div>
       <div><Button type="primary" disabled={selectedFiles.length === 0} loading={uploadMutation.isPending} onClick={() => uploadMutation.mutate(selectedFiles)}>Tải lên{selectedFiles.length ? ` (${selectedFiles.length} file)` : ''}</Button></div>
       {uploadMutation.error ? <Alert type="error" showIcon message={missionError(uploadMutation.error)} /> : null}
       {uploadResults ? <Table<MediaUploadItemResult> size="small" rowKey="index" dataSource={uploadResults} pagination={false} columns={[
@@ -367,9 +446,8 @@ export function ManagerMissionDetailPage() {
         { title: 'Tải lên lúc', render: (_, media) => dateTime(media.createdAt) },
         { title: 'Thao tác', render: (_, media) => <Button size="small" onClick={() => { void openMediaDownloadUrl(media.mediaId) }}>Xem / tải</Button> },
       ]} />) : null}
-    </section> : null}
-    {telemetryEligible ? <section className="resource-panel">
-      <h2>Decode & Import Telemetry</h2>
+    </StepSection> : null}
+    {telemetryEligible || orthophotoEligible ? <StepSection title="Decode & Import Telemetry" status={telemetryEligible ? 'active' : 'done'} summary={importResult ? `${importResult.pointCount} điểm đã import.` : undefined}>
       <p className="form-hint">Giải mã file log bay Blackbox (TXT/BBL), chọn (các) segment hợp lệ rồi import. Import thay toàn bộ dữ liệu telemetry hiện có của nhiệm vụ, không cộng dồn.</p>
       <input type="file" accept=".txt,.bbl,.csv" disabled={normalizeMutation.isPending} onChange={event => setLogFile(event.target.files?.[0] ?? null)} />
       <div><Button disabled={!logFile} loading={normalizeMutation.isPending} onClick={() => normalizeMutation.mutate()}>Giải mã (Decode)</Button></div>
@@ -388,10 +466,10 @@ export function ManagerMissionDetailPage() {
         {importMutation.error ? <Alert type="error" showIcon message={missionError(importMutation.error)} /> : null}
         <Button type="primary" disabled={selectedSegmentIndexes.length === 0} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import telemetry đã chọn</Button>
       </> : null}
-    </section> : null}
-    {uploading ? <section className="resource-panel">
-      <h2>Hoàn tất upload</h2>
-      {readinessQuery.isPending ? <CommonState type="loading" />
+    </StepSection> : null}
+    {uploading || orthophotoEligible ? <StepSection title="Hoàn tất upload" status={uploading ? 'active' : 'done'}>
+      {!uploading ? <p className="form-hint">Đã hoàn tất upload.</p>
+        : readinessQuery.isPending ? <CommonState type="loading" />
         : readinessQuery.isError ? <CommonState type="error" description={missionError(readinessQuery.error)} retry={() => readinessQuery.refetch()} />
         : readinessQuery.data ? <>
           <dl className="detail-list">
@@ -407,13 +485,12 @@ export function ManagerMissionDetailPage() {
             <Button type="primary" disabled={!readinessQuery.data.canFinalize || readinessQuery.data.blockers.length > 0} loading={finalizeMutation.isPending} onClick={() => finalizeMutation.mutate()}>Hoàn tất upload</Button>
           </Space>
         </> : null}
-    </section> : null}
+    </StepSection> : null}
     {canResetUpload ? <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>Reset upload</strong><span>Xóa toàn bộ ảnh/video đã tải lên và đưa nhiệm vụ về lại "Đang tải lên" để nạp lại từ đầu. Dùng khi lỡ upload nhầm ảnh khiến Geotag/ghép bản đồ lỗi. Không thể hoàn tác.</span></div></div>
       <Button danger onClick={() => setAction(resetUploadAction())}>Reset upload</Button>
     </section> : null}
-    {orthophotoEligible ? <section className="resource-panel">
-      <h2>Ghép bản đồ trực giao</h2>
+    {orthophotoEligible ? <StepSection title="Ghép bản đồ trực giao" status={orthophotoStatusQuery.data?.status === 'COMPLETED' ? 'done' : 'active'} summary={orthophotoStatusQuery.data?.previewUrl ? 'Đã ghép xong.' : undefined}>
       {canStartOrthophoto ? <>
         <p className="form-hint">Gửi toàn bộ ảnh gốc đã upload sang Metashape (mặc định) hoặc OpenDroneMap để ghép thành bản đồ trực giao.</p>
         <Space direction="vertical">
@@ -433,28 +510,29 @@ export function ManagerMissionDetailPage() {
             </Space>
             {orthophotoStatusQuery.data.errorMessage ? <Alert type="error" showIcon message={orthophotoStatusQuery.data.errorMessage} /> : null}
             {orthophotoStatusQuery.data.status === 'COMPLETED' ? <>
-              {orthophotoStatusQuery.data.previewUrl ? <p><img src={orthophotoStatusQuery.data.previewUrl} alt="Bản đồ trực giao" style={{ maxWidth: '100%' }} /></p> : null}
-              {orthophotoStatusQuery.data.tifUrl ? <Button onClick={() => window.open(orthophotoStatusQuery.data!.tifUrl!, '_blank', 'noopener,noreferrer')}>Tải GeoTIFF</Button> : null}
+              {orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds
+                // Có bounds → bản đồ tương tác ở mục "Vẽ ranh giới vườn" bên dưới đã hiển thị chính ảnh này rồi, nên không hiện lại ảnh ở đây nữa (tránh lặp).
+                ? <p className="form-hint">Xem ảnh đầy đủ & chọn ranh giới ở mục "Vẽ ranh giới vườn + cắt tiles" bên dưới.</p>
+                : orthophotoStatusQuery.data.previewUrl ? <p><img src={orthophotoStatusQuery.data.previewUrl} alt="Bản đồ trực giao" style={{ maxWidth: '100%' }} /></p> : null}
+              {orthophotoStatusQuery.data.tifUrl ? <div><Button onClick={() => window.open(orthophotoStatusQuery.data!.tifUrl!, '_blank', 'noopener,noreferrer')}>Tải GeoTIFF</Button></div> : null}
+              {!orthophotoStatusQuery.data.bounds ? <Alert style={{ marginTop: 12 }} type="warning" showIcon message="Chưa thể vẽ ranh giới" description="Ảnh đã ghép xong nhưng dịch vụ xử lý ảnh không trả về tọa độ góc bản đồ (bounds) — thường do ảnh gốc thiếu dữ liệu GPS/telemetry hợp lệ để định vị. Không thể vẽ ranh giới chính xác nếu thiếu tọa độ thật. Kiểm tra lại telemetry đã import (nhiệm vụ 9), hoặc liên hệ đội BE kiểm tra kết quả xử lý ảnh của nhiệm vụ này." /> : null}
             </> : null}
           </> : null}
       </> : null}
-    </section> : null}
-    {orthophotoStatusQuery.data?.status === 'COMPLETED' && orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds ? <section className="resource-panel">
-      <h2>Vẽ ranh giới vườn + cắt tiles</h2>
+    </StepSection> : null}
+    {orthophotoStatusQuery.data?.status === 'COMPLETED' && orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Vẽ ranh giới vườn + cắt tiles" status={sliceResult ? 'done' : 'active'} summary={sliceResult ? `${sliceResult.totalTiles} tile đã cắt.` : undefined}>
       <p className="form-hint">Click lên ảnh để thêm điểm ranh giới. Từ 3 điểm trở lên tự khép kín. Khóa viền trước khi cắt tiles.</p>
       <BoundaryTilingPanel token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
         onSliced={(result, polygon) => { setSliceResult(result); setBoundaryPolygon(polygon) }} />
       {sliceResult ? <p className="form-hint">Đã sẵn sàng {sliceResult.totalTiles} tile để nhận diện cây ở bước tiếp theo.</p> : null}
-    </section> : null}
-    {sliceResult && boundaryPolygon && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <section className="resource-panel">
-      <h2>Nhận diện cây bằng YOLO</h2>
+    </StepSection> : null}
+    {sliceResult && boundaryPolygon && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Nhận diện cây YOLO & Publish GPS" status={publishResult ? 'done' : 'active'} summary={publishResult ? `Đã gửi yêu cầu publish (${publishResult.status}).` : yoloResult ? `${yoloResult.totalUniqueTrees} cây đã nhận diện.` : undefined}>
       <p className="form-hint">Chạy nhận diện trong phạm vi ranh giới đã khóa. Có thể chọn lại cây neo (Hàng 1 - Cột 1) từ kết quả lần chạy trước rồi chạy lại để đánh số đúng theo thực địa.</p>
       <YoloDetectionPanel token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
         boundaryPolygon={boundaryPolygon} onDetected={setYoloResult} />
       {yoloResult ? <>
         <p className="form-hint">Kết quả gần nhất: {yoloResult.totalUniqueTrees} cây, {yoloResult.totalMissingTrees} vị trí thiếu — dùng ở bước lưu nháp GPS cây tiếp theo.</p>
-        {downloadCsvMutation.error ? <Alert type="error" showIcon message={missionError(downloadCsvMutation.error)} /> : null}
-        <Button loading={downloadCsvMutation.isPending} onClick={() => downloadCsvMutation.mutate()}>Tải CSV kết quả cây</Button>
+        <Button onClick={downloadTreesCsv}>Tải CSV kết quả cây</Button>
         <Divider />
         <div className="resource-panel-heading"><div><strong>Đưa vào hệ thống chính thức</strong><span>Lưu nháp lại danh sách cây ở trên rồi gửi yêu cầu publish cho đơn khảo sát. Chỉ áp dụng cho nhiệm vụ Khảo sát bản đồ nền.</span></div></div>
         <Form layout="inline">
@@ -462,12 +540,14 @@ export function ManagerMissionDetailPage() {
           <Form.Item label="Khoảng cách cây (m)"><InputNumber min={0.1} step={0.1} value={plantSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={value => setPlantSpacingM(value ?? 2.5)} /></Form.Item>
           <Form.Item label="Góc lưới (độ)"><InputNumber step={1} value={gridBearingDeg} disabled={publishPlantGpsMutation.isPending} onChange={value => setGridBearingDeg(value ?? 0)} /></Form.Item>
         </Form>
-        {latest?.purpose && toScreamingSnakeCase(latest.purpose) !== 'BASELINE_MAPPING' ? <Alert type="warning" showIcon message="Nhiệm vụ này không phải Khảo sát bản đồ nền — yêu cầu sẽ bị từ chối." /> : null}
+        {!isBaselineMapping ? <Alert type="warning" showIcon message="Nhiệm vụ này không phải Khảo sát bản đồ nền — yêu cầu sẽ bị từ chối." /> : null}
+        {isBaselineMapping && farmBoundaryMissing ? <Alert type="info" showIcon message="Nông trại này chưa có ranh giới nào." description="Ranh giới đã vẽ ở bước trên sẽ được dùng để set luôn ranh giới chính thức của nông trại khi bấm nút bên dưới." /> : null}
         {publishPlantGpsMutation.error ? <Alert type="error" showIcon message={publishPlantGpsError(publishPlantGpsMutation.error)} /> : null}
         {publishResult ? <Alert type="success" showIcon message={`Đã gửi yêu cầu (${publishResult.status})`} description={`messageId: ${publishResult.messageId} — hệ thống xử lý không đồng bộ, kiểm tra lại sau ít phút.`} /> : null}
+        {boundaryUpdateResult?.boundaryId ? <Alert type="success" showIcon message="Đã set ranh giới nông trại." description={`boundaryId: ${boundaryUpdateResult.boundaryId} · phiên bản ${boundaryUpdateResult.boundaryVersionNumber} · ${boundaryUpdateResult.boundaryPointCount} điểm.`} /> : null}
         <Button type="primary" loading={publishPlantGpsMutation.isPending} onClick={() => publishPlantGpsMutation.mutate()}>Đưa vào hệ thống chính thức</Button>
       </> : null}
-    </section> : null}
+    </StepSection> : null}
     <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>GPS cây (lưu nháp)</strong><span>Bước lưu nháp trước khi đưa vào hệ thống chính thức (xem mục Publish ở màn kết quả nhận diện cây). Lưu sẽ thay toàn bộ danh sách hiện có, không cộng dồn.</span></div>
         <Button onClick={() => setPastingPlantGps(true)}>Dán danh sách cây</Button>

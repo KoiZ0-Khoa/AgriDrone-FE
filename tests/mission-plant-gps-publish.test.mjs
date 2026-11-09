@@ -71,3 +71,22 @@ test('publishPlantGpsError falls back to missionError (status-based, then raw me
   assert.match(workflow.publishPlantGpsError(new ApiError(404, 'Không thể xử lý yêu cầu.')), /Không tìm thấy/)
   assert.equal(workflow.publishPlantGpsError(new ApiError(409, 'Some brand-new business rule message.')), 'Some brand-new business rule message.')
 })
+
+test('surveyOrderIdFromMissionCode reconstructs the dashed GUID from the deterministic ORD-{N}-{suffix} missionCode (no GET-single-mission API needed after reload)', () => {
+  assert.equal(workflow.surveyOrderIdFromMissionCode('ORD-a1b2c3d4e5f67890abcdef1234567890-BASE'), 'a1b2c3d4-e5f6-7890-abcd-ef1234567890')
+  assert.equal(workflow.surveyOrderIdFromMissionCode('ORD-a1b2c3d4e5f67890abcdef1234567890-HEALTH'), 'a1b2c3d4-e5f6-7890-abcd-ef1234567890')
+  // Uppercase hex still matches (case-insensitive) even though BE always emits lowercase.
+  assert.equal(workflow.surveyOrderIdFromMissionCode('ORD-A1B2C3D4E5F67890ABCDEF1234567890-BASE'), 'a1b2c3d4-e5f6-7890-abcd-ef1234567890')
+})
+
+test('surveyOrderIdFromMissionCode returns null for a missionCode that does not follow the ORD-{N}-{suffix} convention', () => {
+  assert.equal(workflow.surveyOrderIdFromMissionCode('TEST-MISSION-01'), null)
+  assert.equal(workflow.surveyOrderIdFromMissionCode('ORD-tooshort-BASE'), null)
+})
+
+test('isBaselineMappingMissionCode reads the BASE suffix as a fallback for mission.purpose lost after a page reload', () => {
+  assert.equal(workflow.isBaselineMappingMissionCode('ORD-a1b2c3d4e5f67890abcdef1234567890-BASE'), true)
+  assert.equal(workflow.isBaselineMappingMissionCode('ORD-a1b2c3d4e5f67890abcdef1234567890-HEALTH'), false)
+  assert.equal(workflow.isBaselineMappingMissionCode('ORD-a1b2c3d4e5f67890abcdef1234567890-READY'), false)
+  assert.equal(workflow.isBaselineMappingMissionCode('TEST-MISSION-01'), false)
+})

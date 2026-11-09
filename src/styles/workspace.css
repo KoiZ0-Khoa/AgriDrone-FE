@@ -29,6 +29,16 @@
 .app-shell :is(.form-hint, .catalog-name span, .farm-picker small, .zone-card-copy small, .boundary-panel > p) { font-size: 14px; line-height: 1.65; }
 .app-shell .boundary-panel > strong, .app-shell .form-section-label { font-size: 18px; }
 .app-shell .detail-list > div { grid-template-columns: minmax(120px, .7fr) minmax(0, 1fr); }
+.app-shell .mission-steps { margin-bottom: 28px; }
+.app-shell .map-live-banner {
+  position: absolute; top: 10px; left: 10px; z-index: 1000;
+  display: flex; gap: 14px; padding: 7px 14px;
+  background: rgba(255, 255, 255, .92); border: 1px solid var(--cloud); border-radius: 8px;
+  color: var(--ink); font-size: 13px; font-weight: 500; box-shadow: 0 2px 10px rgba(24, 44, 34, .08);
+}
+.app-shell .step-section-collapsed { background: var(--mint-soft); }
+.app-shell .step-section-collapsed .resource-panel-heading { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+.app-shell .step-section-collapsed .resource-panel-heading strong { font-size: 16px; }
 .app-shell .workflow-toolbar { margin-top: 0; }
 .app-shell .workflow-toolbar .ant-select { max-width: 100%; }
 .app-shell .ant-table-cell { overflow-wrap: anywhere; }

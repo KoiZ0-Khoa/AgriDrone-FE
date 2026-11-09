@@ -62,6 +62,7 @@ const ManagerFarmDetailPage = lazy(() => import('../features/surveys/ManagerFarm
 const ManagerOrdersPage = lazy(() => import('../features/surveys/ManagerOrdersPage').then(m => ({ default: m.ManagerOrdersPage })))
 const ManagerOrderDetailPage = lazy(() => import('../features/surveys/ManagerOrdersPage').then(m => ({ default: m.ManagerOrderDetailPage })))
 const PlantHealthPage = lazy(() => import('../features/surveys/PlantHealthPage').then(m => ({ default: m.PlantHealthPage })))
+const ManagerPlantHealthMapPage = lazy(() => import('../features/surveys/ManagerPlantHealthMapPage').then(m => ({ default: m.ManagerPlantHealthMapPage })))
 const ManagerMissionDetailPage = lazy(() => import('../features/missions/ManagerMissionDetailPage').then(m => ({ default: m.ManagerMissionDetailPage })))
 const DronesPage = lazy(() => import('../features/drones/DronesPage').then(m => ({ default: m.DronesPage })))
 const PreflightChecklistPage = lazy(() => import('../features/missions/PreflightChecklistPage').then(m => ({ default: m.PreflightChecklistPage })))
@@ -157,6 +158,7 @@ export function App() {
                         <Route path="/manager/farms/:farmId" element={<ManagerFarmDetailPage />} />
                         <Route path="/manager/farms/:farmId/base-map-drafts" element={<ManagerBaseMapsPage />} />
                         <Route path="/manager/farms/:farmId/base-map-drafts/:draftId" element={<ManagerBaseMapsPage />} />
+                        <Route path="/manager/farms/:farmId/plant-health" element={<ManagerPlantHealthMapPage />} />
                         <Route path="/manager/orders" element={<ManagerOrdersPage />} />
                         <Route path="/manager/orders/:orderId" element={<ManagerOrderDetailPage />} />
                         <Route path="/manager/farms/:farmId/missions/:missionId" element={<ManagerMissionDetailPage />} />
