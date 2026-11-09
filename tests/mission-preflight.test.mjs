@@ -35,6 +35,27 @@ test('findMissionById pages through the farm mission list and stops at the bound
   assert.deepEqual(calls, [1, 2])
 })
 
+test('findMissionsBySurveyOrder matches by the deterministic ORD-{surveyOrderId:N}-{suffix} missionCode prefix, across pages', async () => {
+  const surveyOrderId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+  const prefix = 'ORD-aaaaaaaabbbbccccddddeeeeeeeeeeee'
+  const page1 = [
+    { id: 'mission-base', missionCode: `${prefix}-BASE` },
+    { id: 'other-order', missionCode: 'ORD-11111111111111111111111111111111-BASE' },
+  ]
+  const page2 = [{ id: 'mission-health', missionCode: `${prefix}-HEALTH` }]
+  globalThis.fetch = async url => {
+    const page = Number(new URL(url).searchParams.get('pageNumber'))
+    return Response.json({ items: page === 1 ? page1 : page2, hasNextPage: page === 1 })
+  }
+  const matches = await api.findMissionsBySurveyOrder('manager', 'farm-1', surveyOrderId)
+  assert.deepEqual(matches.map(m => m.id), ['mission-base', 'mission-health'])
+})
+
+test('findMissionsBySurveyOrder returns an empty list (not an error) when nothing matches', async () => {
+  globalThis.fetch = async () => Response.json({ items: [{ id: 'unrelated', missionCode: 'ORD-abc-BASE' }], hasNextPage: false })
+  assert.deepEqual(await api.findMissionsBySurveyOrder('manager', 'farm-1', '11111111-2222-3333-4444-555555555555'), [])
+})
+
 test('active checklist and preflight completion hit the mission-scoped routes with Idempotency-Key', async () => {
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url)

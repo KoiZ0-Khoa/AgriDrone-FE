@@ -13,8 +13,9 @@ import { appointmentScheduleLabel, dateTime, workflowError } from './workflow'
 import { AppointmentModal, BoundaryVerificationModal } from './OrderActionModals'
 import { BoundaryCapturePanel } from './BoundaryCapturePanel'
 import { OrthophotoCornersModal } from './BaselineModals'
+import { findMissionsBySurveyOrder } from '../missions/missionApi'
 import { PrepareMissionModal } from '../missions/PrepareMissionModal'
-import { missionPurposeFor, missionPurposeLabels } from '../missions/missionWorkflow'
+import { missionPurposeFor, missionPurposeLabels, missionStatusLabel } from '../missions/missionWorkflow'
 
 export function ManagerOrdersPage() {
   const token = useAuth().session!.accessToken
@@ -47,6 +48,10 @@ export function ManagerOrderDetailPage() {
   const [appointment, setAppointment] = useState<Appointment | null>(null)
   const context = useQuery({ queryKey: ['manager-order-context', orderId], queryFn: ({ signal }) => getAssignedOrder(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.status) ? 10000 : false })
   const query = useQuery({ queryKey: ['manager-order-scope', orderId], queryFn: ({ signal }) => getOrderScope(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.orderStatus) ? 10000 : false })
+  // "Chuẩn bị nhiệm vụ bay" only shows while missionPurposeFor() is truthy (order still at the schedulable step) — once the
+  // order moves past that, the only other link to a Mission's detail page disappears, so look missions up independently.
+  // Must stay above the early returns below (Rules of Hooks) — gated by `enabled` instead, same as the rest of this hook set.
+  const missionsQuery = useQuery({ queryKey: ['order-missions', context.data?.farmId, orderId], queryFn: ({ signal }) => findMissionsBySurveyOrder(token, context.data!.farmId, orderId, signal), enabled: Boolean(context.data) })
   async function refresh() { await Promise.all([client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['manager-order-scope', orderId] }), client.invalidateQueries({ queryKey: ['manager-orders'] })]) }
   const back = <Link className="back-link" to="/manager/orders"><ArrowLeftOutlined /> Đơn khảo sát được giao</Link>
   if (query.isPending || context.isPending) return <>{back}<CommonState type="loading" /></>
@@ -73,6 +78,11 @@ export function ManagerOrderDetailPage() {
         {consistent && !scope.requiresBaselineMapping && scope.orderStatus === 'PENDING_BOUNDARY_VERIFICATION' ? <Button type="primary" disabled={busy} onClick={() => setAction('boundary')}>Xác minh ranh giới</Button> : null}
         {consistent && scope.requiresBaselineMapping && scope.orderStatus === 'AWAITING_BASELINE_REVIEW' ? <Button type="primary" disabled={busy} onClick={() => setAction('corners')}>Đánh dấu 4 góc trên ảnh trực giao</Button> : null}
         {missionPurpose ? <Button disabled={busy} onClick={() => setAction('prepare-mission')}>Chuẩn bị nhiệm vụ bay · {missionPurposeLabels[missionPurpose]}</Button> : null}</Space>
+      {missionsQuery.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách nhiệm vụ bay của đơn này" description={workflowError(missionsQuery.error)} /> : null}
+      {missionsQuery.data && missionsQuery.data.length > 0 ? <p className="form-hint">
+        <strong>Nhiệm vụ bay: </strong>
+        <Space wrap split="·">{missionsQuery.data.map(mission => <Link key={mission.id} className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(mission.id)}`}>{readableCode(mission.missionCode)} ({missionStatusLabel(mission.status)}) →</Link>)}</Space>
+      </p> : null}
       {scope.requiresBaselineMapping ? <><p className="form-hint">Chốt lịch khảo sát bản đồ trước. Owner xác nhận lịch và thanh toán cọc trước khi thực hiện. Sau khi có ảnh trực giao, đối chiếu bốn góc ranh giới trước khi duyệt bản đồ nền.</p><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/base-map-drafts?surveyOrderId=${encodeURIComponent(order.surveyOrderId)}`}>Duyệt bản đồ nền →</Link></> : null}
       {appointment?.surveyOrderId === orderId && appointment.appointmentId === order.currentAppointmentId && order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch, chờ Owner xác nhận" description={appointmentScheduleLabel(appointment.scheduledDate, appointment.scheduledStartDate, appointment.scheduledEndDate, appointment.proposedStartAt, appointment.proposedEndAt)} /> : null}
     </section>
