@@ -30,6 +30,15 @@ export function workflowError(error: unknown) {
   if (error instanceof ApiError && !error.code && [502, 503, 504].includes(error.status) && ['Không thể xử lý yêu cầu.', 'Bad Gateway', 'Service Unavailable', 'Gateway Timeout'].includes(error.message)) return 'Chưa kết nối được máy chủ. Vui lòng thử lại sau.'
   if (error instanceof ApiError) {
     const messages: Record<string, string> = {
+      'SurveyPricing.CurrentBaseMapNotFound': 'Chưa có bản đồ nền đã phát hành. Hoàn tất duyệt bản đồ trước khi xác nhận số trụ.',
+      'SurveyPricing.ApprovedScopeNotFound': 'Đơn chưa có ranh giới và phạm vi đã duyệt. Kiểm tra lại trước khi xác nhận giá.',
+      'SurveyPricing.BaseMapVersionConflict': 'Bản đồ hiện hành đã thay đổi. Đóng biểu mẫu, tải lại và kiểm tra trước khi xác nhận.',
+      'SurveyPricing.InventoryEmpty': 'Không có trụ đang hoạt động trong phạm vi đã duyệt. Kiểm tra bản đồ và phạm vi khảo sát.',
+      'SurveyPricing.InventoryOutsideApprovedScope': 'Có trụ ngoài ranh giới hoặc khu vực được duyệt. Xử lý phạm vi bản đồ trước khi xác nhận.',
+      'SurveyPricing.EffectivePriceNotFound': 'Dịch vụ chưa có đơn giá VND theo trụ đang hiệu lực. Nhờ System Admin cập nhật tại Dịch vụ & đơn giá.',
+      'SurveyPricing.EffectivePriceAmbiguous': 'Có nhiều đơn giá cùng hiệu lực. Nhờ System Admin kiểm tra bảng giá dịch vụ.',
+      'SurveyPricing.BaselineSourceMismatch': 'Nguồn bản đồ không khớp yêu cầu khảo sát. Đóng biểu mẫu và tải lại để kiểm tra.',
+      'SurveyPricing.PersistenceConflict': 'Dữ liệu đã thay đổi trong lúc xác nhận. Đóng biểu mẫu và tải lại trước khi tiếp tục.',
       'Payment.ActivePaymentExists': 'Đơn đã có giao dịch đang xử lý. Kiểm tra lịch sử trước khi thanh toán tiếp.',
       'Payment.OrderNotReady': 'Đơn chưa đủ điều kiện thanh toán. Kiểm tra lịch hẹn đã xác nhận và giá của đơn.',
       'Payment.ProviderUnavailable': 'Chưa kết nối được cổng thanh toán. Vui lòng thử lại sau.',

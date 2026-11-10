@@ -1,4 +1,6 @@
 import type { AppointmentBody, AssignedOrder, OrderScope } from './orderTypes'
+import type { ConfirmPricingBody } from './orderTypes'
+import type { FarmContext } from './farmOperationsApi'
 import type { GeoJsonPolygon } from '../farms/types'
 import type { CaptureSample, CaptureSession, OrthophotoBody } from './orderTypes'
 
@@ -18,6 +20,26 @@ export const baselineStageNotices: Record<string, { type: 'info' | 'warning'; ti
 }
 export function matchingOrderSnapshot(order: AssignedOrder, scope: OrderScope) {
   return order.surveyOrderId === scope.surveyOrderId && order.farmId === scope.farmId && order.tenantId === scope.tenantId && order.orderVersion === scope.orderVersion && order.status === scope.orderStatus && order.requiresBaselineMapping === scope.requiresBaselineMapping && Number.isSafeInteger(scope.orderVersion) && scope.orderVersion > 0
+}
+
+export function pricingSnapshotError(order: AssignedOrder, scope: OrderScope, farm: FarmContext): string | null {
+  if (!matchingOrderSnapshot(order, scope) || scope.orderVersion > 4294967295) return 'Dữ liệu đơn không đồng nhất. Đóng biểu mẫu và tải lại trước khi xác nhận.'
+  if (scope.orderStatus !== 'AWAITING_PRICING') return 'Đơn chưa ở bước xác nhận số trụ và giá.'
+  if (farm.farmId !== scope.farmId || farm.tenantId !== scope.tenantId) return 'Thông tin nông trại không khớp đơn khảo sát.'
+  if (!['ACTIVE', '0'].includes(String(farm.status).toUpperCase())) return 'Nông trại không còn hoạt động.'
+  if (!scope.currentApprovedBoundary) return 'Cần xác minh ranh giới và phạm vi khảo sát trước khi xác nhận giá.'
+  const map = farm.publishedBaseMap
+  if (!map || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(map.id) || map.id === '00000000-0000-0000-0000-000000000000' || !Number.isSafeInteger(map.versionNumber) || map.versionNumber < 1) return 'Chưa có bản đồ nền đã phát hành hợp lệ. Hoàn tất duyệt và phát hành bản đồ trước.'
+  if (!map.sourceSurveyOrderId || (map.sourceSurveyOrderId === scope.surveyOrderId) !== scope.requiresBaselineMapping) return 'Bản đồ hiện hành không khớp nguồn khảo sát của đơn. Đóng biểu mẫu và tải lại để kiểm tra.'
+  return null
+}
+
+export function pricingConfirmationBody(order: AssignedOrder, scope: OrderScope, farm: FarmContext, evidence: string): ConfirmPricingBody {
+  const problem = pricingSnapshotError(order, scope, farm)
+  if (problem) throw new Error(problem)
+  const evidenceReference = evidence.trim()
+  if (!evidenceReference || evidenceReference.length > 1000) throw new Error('Nhập bằng chứng xác nhận từ 1 đến 1.000 ký tự.')
+  return { expectedFarmBaseMapVersionId: farm.publishedBaseMap!.id, evidenceReference, expectedOrderVersion: scope.orderVersion }
 }
 
 function isValidScheduledDate(value: string): boolean {

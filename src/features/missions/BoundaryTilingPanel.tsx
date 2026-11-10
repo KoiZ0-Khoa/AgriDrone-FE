@@ -39,9 +39,9 @@ export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, boun
 
   return <>
     <Space wrap>
-      <Button disabled={locked || points.length === 0} onClick={() => setPoints(previous => previous.slice(0, -1))}>↩ Xóa điểm cuối</Button>
-      <Button disabled={locked || points.length === 0} onClick={() => setPoints([])}>🗑️ Xóa hết</Button>
-      <Button type={locked ? 'primary' : 'default'} onClick={() => setLocked(value => !value)}>{locked ? '🔒 Đã khóa viền (bấm để mở lại)' : '✏️ Đang vẽ viền (click bản đồ để thêm điểm)'}</Button>
+      <Button disabled={locked || sliceMutation.isPending || points.length === 0} onClick={() => setPoints(previous => previous.slice(0, -1))}>↩ Xóa điểm cuối</Button>
+      <Button disabled={locked || sliceMutation.isPending || points.length === 0} onClick={() => setPoints([])}>🗑️ Xóa hết</Button>
+      <span className="form-hint">{locked ? 'Đã khóa ranh giới.' : 'Bấm lên ảnh để thêm điểm. Vẽ xong, khóa ranh giới bên dưới để cắt tiles.'}</span>
     </Space>
     <Space align="center" style={{ marginTop: 12 }}>
       <span className="form-hint">Độ mờ ảnh drone</span>
@@ -55,7 +55,7 @@ export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, boun
       <MapContainer bounds={leafletBounds} maxZoom={22} style={{ height: '100%', width: '100%' }}>
         <MapBaseLayers />
         <ImageOverlay url={previewUrl} bounds={leafletBounds} opacity={opacity} />
-        <ClickCapture enabled={!locked} bounds={bounds} onAdd={point => setPoints(previous => [...previous, point])} onOutsideBounds={() => message.warning('Chỉ chấm điểm được trong phạm vi ảnh orthophoto.')} />
+        <ClickCapture enabled={!locked && !sliceMutation.isPending} bounds={bounds} onAdd={point => setPoints(previous => [...previous, point])} onOutsideBounds={() => message.warning('Chỉ chấm điểm được trong phạm vi ảnh orthophoto.')} />
         {points.map((point, index) => <CircleMarker key={index} center={[point[1], point[0]]} radius={6} pathOptions={{ color: boundaryColor, fillColor: boundaryColor, fillOpacity: 0.9 }} />)}
         {points.length >= 2 && points.length < 3 ? <Polyline positions={latLngPoints} pathOptions={{ color: boundaryColor }} /> : null}
         {points.length >= 3 ? <Polygon positions={[...latLngPoints, latLngPoints[0]]} pathOptions={{ color: boundaryColor, fillOpacity: 0.15 }} /> : null}
@@ -63,8 +63,12 @@ export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, boun
     </div>
     {points.length === 0 ? <p className="form-hint">Chưa có điểm nào. Hãy click lên ảnh.</p> : <ol>{points.map((point, index) => <li key={index}>#{index + 1}: {point[1].toFixed(6)}, {point[0].toFixed(6)}</li>)}</ol>}
     <p className="form-hint">{points.length} điểm{points.length >= 3 ? ` · diện tích ước tính ${area.toFixed(2)} ha` : ''}</p>
+    <p className="form-hint" role="status">{points.length < 3 ? 'Chọn ít nhất 3 điểm để tạo ranh giới.' : locked ? 'Ranh giới đã khóa. Bạn có thể cắt tiles.' : 'Đã đủ điểm. Bấm Khóa ranh giới để bật nút Cắt tiles.'}</p>
     {sliceMutation.error ? <Alert type="error" showIcon message={missionError(sliceMutation.error)} /> : null}
-    <Button type="primary" disabled={!locked || points.length < 3} loading={sliceMutation.isPending} onClick={() => sliceMutation.mutate()}>Cắt tiles</Button>
+    <Space wrap>
+      <Button type={locked ? 'default' : 'primary'} disabled={points.length < 3 || sliceMutation.isPending} onClick={() => setLocked(value => !value)}>{locked ? 'Mở khóa chỉnh sửa' : 'Khóa ranh giới'}</Button>
+      <Button type="primary" disabled={!locked || points.length < 3} loading={sliceMutation.isPending} onClick={() => sliceMutation.mutate()}>Cắt tiles</Button>
+    </Space>
     {sliceMutation.data ? <Alert type="success" showIcon message={`Đã cắt ${sliceMutation.data.totalTiles} tile (${sliceMutation.data.totalTiles640} × 640, ${sliceMutation.data.totalTiles1280} × 1280).`} /> : null}
   </>
 }

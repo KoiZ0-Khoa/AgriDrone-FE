@@ -116,9 +116,17 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(orders, /href="\/manager\/orders\/order"/)
     const scope = { surveyOrderId: 'order', orderNumber: 'SO-TEST', tenantId: 'tenant', farmId: 'farm', orderStatus: order.status, orderVersion: 51, requiresBaselineMapping: true, currentApprovedBoundary: null, zones: [] }
     const renderOrder = (nextOrder, nextScope, extra = []) => render(ManagerOrderDetailPage, 'SYSTEM_MANAGER', [[['manager-order-context', 'order'], nextOrder], [['manager-order-scope', 'order'], nextScope], ...extra], {}, '/manager/orders/order')
+    const pricingOrder = { ...order, status: 'AWAITING_PRICING' }, pricingScope = { ...scope, orderStatus: 'AWAITING_PRICING' }
+    assert.match(renderOrder(pricingOrder, pricingScope), /<button[^>]*>[\s\S]*?Xác nhận số trụ và giá[\s\S]*?<\/button>/)
+    assert.doesNotMatch(renderOrder({ ...pricingOrder, orderVersion: 50 }, pricingScope), />Xác nhận số trụ và giá<\/span>/)
+    assert.doesNotMatch(renderOrder(order, scope), />Xác nhận số trụ và giá<\/span>/)
     const baseline = renderOrder(order, scope)
     assert.match(baseline, /Đề xuất lịch/)
     assert.doesNotMatch(baseline, />Xác minh ranh giới</)
+    const paidOrder = { ...order, status: 'AWAITING_PAID_APPOINTMENT' }
+    const paidScope = { ...scope, orderStatus: paidOrder.status }
+    assert.match(renderOrder(paidOrder, paidScope), /<button[^>]*><span>Đề xuất lịch dịch vụ<\/span><\/button>/)
+    assert.doesNotMatch(renderOrder({ ...paidOrder, currentAppointmentId: 'paid-appointment', currentAppointmentVersion: 91, currentAppointmentStatus: 'PROPOSED' }, paidScope), /<button[^>]*><span>Đề xuất lịch dịch vụ<\/span><\/button>/)
     const rescheduleOrder = { ...order, currentAppointmentId: 'old-appointment', currentAppointmentVersion: 73, currentAppointmentStatus: 'RESCHEDULE_REQUESTED' }
     const rescheduleList = render(ManagerOrdersPage, 'SYSTEM_MANAGER', [[['manager-orders', 1, ''], { items: [rescheduleOrder], totalCount: 1 }]])
     assert.match(rescheduleList, /Owner yêu cầu đổi lịch/)

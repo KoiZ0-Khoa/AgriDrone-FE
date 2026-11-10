@@ -1,6 +1,7 @@
 import { apiRequest } from '../../api/client'
 import type { Page } from './types'
 import type { Appointment, AppointmentBody, AssignedOrder, OrderScope, VerifiedBoundary, VerifyBoundaryBody } from './orderTypes'
+import type { ConfirmedPricing, ConfirmPricingBody } from './orderTypes'
 import type { ApproveRouteBody, CaptureSample, CaptureSession, OrthophotoBody, PaymentPurpose, PaymentSession } from './orderTypes'
 
 const base = '/api/system-manager/survey-orders'
@@ -11,9 +12,19 @@ export async function getAssignedOrders(token: string, page = 1, status = '', si
   // The assigned-order mapper uses ToUpperInvariant(), so RescheduleRequested
   // arrives without underscores. Keep the UI's appointment status vocabulary
   // consistent with the Owner and appointment mutation responses.
-  return { ...result, items: result.items.map(order => order.currentAppointmentStatus === 'RESCHEDULEREQUESTED'
-    ? { ...order, currentAppointmentStatus: 'RESCHEDULE_REQUESTED' }
-    : order) }
+  return { ...result, items: result.items.map(order => {
+    if (order.currentAppointmentStatus === 'RESCHEDULEREQUESTED') return { ...order, currentAppointmentStatus: 'RESCHEDULE_REQUESTED' }
+    // The directory selects the latest appointment across both purposes. At this transition,
+    // a confirmed appointment belongs to the completed baseline: confirming PAID_SERVICE moves
+    // the order to AWAITING_PAYMENT. The proposal API checks current appointments per purpose,
+    // so the first service proposal must send null IDs rather than reuse the baseline ID.
+    if (order.status === 'AWAITING_PAID_APPOINTMENT' && order.requiresBaselineMapping &&
+        order.currentAppointmentStatus === 'CONFIRMED' && order.currentAppointmentId &&
+        Number.isSafeInteger(order.currentAppointmentVersion) && order.currentAppointmentVersion! > 0) {
+      return { ...order, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null }
+    }
+    return order
+  }) }
 }
 export async function getAssignedOrder(token: string, orderId: string, signal?: AbortSignal) {
   let pageNumber = 1
@@ -28,6 +39,7 @@ export async function getAssignedOrder(token: string, orderId: string, signal?: 
 export const getOrderScope = (token: string, orderId: string, signal?: AbortSignal) => apiRequest<OrderScope>(`${base}/${encodeURIComponent(orderId)}/boundary-scope`, { token, signal })
 export const proposeAppointment = (token: string, orderId: string, body: AppointmentBody) => apiRequest<Appointment>(`${base}/${encodeURIComponent(orderId)}/appointments`, { method: 'POST', token, body })
 export const verifyOrderBoundary = (token: string, orderId: string, body: VerifyBoundaryBody) => apiRequest<VerifiedBoundary>(`${base}/${encodeURIComponent(orderId)}/boundary-scope/verify`, { method: 'POST', token, body })
+export const confirmOrderPricing = (token: string, orderId: string, body: ConfirmPricingBody) => apiRequest<ConfirmedPricing>(`${base}/${encodeURIComponent(orderId)}/pole-count/confirm`, { method: 'POST', token, body })
 
 const capturePath = (orderId: string, sessionId?: string) => `${base}/${encodeURIComponent(orderId)}/boundary-capture-sessions${sessionId ? `/${encodeURIComponent(sessionId)}` : ''}`
 export const getCaptureSession = (token: string, orderId: string, sessionId: string, signal?: AbortSignal) => apiRequest<CaptureSession>(capturePath(orderId, sessionId), { token, signal })

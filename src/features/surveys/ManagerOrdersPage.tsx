@@ -7,15 +7,17 @@ import { Link, useParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { getAssignedOrder, getAssignedOrders, getOrderScope } from './orderApi'
-import type { Appointment, AssignedOrder } from './orderTypes'
+import type { Appointment, AssignedOrder, ConfirmedPricing } from './orderTypes'
 import { appointmentStatusLabels, baselineStageNotices, matchingOrderSnapshot, orderStatusLabels } from './orderWorkflow'
-import { appointmentScheduleLabel, dateTime, workflowError } from './workflow'
+import { appointmentScheduleLabel, dateTime, priceLabel, workflowError } from './workflow'
 import { AppointmentModal, BoundaryVerificationModal } from './OrderActionModals'
 import { BoundaryCapturePanel } from './BoundaryCapturePanel'
 import { OrthophotoCornersModal } from './BaselineModals'
 import { findMissionsBySurveyOrder } from '../missions/missionApi'
 import { PrepareMissionModal } from '../missions/PrepareMissionModal'
 import { missionPurposeFor, missionPurposeLabels, missionStatusLabel } from '../missions/missionWorkflow'
+import { PricingConfirmationModal } from './PricingConfirmationModal'
+import { money } from './paymentWorkflow'
 
 export function ManagerOrdersPage() {
   const token = useAuth().session!.accessToken
@@ -44,8 +46,9 @@ export function ManagerOrderDetailPage() {
   const token = useAuth().session!.accessToken
   const { orderId = '' } = useParams()
   const client = useQueryClient()
-  const [action, setAction] = useState<'appointment' | 'boundary' | 'corners' | 'prepare-mission' | null>(null)
+  const [action, setAction] = useState<'appointment' | 'boundary' | 'corners' | 'prepare-mission' | 'pricing' | null>(null)
   const [appointment, setAppointment] = useState<Appointment | null>(null)
+  const [pricing, setPricing] = useState<ConfirmedPricing | null>(null)
   const context = useQuery({ queryKey: ['manager-order-context', orderId], queryFn: ({ signal }) => getAssignedOrder(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.status) ? 10000 : false })
   const query = useQuery({ queryKey: ['manager-order-scope', orderId], queryFn: ({ signal }) => getOrderScope(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.orderStatus) ? 10000 : false })
   // "Chuẩn bị nhiệm vụ bay" only shows while missionPurposeFor() is truthy (order still at the schedulable step) — once the
@@ -77,6 +80,7 @@ export function ManagerOrderDetailPage() {
       <Space wrap>{canPropose ? <Button type="primary" disabled={busy} onClick={() => setAction('appointment')}>{rescheduleRequested ? 'Đề xuất lịch mới' : `Đề xuất lịch ${scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' ? 'khảo sát bản đồ' : 'dịch vụ'}`}</Button> : null}
         {consistent && !scope.requiresBaselineMapping && scope.orderStatus === 'PENDING_BOUNDARY_VERIFICATION' ? <Button type="primary" disabled={busy} onClick={() => setAction('boundary')}>Xác minh ranh giới</Button> : null}
         {consistent && scope.requiresBaselineMapping && scope.orderStatus === 'AWAITING_BASELINE_REVIEW' ? <Button type="primary" disabled={busy} onClick={() => setAction('corners')}>Đánh dấu 4 góc trên ảnh trực giao</Button> : null}
+        {consistent && scope.orderStatus === 'AWAITING_PRICING' ? <Button type="primary" disabled={busy} onClick={() => setAction('pricing')}>Xác nhận số trụ và giá</Button> : null}
         {missionPurpose ? <Button disabled={busy} onClick={() => setAction('prepare-mission')}>Chuẩn bị nhiệm vụ bay · {missionPurposeLabels[missionPurpose]}</Button> : null}</Space>
       {missionsQuery.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách nhiệm vụ bay của đơn này" description={workflowError(missionsQuery.error)} /> : null}
       {missionsQuery.data && missionsQuery.data.length > 0 ? <p className="form-hint">
@@ -87,11 +91,16 @@ export function ManagerOrderDetailPage() {
       {appointment?.surveyOrderId === orderId && appointment.appointmentId === order.currentAppointmentId && order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch, chờ Owner xác nhận" description={appointmentScheduleLabel(appointment.scheduledDate, appointment.scheduledStartDate, appointment.scheduledEndDate, appointment.proposedStartAt, appointment.proposedEndAt)} /> : null}
     </section>
     {stage ? <Alert className="workflow-notice" type={stage.type} showIcon title={stage.title} description={stage.description} /> : null}
+    {pricing?.surveyOrderId === orderId ? <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Đã xác nhận số trụ và giá</strong><span>{dateTime(pricing.confirmedAt)}</span></div></div><dl className="detail-list"><div><dt>Số trụ chính thức</dt><dd>{pricing.confirmedSurveyPoleCount.toLocaleString('vi-VN')} trụ</dd></div><div><dt>Đơn giá</dt><dd>{priceLabel(pricing.pricePerPole, pricing.currency)}</dd></div><div><dt>Tổng tiền dịch vụ</dt><dd>{money(pricing.finalPrice, pricing.currency)}</dd></div></dl><p className="form-hint">{pricing.orderStatus === 'AWAITING_PAID_APPOINTMENT' ? 'Bước tiếp theo: đề xuất lịch dịch vụ để Owner xác nhận và thanh toán số tiền còn lại.' : orderStatusLabels[pricing.orderStatus] ?? pricing.orderStatus}</p></section> : null}
     {consistent && order.boundaryCaptureSessionId ? <BoundaryCapturePanel key={orderId} token={token} orderId={orderId} farmId={order.farmId} sessionId={order.boundaryCaptureSessionId} /> : null}
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Phạm vi khu vực</strong><span>Các khu vực được trả về trong phạm vi đơn khảo sát</span></div></div><Table rowKey="zoneId" dataSource={scope.zones} pagination={false} scroll={{ x: 500 }} locale={{ emptyText: 'Chưa có khu vực trong phạm vi đơn.' }} columns={[{ title: 'Mã', dataIndex: 'code' }, { title: 'Khu vực', dataIndex: 'name' }, { title: 'Trạng thái', render: (_, zone) => zone.status === 'ACTIVE' ? 'Đang hoạt động' : zone.status }]} /></section>
     {action === 'appointment' ? <AppointmentModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setAppointment(result); setAction(null); await refresh() }} /> : null}
     {action === 'boundary' ? <BoundaryVerificationModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
     {action === 'corners' ? <OrthophotoCornersModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
     {action === 'prepare-mission' ? <PrepareMissionModal token={token} order={order} orderStatus={scope.orderStatus} close={() => { setAction(null); void refresh() }} /> : null}
+    {action === 'pricing' ? <PricingConfirmationModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => {
+      setPricing(result); setAction(null)
+      await Promise.all([refresh(), client.invalidateQueries({ queryKey: ['manager-farm-context', order.farmId] }), client.invalidateQueries({ queryKey: ['owner-survey-orders'] }), client.invalidateQueries({ queryKey: ['owner-survey-order'] })])
+    }} /> : null}
   </>
 }

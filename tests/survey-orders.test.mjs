@@ -13,6 +13,41 @@ const surveyWorkflow = await import(dataUrl(compile('../src/features/surveys/wor
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
+const pricingOrder = { surveyOrderId: '11111111-1111-4111-8111-111111111111', tenantId: 'tenant', farmId: 'farm', status: 'AWAITING_PRICING', orderVersion: 4165, requiresBaselineMapping: true }
+const pricingScope = { ...pricingOrder, orderStatus: pricingOrder.status, currentApprovedBoundary: { farmBoundaryId: 'boundary', versionNumber: 2 } }
+const pricingFarm = { farmId: 'farm', tenantId: 'tenant', status: 'ACTIVE', publishedBaseMap: { id: '22222222-2222-4222-8222-222222222222', versionNumber: 3, sourceSurveyOrderId: pricingOrder.surveyOrderId } }
+
+test('pricing confirmation uses published map/version and leaves pole count, unit price and total to BE', async () => {
+  const body = workflow.pricingConfirmationBody(pricingOrder, pricingScope, pricingFarm, '  Đã đối chiếu bản đồ  ')
+  assert.deepEqual(body, { expectedFarmBaseMapVersionId: pricingFarm.publishedBaseMap.id, evidenceReference: 'Đã đối chiếu bản đồ', expectedOrderVersion: 4165 })
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'http://test.local/api/system-manager/survey-orders/o%2F1/pole-count/confirm')
+    assert.equal(options.method, 'POST')
+    assert.equal(options.headers.Authorization, 'Bearer manager')
+    assert.deepEqual(JSON.parse(options.body), body)
+    return Response.json({ confirmedSurveyPoleCount: 321, finalPrice: 481500, currency: 'VND', orderStatus: 'AWAITING_PAID_APPOINTMENT', orderVersion: 4166 })
+  }
+  const result = await api.confirmOrderPricing('manager', 'o/1', body)
+  assert.equal(result.confirmedSurveyPoleCount, 321)
+  assert.equal(result.finalPrice, 481500)
+  assert.equal(result.orderVersion, 4166)
+})
+
+test('pricing refuses missing/foreign maps, inconsistent Order and blank evidence; existing Farms may reuse prior maps', () => {
+  for (const order of [{ ...pricingOrder, orderVersion: 4164 }, { ...pricingOrder, farmId: 'other' }, { ...pricingOrder, tenantId: 'other' }, { ...pricingOrder, requiresBaselineMapping: false }]) assert.throws(() => workflow.pricingConfirmationBody(order, pricingScope, pricingFarm, 'evidence'))
+  for (const scope of [{ ...pricingScope, orderStatus: 'COMPLETED' }, { ...pricingScope, currentApprovedBoundary: null }, { ...pricingScope, orderVersion: 0 }, { ...pricingScope, orderVersion: 4294967296 }]) assert.throws(() => workflow.pricingConfirmationBody(pricingOrder, scope, pricingFarm, 'evidence'))
+  for (const farm of [{ ...pricingFarm, farmId: 'other' }, { ...pricingFarm, tenantId: 'other' }, { ...pricingFarm, status: 'ARCHIVED' }, { ...pricingFarm, publishedBaseMap: null }, { ...pricingFarm, publishedBaseMap: { ...pricingFarm.publishedBaseMap, id: '00000000-0000-0000-0000-000000000000' } }, { ...pricingFarm, publishedBaseMap: { ...pricingFarm.publishedBaseMap, sourceSurveyOrderId: 'other-order' } }]) assert.throws(() => workflow.pricingConfirmationBody(pricingOrder, pricingScope, farm, 'evidence'))
+  for (const evidence of ['', '   ', 'a'.repeat(1001)]) assert.throws(() => workflow.pricingConfirmationBody(pricingOrder, pricingScope, pricingFarm, evidence))
+  assert.equal(workflow.pricingConfirmationBody({ ...pricingOrder, requiresBaselineMapping: false }, { ...pricingScope, requiresBaselineMapping: false }, { ...pricingFarm, publishedBaseMap: { ...pricingFarm.publishedBaseMap, sourceSurveyOrderId: 'previous-order' } }, 'checked').expectedOrderVersion, 4165)
+})
+
+test('pricing map-version conflicts stay visible and never trigger an automatic retry', async () => {
+  let calls = 0
+  globalThis.fetch = async () => { calls++; return Response.json({ errorCode: 'SurveyPricing.BaseMapVersionConflict', detail: 'Map changed', traceId: 'pricing-trace' }, { status: 409 }) }
+  await assert.rejects(api.confirmOrderPricing('manager', pricingOrder.surveyOrderId, workflow.pricingConfirmationBody(pricingOrder, pricingScope, pricingFarm, 'checked')), error => error.code === 'SurveyPricing.BaseMapVersionConflict' && error.traceId === 'pricing-trace')
+  assert.equal(calls, 1)
+})
+
 test('assigned Order directory preserves paging/filter, cancellation and Manager authorization', async () => {
   const controller = new AbortController()
   globalThis.fetch = async (url, options) => {
@@ -64,6 +99,45 @@ test('Manager directory normalizes the BE reschedule status for dashboard, detai
 const scope = { surveyOrderId: 'order', farmId: 'farm', tenantId: 'tenant', orderVersion: 51, orderStatus: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true }
 const order = { surveyOrderId: 'order', farmId: 'farm', tenantId: 'tenant', orderVersion: 51, status: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null }
 const scheduledDate = '2026-11-10'
+
+test('first paid-service proposal ignores the completed baseline appointment and sends no baseline ID/version', async () => {
+  const raw = { ...order, status: 'AWAITING_PAID_APPOINTMENT', currentAppointmentId: 'baseline-appointment', currentAppointmentVersion: 73, currentAppointmentStatus: 'CONFIRMED' }
+  const paidScope = { ...scope, orderStatus: raw.status }
+  let sent
+  globalThis.fetch = async (url, options) => {
+    if (options.method === 'POST') {
+      assert.equal(new URL(url).pathname, '/api/system-manager/survey-orders/order/appointments')
+      sent = JSON.parse(options.body)
+      return Response.json({ appointmentId: 'new-service-appointment', purpose: 'PAID_SERVICE', appointmentStatus: 'PROPOSED' })
+    }
+    return Response.json({ items: [raw], hasNextPage: false })
+  }
+  const current = await api.getAssignedOrder('manager', 'order')
+  assert.equal(current.orderVersion, raw.orderVersion)
+  assert.equal(current.currentAppointmentStatus, null)
+  const body = workflow.appointmentBody(current, paidScope, scheduledDate)
+  await api.proposeAppointment('manager', 'order', body)
+  assert.deepEqual(sent, { purpose: 'PAID_SERVICE', scheduledDate, expectedOrderVersion: 51, expectedCurrentAppointmentId: null, expectedCurrentAppointmentVersion: null })
+  assert.equal(raw.currentAppointmentId, 'baseline-appointment')
+})
+
+test('paid-service appointments still block duplicate proposals and retain exact versions when rescheduling', async () => {
+  const paidScope = { ...scope, orderStatus: 'AWAITING_PAID_APPOINTMENT' }
+  for (const status of ['PROPOSED', 'RESCHEDULEREQUESTED']) {
+    const raw = { ...order, status: paidScope.orderStatus, currentAppointmentId: 'paid-appointment', currentAppointmentVersion: 91, currentAppointmentStatus: status }
+    globalThis.fetch = async () => Response.json({ items: [raw] })
+    const current = (await api.getAssignedOrders('manager')).items[0]
+    assert.equal(current.currentAppointmentId, 'paid-appointment')
+    assert.equal(current.currentAppointmentVersion, 91)
+    if (status === 'PROPOSED') assert.throws(() => workflow.appointmentBody(current, paidScope, scheduledDate))
+    else assert.deepEqual(workflow.appointmentBody(current, paidScope, scheduledDate), { purpose: 'PAID_SERVICE', scheduledDate, expectedOrderVersion: 51, expectedCurrentAppointmentId: 'paid-appointment', expectedCurrentAppointmentVersion: 91 })
+  }
+  for (const changes of [{ status: 'AWAITING_PAYMENT' }, { status: 'AWAITING_PAID_APPOINTMENT', requiresBaselineMapping: false }]) {
+    const raw = { ...order, ...changes, currentAppointmentId: 'confirmed-appointment', currentAppointmentVersion: 91, currentAppointmentStatus: 'CONFIRMED' }
+    globalThis.fetch = async () => Response.json({ items: [raw] })
+    assert.equal((await api.getAssignedOrders('manager')).items[0].currentAppointmentId, 'confirmed-appointment')
+  }
+})
 
 test('unmapped Orders propose Baseline appointment first by sending the chosen day, not a computed UTC window, and retain server versions', () => {
   assert.deepEqual(workflow.appointmentBody(order, scope, scheduledDate), { purpose: 'BASELINE_MAPPING', scheduledDate, expectedOrderVersion: 51, expectedCurrentAppointmentId: null, expectedCurrentAppointmentVersion: null })
