@@ -18,6 +18,7 @@ import { PlantGpsPasteModal } from './PlantGpsPasteModal'
 import { RescheduleMissionModal } from './RescheduleMissionModal'
 import { StepSection } from './StepSection'
 import { YoloDetectionPanel } from './YoloDetectionPanel'
+import { PlantHealthProcessingPanel } from './PlantHealthProcessingPanel'
 
 const missionStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Ghép bản đồ', 'Ranh giới, YOLO & Publish GPS']
 function missionStepIndex(status: string, preflightDone: boolean) {
@@ -128,12 +129,14 @@ export function ManagerMissionDetailPage() {
   const droneQuery = useQuery({ queryKey: ['mission-drone', farmId, mission?.droneId], queryFn: ({ signal }) => api.getFarmDroneDetails(token, farmId, mission!.droneId, signal), enabled: Boolean(mission) })
   const checklistQuery = useQuery({ queryKey: ['mission-checklist', farmId, missionId], queryFn: ({ signal }) => api.getActivePreflightChecklist(token, farmId, missionId, signal), enabled: scheduled && !preflightDone })
   const currentAnswers = checklistQuery.data ? { ...Object.fromEntries(checklistQuery.data.items.map(item => [item.key, false])), ...answers } : answers
-  const plantGpsQuery = useQuery({ queryKey: ['mission-plant-gps', farmId, missionId], queryFn: ({ signal }) => api.getMissionPlantGps(token, farmId, missionId, signal) })
   // Dùng để quyết định có cần gửi kèm boundary trong lần publish GPS cây đầu tiên không (farm chưa có ranh giới nào) — cùng queryKey với ManagerFarmDetailPage/ManagerPlantHealthMapPage nên cache dùng chung.
   const farmContextQuery = useQuery({ queryKey: ['manager-farm-context', farmId], queryFn: ({ signal }) => getFarmContext(token, farmId, signal) })
   // latest.purpose chỉ có trong cùng phiên (giống surveyOrderId) — mất sau khi tải lại trang. Suy từ hậu tố missionCode
   // (luôn có sẵn từ GET .../missions) làm fallback, tránh im lặng không set được boundary vì isBaselineMapping sai thành false.
   const isBaselineMapping = latest?.purpose ? toScreamingSnakeCase(latest.purpose) === 'BASELINE_MAPPING' : Boolean(mission && isBaselineMappingMissionCode(mission.missionCode))
+  const isPlantHealth = latest?.purpose ? toScreamingSnakeCase(latest.purpose) === 'PLANT_HEALTH' : Boolean(mission && /-HEALTH$/.test(mission.missionCode))
+  const plantGpsQuery = useQuery({ queryKey: ['mission-plant-gps', farmId, missionId], queryFn: ({ signal }) => api.getMissionPlantGps(token, farmId, missionId, signal), enabled: !!mission && !isPlantHealth })
+  const canDetectDiseases = isPlantHealth && ['READY_FOR_PROCESSING', 'AWAITING_REVIEW', 'PROCESSING_FAILED'].includes(status ?? '')
   const farmBoundaryMissing = farmContextQuery.data ? !farmContextQuery.data.approvedBoundary : false
   const postFlight = ['FLIGHT_COMPLETED', 'UPLOADING', 'READY_FOR_PROCESSING', 'PROCESSING', 'AWAITING_REVIEW', 'COMPLETED'].includes(status ?? '')
   const telemetryEligible = status === 'FLIGHT_COMPLETED' || status === 'UPLOADING'
@@ -141,8 +144,8 @@ export function ManagerMissionDetailPage() {
   const canResetUpload = status === 'UPLOADING' || status === 'UPLOAD_FAILED' || status === 'READY_FOR_PROCESSING' || status === 'PROCESSING_FAILED'
   const mediaQuery = useQuery({ queryKey: ['mission-media', farmId, missionId], queryFn: ({ signal }) => api.getMissionMedia(token, farmId, missionId, 1, 20, signal), enabled: postFlight })
   const readinessQuery = useQuery({ queryKey: ['mission-readiness', farmId, missionId], queryFn: ({ signal }) => api.getUploadReadiness(token, farmId, missionId, signal), enabled: uploading })
-  const canStartOrthophoto = status === 'READY_FOR_PROCESSING' || status === 'AWAITING_REVIEW' || status === 'PROCESSING_FAILED'
-  const orthophotoProcessing = status === 'PROCESSING'
+  const canStartOrthophoto = !isPlantHealth && (status === 'READY_FOR_PROCESSING' || status === 'AWAITING_REVIEW' || status === 'PROCESSING_FAILED')
+  const orthophotoProcessing = !isPlantHealth && status === 'PROCESSING'
   const orthophotoEligible = canStartOrthophoto || orthophotoProcessing
   const orthophotoStatusQuery = useQuery({
     queryKey: ['mission-orthophoto-status', farmId, missionId],
@@ -373,7 +376,7 @@ export function ManagerMissionDetailPage() {
         <div><dt>Phiên bản</dt><dd>v{version}</dd></div>
       </dl>
     </section>
-    <Steps className="mission-steps" size="small" current={missionStepIndex(status ?? mission.status, preflightDone)} items={missionStepTitles.map(title => ({ title }))} />
+    <Steps className="mission-steps" size="small" current={missionStepIndex(status ?? mission.status, preflightDone)} items={(isPlantHealth ? ['Preflight', 'Bay', 'Upload & Telemetry', 'Nhận diện bệnh', 'Chuyển kết quả kiểm duyệt'] : missionStepTitles).map(title => ({ title }))} />
     {!draft && !scheduled && !inFlight && !flightFailed && !postFlight && !orthophotoEligible && !canResetUpload ? <Alert className="workflow-notice" type="info" showIcon message={`Nhiệm vụ đang ở trạng thái "${missionStatusLabel(status ?? mission.status)}", không ở bước có thao tác trong phạm vi đã triển khai.`} /> : null}
     {flightFailed ? <Alert className="workflow-notice" type="warning" showIcon message="Chuyến bay trước đã lỗi." description="Chỉ lên lịch lại được nếu quyết định khắc phục khi báo lỗi là &quot;Cần lên lịch lại&quot;." /> : null}
     {!draft ? <StepSection title="Checklist trước khi bay" status={scheduled && !preflightDone ? 'active' : 'done'} summary={preflightDone ? `Phù hợp để bay: ${latest?.preflightSuitableForFlight ? 'Có' : 'Không'}.` : undefined}>
@@ -520,13 +523,13 @@ export function ManagerMissionDetailPage() {
           </> : null}
       </> : null}
     </StepSection> : null}
-    {orthophotoStatusQuery.data?.status === 'COMPLETED' && orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Vẽ ranh giới vườn + cắt tiles" status={sliceResult ? 'done' : 'active'} summary={sliceResult ? `${sliceResult.totalTiles} tile đã cắt.` : undefined}>
+    {!isPlantHealth && orthophotoStatusQuery.data?.status === 'COMPLETED' && orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Vẽ ranh giới vườn + cắt tiles" status={sliceResult ? 'done' : 'active'} summary={sliceResult ? `${sliceResult.totalTiles} tile đã cắt.` : undefined}>
       <p className="form-hint">Click lên ảnh để thêm điểm ranh giới. Từ 3 điểm trở lên tự khép kín. Khóa viền trước khi cắt tiles.</p>
       <BoundaryTilingPanel token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
         onSliced={(result, polygon) => { setSliceResult(result); setBoundaryPolygon(polygon) }} />
       {sliceResult ? <p className="form-hint">Đã sẵn sàng {sliceResult.totalTiles} tile để nhận diện cây ở bước tiếp theo.</p> : null}
     </StepSection> : null}
-    {sliceResult && boundaryPolygon && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Nhận diện cây YOLO & Publish GPS" status={publishResult ? 'done' : 'active'} summary={publishResult ? `Đã gửi yêu cầu publish (${publishResult.status}).` : yoloResult ? `${yoloResult.totalUniqueTrees} cây đã nhận diện.` : undefined}>
+    {!isPlantHealth && sliceResult && boundaryPolygon && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Nhận diện cây YOLO & Publish GPS" status={publishResult ? 'done' : 'active'} summary={publishResult ? `Đã gửi yêu cầu publish (${publishResult.status}).` : yoloResult ? `${yoloResult.totalUniqueTrees} cây đã nhận diện.` : undefined}>
       <p className="form-hint">Chạy nhận diện trong phạm vi ranh giới đã khóa. Có thể chọn lại cây neo (Hàng 1 - Cột 1) từ kết quả lần chạy trước rồi chạy lại để đánh số đúng theo thực địa.</p>
       <YoloDetectionPanel token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
         boundaryPolygon={boundaryPolygon} onDetected={setYoloResult} />
@@ -548,7 +551,7 @@ export function ManagerMissionDetailPage() {
         <Button type="primary" loading={publishPlantGpsMutation.isPending} onClick={() => publishPlantGpsMutation.mutate()}>Đưa vào hệ thống chính thức</Button>
       </> : null}
     </StepSection> : null}
-    <section className="resource-panel">
+    {!isPlantHealth ? <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>GPS cây (lưu nháp)</strong><span>Bước lưu nháp trước khi đưa vào hệ thống chính thức (xem mục Publish ở màn kết quả nhận diện cây). Lưu sẽ thay toàn bộ danh sách hiện có, không cộng dồn.</span></div>
         <Button onClick={() => setPastingPlantGps(true)}>Dán danh sách cây</Button>
       </div>
@@ -562,7 +565,8 @@ export function ManagerMissionDetailPage() {
           { title: 'Trạng thái', render: (_, tree) => <Tag color={tree.status === 'DETECTED' ? 'success' : 'default'}>{tree.status === 'DETECTED' ? 'Phát hiện' : 'Thiếu'}</Tag> },
           { title: 'Nguồn', dataIndex: 'source' },
         ]} />}
-    </section>
+    </section> : null}
+    {canDetectDiseases && status !== 'COMPLETED' ? <PlantHealthProcessingPanel key={missionId} token={token} farmId={farmId} missionId={missionId} missionCode={mission.missionCode} surveyOrderId={latest?.surveyOrderId} boundary={farmContextQuery.data?.approvedBoundary?.geometry ?? null} disabled={farmContextQuery.isPending || farmContextQuery.isFetching || farmContextQuery.isError} /> : null}
     {draft || scheduled || inFlight || flightFailed ? <section className="resource-panel">
       <h2>Thao tác khác</h2>
       <Space wrap>
@@ -573,7 +577,7 @@ export function ManagerMissionDetailPage() {
     </section> : null}
     {rescheduling && version !== undefined ? <RescheduleMissionModal token={token} farmId={farmId} missionId={missionId} currentVersion={version} currentDroneId={mission.droneId}
       close={() => setRescheduling(false)} onRescheduled={async result => { await refreshAfter(result); void message.success('Đã lên lịch lại nhiệm vụ bay.') }} /> : null}
-    {pastingPlantGps ? <PlantGpsPasteModal token={token} farmId={farmId} missionId={missionId} close={() => setPastingPlantGps(false)}
+    {!isPlantHealth && pastingPlantGps ? <PlantGpsPasteModal token={token} farmId={farmId} missionId={missionId} close={() => setPastingPlantGps(false)}
       onSaved={async result => { await client.invalidateQueries({ queryKey: ['mission-plant-gps', farmId, missionId] }); void message.success(`Đã lưu ${result.savedCount} cây.`) }} /> : null}
     {action ? <ActionModal action={action} close={() => setAction(null)} /> : null}
   </>

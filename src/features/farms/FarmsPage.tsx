@@ -167,6 +167,7 @@ export function FarmDetailPage() {
         <Space size={12} wrap>
           {session?.role === 'OWNER' ? <Link className="primary-action-link" to={`/survey-requests/new?farmId=${farm.id}`}>Đăng ký khảo sát</Link> : null}
           {session?.role === 'OWNER' ? <Link className="workflow-detail-link" to="/survey-payments">Xem đơn và thanh toán →</Link> : null}
+          <Link className="workflow-detail-link" to={`/farms/${encodeURIComponent(farm.id)}/base-maps`}>Bản đồ và trụ cây →</Link>
           <Link className="primary-action-link" to={`/zones?farmId=${farm.id}`}>
             <EnvironmentOutlined aria-hidden="true" /> Xem khu vực
           </Link>

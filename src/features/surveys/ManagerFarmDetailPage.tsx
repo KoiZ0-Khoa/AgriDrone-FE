@@ -69,6 +69,7 @@ export function ManagerFarmDetailPage() {
           { title: 'Thao tác', render: (_, mission) => <Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(farmId)}/missions/${encodeURIComponent(mission.id)}`}>Xem →</Link> },
         ]} />}
     </section>
+    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Bản đồ và trụ cây</strong><span>Xem các phiên bản bản đồ và lịch sử vòng đời trụ.</span></div><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(farmId)}/base-maps`}>Mở bản đồ →</Link></div></section>
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Duyệt bản đồ nền</strong><span>Kiểm tra kết quả nhận diện cây/trụ và phát hành bản đồ chính thức.</span></div><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(farmId)}/base-map-drafts`}>Mở bản đồ nháp →</Link></div></section>
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Bản đồ sức khỏe cây</strong><span>Tổng hợp tình trạng cây trồng từ các chuyến bay quét bệnh.</span></div><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(farmId)}/plant-health`}>Mở bản đồ sức khỏe cây →</Link></div></section>
     <FarmBoundaryExceptions key={farmId} token={token} farm={farm} disabled={busy || !active || !validVersion} />
