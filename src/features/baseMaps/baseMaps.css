@@ -2,6 +2,14 @@
 .base-map-canvas .leaflet-container { font-family: inherit; }
 .base-map-canvas .leaflet-popup-content { min-width: 180px; font-size: 14px; }
 .base-map-canvas .leaflet-popup-content p { margin: 10px 0; }
+.base-map-popup-actions { display: grid; gap: 8px; }
+.base-map-edit-toolbar { margin-bottom: 12px; }
+.base-map-edit-toolbar ~ .ant-alert { margin-bottom: 12px; }
+.base-map-picked-coordinate { display: block; margin-top: 6px; font-weight: 500; }
+.base-map-canvas.is-selecting-position .leaflet-container { cursor: crosshair; }
+.base-map-edit-marker { background: transparent; border: 0; }
+.base-map-edit-marker span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; border: 3px solid white; background: #a95208; color: white; font: 600 24px/1 sans-serif; box-shadow: 0 1px 6px #0006; }
+.base-map-edit-marker.leaflet-marker-draggable { cursor: grab; }
 .base-map-bars { display: grid; gap: 14px; padding: 20px 0 28px; }
 .base-map-bar-row { display: grid; grid-template-columns: 120px minmax(40px, 1fr) 100px; gap: 12px; align-items: center; }
 .base-map-bar-track { border-radius: 4px; background: #f2f2f2; overflow: hidden; }

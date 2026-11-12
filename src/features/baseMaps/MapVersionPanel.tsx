@@ -8,10 +8,9 @@ import { readableCode } from '../../components/RecordReference'
 import { getOrthophotoStatus } from '../missions/missionApi'
 import { dateTime } from '../surveys/workflow'
 import { getMapVersion } from './api'
-import { BaseMapViewer } from './BaseMapViewer'
+import { EditableBaseMapViewer } from './EditableBaseMapViewer'
 import { MapReadError } from './MapReadError'
 import { PlantLifecycleDialog } from './PlantLifecycleDialog'
-import { ManualMapEditDialog } from './ManualMapEditDialog'
 import type { ManualMapChange, MapPlant, MapVersionDetail } from './types'
 import { changeLabel, isReleasedMap, lifecycleLabel, mapState, mapStatusLabel } from './workflow'
 
@@ -26,14 +25,13 @@ export function MapVersionPanel({ token, scopeKey, farmId, farmName, versionId, 
 
 function MapDetail({ token, scopeKey, map, farmName, manager, refresh, refreshing }: { token: string; scopeKey: string; map: MapVersionDetail; farmName: string; manager: boolean; refresh: () => void; refreshing: boolean }) {
   const [plant, setPlant] = useState<MapPlant | null>(null)
-  const [editing, setEditing] = useState(false)
   // This read endpoint signs existing media. It does not start map reconstruction.
   const image = useQuery({ queryKey: ['base-map-orthophoto', scopeKey, map.farmId, map.sourceMissionId], queryFn: ({ signal }) => getOrthophotoStatus(token, map.farmId, map.sourceMissionId!, signal), enabled: manager && !!map.sourceMissionId, retry: false })
   const shownMap = image.data?.status === 'COMPLETED' && image.data.previewUrl ? { ...map, previewUrl: image.data.previewUrl, bounds: image.data.bounds ?? map.bounds } : map
   return <>
     <section className="resource-page-heading"><div><span className="page-kicker">{farmName}</span><h1>Bản đồ phiên bản {map.versionNumber}</h1><p>{mapStatusLabel(map.status)}{map.publishedAt ? ` · ${dateTime(map.publishedAt)}` : ''}</p></div><Space wrap>{manager && !isReleasedMap(map.status) ? <Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(map.farmId)}/base-map-drafts/${encodeURIComponent(map.versionId)}`}>Duyệt bản đồ nháp →</Link> : null}<Button icon={<ReloadOutlined />} loading={refreshing || image.isFetching} onClick={() => { refresh(); if (manager && map.sourceMissionId) void image.refetch() }}>Tải lại</Button></Space></section>
     <div className="mapping-summary"><div><span>Số trụ</span><strong>{map.totalPoles}</strong></div><div><span>Khoảng cách hàng</span><strong>{map.rowSpacingM} m</strong></div><div><span>Khoảng cách trụ</span><strong>{map.plantSpacingM} m</strong></div><div><span>Chỉnh sửa thực địa</span><strong>{map.manualChanges?.length ?? 0}</strong></div></div>
-    <section className="resource-panel">{manager && ['PUBLISHED', 'DRAFT'].includes(mapState(map.status)) ? <div className="resource-panel-heading"><div><strong>Điều chỉnh thực địa</strong><span>Ghi nhận trụ mới, trụ đã loại bỏ hoặc dời vị trí.</span></div><Button type="primary" disabled={refreshing || editing} onClick={() => setEditing(true)}>Điều chỉnh trụ</Button></div> : null}<BaseMapViewer key={`${map.versionId}:${shownMap.previewUrl}`} map={shownMap} selectPlant={setPlant} /></section>
+    <section className="resource-panel"><EditableBaseMapViewer token={token} scopeKey={scopeKey} map={shownMap} canEdit={manager && ['PUBLISHED', 'DRAFT'].includes(mapState(map.status))} disabled={refreshing} selectPlant={setPlant} /></section>
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Trụ trên bản đồ</strong><span>Bấm vào trụ để xem lịch sử vòng đời.</span></div></div><Table<MapPlant> rowKey="plantId" dataSource={map.plants} pagination={{ pageSize: 20, showSizeChanger: false }} scroll={{ x: 700 }} locale={{ emptyText: 'Phiên bản này chưa có trụ.' }} columns={[
       { title: 'Trụ', render: (_, item) => readableCode(item.plantCode) ?? `Hàng ${item.row} · Cột ${item.col}` },
       { title: 'Hàng · Cột', render: (_, item) => `${item.row} · ${item.col}` },
@@ -48,6 +46,5 @@ function MapDetail({ token, scopeKey, map, farmName, manager, refresh, refreshin
       { title: 'Thời điểm', render: (_, item) => dateTime(item.createdAt) },
     ]} /></section>
     {plant ? <PlantLifecycleDialog key={plant.plantId} token={token} scopeKey={scopeKey} farmId={map.farmId} plantId={plant.plantId} owner={!manager} close={() => setPlant(null)} /> : null}
-    {editing ? <ManualMapEditDialog token={token} scopeKey={scopeKey} map={map} close={() => setEditing(false)} /> : null}
   </>
 }

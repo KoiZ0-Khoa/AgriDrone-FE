@@ -31,11 +31,11 @@ export function PrepareMissionModal({ token, order, orderStatus, close }: { toke
   })
   return <Modal open title="Chuẩn bị nhiệm vụ bay" okText={result ? 'Đóng' : 'Chuẩn bị nhiệm vụ'} cancelText="Hủy"
     confirmLoading={mutation.isPending} okButtonProps={{ disabled: mutation.isPending || (!result && (!purpose || !droneId)) }} cancelButtonProps={{ disabled: mutation.isPending }}
-    closable={!mutation.isPending} maskClosable={!mutation.isPending} keyboard={!mutation.isPending}
+    closable={!mutation.isPending} mask={{ closable: !mutation.isPending }} keyboard={!mutation.isPending}
     onOk={() => { if (result || !purpose) { close(); return } if (!mutation.isPending) mutation.mutate() }}
     onCancel={() => { if (!mutation.isPending) close() }}>
-    {!purpose ? <Alert type="warning" showIcon message="Đơn chưa ở bước có thể chuẩn bị nhiệm vụ bay." /> : result ? <>
-      <Alert type="success" showIcon message={result.reusedExistingSet ? 'Đơn đã có nhiệm vụ bay được chuẩn bị từ trước.' : 'Đã chuẩn bị nhiệm vụ bay.'} />
+    {!purpose ? <Alert type="warning" showIcon title="Đơn chưa ở bước có thể chuẩn bị nhiệm vụ bay." /> : result ? <>
+      <Alert type="success" showIcon title={result.reusedExistingSet ? 'Đơn đã có nhiệm vụ bay được chuẩn bị từ trước.' : 'Đã chuẩn bị nhiệm vụ bay.'} />
       <Table size="small" rowKey="missionId" dataSource={result.missions} pagination={false} columns={[
         { title: 'Mục đích', render: (_, mission) => missionPurposeLabel(mission.purpose) },
         { title: 'Trạng thái', render: (_, mission) => <Tag>{missionStatusLabel(mission.status)}</Tag> },
@@ -52,6 +52,6 @@ export function PrepareMissionModal({ token, order, orderStatus, close }: { toke
       </Form.Item>
       <p className="form-hint">Ngày bay phải nằm trong khoảng lịch hẹn đã được Owner xác nhận cho bước này.</p>
     </Form>}
-    {mutation.error ? <Alert type="error" showIcon message={missionError(mutation.error)} /> : null}
+    {mutation.error ? <Alert type="error" showIcon title={missionError(mutation.error)} /> : null}
   </Modal>
 }

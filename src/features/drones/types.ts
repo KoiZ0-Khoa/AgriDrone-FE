@@ -2,7 +2,7 @@ export type DroneCapability = 'BASELINE_MAPPING' | 'PLANT_HEALTH' | 'HARVEST_REA
 export type DroneStatus = 'AVAILABLE' | 'IN_MISSION' | 'MAINTENANCE' | 'INACTIVE' | 'RETIRED'
 export type Drone = {
   id: string; code: string; name: string; model: string | null; manufacturer: string | null
-  specifications: { capabilities: DroneCapability[] }
+  specifications: { capabilities?: DroneCapability[] } | null
   serialNumber: string | null; registrationNumber: string | null
   registrationDate: string | null; registrationExpiryDate: string | null
   weightKg: number | null; status: DroneStatus

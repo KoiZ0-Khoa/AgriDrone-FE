@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client'
 import type { GeoJsonPolygon } from '../farms/types'
-import type { MapVersionDetail } from './types'
+import type { GeoCoordinate, MapPlant, MapVersionDetail } from './types'
 import type { CandidateReviewBody, MappingCandidate } from '../surveys/baseMapTypes'
 
 export const mapState = (value: string) => value.replace(/_/g, '').toUpperCase()
@@ -53,4 +53,31 @@ export function manualReviewBody(values: { decision: string; longitude?: number 
   if (!boundary) throw new Error('Chưa có ranh giới hợp lệ để kiểm tra vị trí trụ.')
   if (!insideRing(longitude!, latitude!, boundary.coordinates[0]) || boundary.coordinates.slice(1).some(ring => insideRing(longitude!, latitude!, ring))) throw new Error('Vị trí trụ phải nằm trong ranh giới nông trại.')
   return { decision: values.decision as 'CreateNew' | 'Relocate', correctedLongitude: longitude!, correctedLatitude: latitude!, correctedRowIndex: row!, correctedColumnIndex: col!, correctedMatchedPlantId: values.decision === 'CreateNew' ? null : candidate!.correctedMatchedPlantId ?? candidate!.proposedMatchedPlantId, reason }
+}
+
+export type VisualMapEdit = { decision: 'CreateNew' | 'Relocate' | 'Reject'; plant?: MapPlant; position?: GeoCoordinate }
+
+export function mapEditPointError(map: MapVersionDetail, point: GeoCoordinate): string | null {
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon) || Math.abs(point.lat) > 90 || Math.abs(point.lon) > 180) return 'Vị trí trụ không hợp lệ.'
+  const image = viewerBounds({ ...map, plants: [], boundaryGeoJson: null })
+  if (!image) return 'Chưa có tọa độ ảnh trực giao để chọn vị trí.'
+  if (point.lat < image[0][0] || point.lat > image[1][0] || point.lon < image[0][1] || point.lon > image[1][1]) return 'Chọn vị trí nằm trên ảnh trực giao.'
+  const boundary = mapBoundary(map.boundaryGeoJson)
+  if (!boundary) return 'Chưa có ranh giới hợp lệ để kiểm tra vị trí trụ.'
+  if (!insideRing(point.lon, point.lat, boundary.coordinates[0]) || boundary.coordinates.slice(1).some(ring => insideRing(point.lon, point.lat, ring))) return 'Vị trí trụ phải nằm trong ranh giới nông trại.'
+  return null
+}
+
+export function candidateForMapPlant(plant: MapPlant, candidates: MappingCandidate[]): MappingCandidate | undefined {
+  const reference = (c: MappingCandidate) => c.correctedMatchedPlantId ?? c.proposedMatchedPlantId
+  const linked = candidates.filter(c => reference(c)?.toLowerCase() === plant.plantId.toLowerCase())
+  if (linked.length) return linked.length === 1 ? linked[0] : undefined
+  // Initial CreateNew candidates may have no plant reference after publication.
+  // Require an unambiguous grid AND location match; never use an arbitrary nearby point.
+  const matched = candidates.filter(c => !reference(c)
+    && (c.correctedRowIndex ?? c.proposedRowIndex) === plant.row
+    && (c.correctedColumnIndex ?? c.proposedColumnIndex) === plant.col
+    && Math.hypot(((c.correctedLatitude ?? c.latitude) - plant.lat) * 111320,
+      ((c.correctedLongitude ?? c.longitude) - plant.lon) * 111320 * Math.cos(plant.lat * Math.PI / 180)) <= 0.5)
+  return matched.length === 1 ? matched[0] : undefined
 }

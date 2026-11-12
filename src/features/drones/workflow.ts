@@ -6,6 +6,14 @@ export const capabilityLabels: Record<DroneCapability, string> = {
   PLANT_HEALTH: 'Sức khỏe cây trồng',
   HARVEST_READINESS: 'Sẵn sàng thu hoạch',
 }
+
+export function droneCapabilities(specifications: unknown): DroneCapability[] {
+  if (!specifications || typeof specifications !== 'object' || !('capabilities' in specifications) || !Array.isArray(specifications.capabilities)) return []
+  return [...new Set(specifications.capabilities
+    .filter((value): value is string => typeof value === 'string')
+    .map(value => value.toUpperCase())
+    .filter((value): value is DroneCapability => Object.hasOwn(capabilityLabels, value)))]
+}
 export const droneStatusLabels: Record<DroneStatus, string> = {
   AVAILABLE: 'Sẵn sàng',
   IN_MISSION: 'Đang thực hiện nhiệm vụ',

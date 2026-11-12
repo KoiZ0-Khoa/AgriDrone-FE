@@ -3,7 +3,7 @@ import { Alert, Form, Input, InputNumber, Modal, Select } from 'antd'
 import { FormSubmit } from '../../components/FormSubmit'
 import * as api from './api'
 import type { Drone, DroneCapability, DroneInput } from './types'
-import { capabilityLabels, droneError } from './workflow'
+import { capabilityLabels, droneCapabilities, droneError } from './workflow'
 
 const capabilityOptions = (Object.keys(capabilityLabels) as DroneCapability[]).map(value => ({ value, label: capabilityLabels[value] }))
 
@@ -38,7 +38,7 @@ export function DroneFormModal({ token, drone, close }: { token: string; drone: 
   })
   const initialValues: FormValues = drone ? {
     code: drone.code, name: drone.name, model: drone.model ?? '', manufacturer: drone.manufacturer ?? '',
-    capabilities: drone.specifications.capabilities, serialNumber: drone.serialNumber ?? '', registrationNumber: drone.registrationNumber ?? '',
+    capabilities: droneCapabilities(drone.specifications), serialNumber: drone.serialNumber ?? '', registrationNumber: drone.registrationNumber ?? '',
     registrationDate: drone.registrationDate ?? '', registrationExpiryDate: drone.registrationExpiryDate ?? '', weightKg: drone.weightKg, notes: drone.notes ?? '',
   } : { code: '', name: '', model: '', manufacturer: '', capabilities: [], serialNumber: '', registrationNumber: '', registrationDate: '', registrationExpiryDate: '', weightKg: null, notes: '' }
 

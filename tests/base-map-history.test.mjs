@@ -22,6 +22,31 @@ const versionId = '20000000-0000-4000-8000-000000000002'
 const nextVersionId = '30000000-0000-4000-8000-000000000003'
 const plantId = '40000000-0000-4000-8000-000000000004'
 
+test('visual editing only picks valid points inside both the image and farm polygon, excluding holes', () => {
+  const map = { bounds: { minLat: 10, maxLat: 11, minLon: 106, maxLon: 107 }, boundaryGeoJson: JSON.stringify({ type: 'Polygon', coordinates: [[[106.1, 10.1], [106.9, 10.1], [106.9, 10.9], [106.1, 10.9], [106.1, 10.1]], [[106.4, 10.4], [106.6, 10.4], [106.6, 10.6], [106.4, 10.6], [106.4, 10.4]]] }) }
+  assert.equal(workflow.mapEditPointError(map, { lat: 10.2, lon: 106.2 }), null)
+  assert.match(workflow.mapEditPointError(map, { lat: 10.5, lon: 107.1 }), /ảnh trực giao/)
+  assert.match(workflow.mapEditPointError(map, { lat: 10.05, lon: 106.5 }), /ranh giới/)
+  assert.match(workflow.mapEditPointError(map, { lat: 10.5, lon: 106.5 }), /ranh giới/)
+  assert.match(workflow.mapEditPointError(map, { lat: NaN, lon: 106.2 }), /không hợp lệ/)
+  assert.match(workflow.mapEditPointError({ ...map, bounds: null }, { lat: 10.2, lon: 106.2 }), /tọa độ ảnh/)
+  assert.match(workflow.mapEditPointError({ ...map, boundaryGeoJson: null }, { lat: 10.2, lon: 106.2 }), /ranh giới/)
+})
+
+test('clicking a published plant resolves its real candidate ID and rejects ambiguous or unrelated candidates', () => {
+  const plant = { plantId, row: 2, col: 3, lat: 10.4619, lon: 106.4941 }
+  const candidate = { candidateId: versionId, correctedMatchedPlantId: plantId, proposedMatchedPlantId: nextVersionId }
+  assert.equal(workflow.candidateForMapPlant(plant, [candidate]).candidateId, versionId)
+  assert.equal(workflow.candidateForMapPlant(plant, [candidate, { ...candidate, candidateId: nextVersionId }]), undefined)
+  const unlinked = { candidateId: versionId, correctedMatchedPlantId: null, proposedMatchedPlantId: null, proposedRowIndex: 2, proposedColumnIndex: 3, correctedRowIndex: null, correctedColumnIndex: null, latitude: plant.lat + 0.000001, longitude: plant.lon, correctedLatitude: null, correctedLongitude: null }
+  assert.equal(workflow.candidateForMapPlant(plant, [unlinked]).candidateId, versionId)
+  assert.equal(workflow.candidateForMapPlant(plant, [unlinked, { ...unlinked, candidateId: nextVersionId }]), undefined)
+  assert.equal(workflow.candidateForMapPlant(plant, [{ ...unlinked, proposedMatchedPlantId: nextVersionId }]), undefined)
+  assert.equal(workflow.candidateForMapPlant(plant, [{ ...unlinked, latitude: plant.lat + 0.00001 }]), undefined)
+  assert.equal(workflow.candidateForMapPlant(plant, [{ ...unlinked, proposedRowIndex: 5 }]), undefined)
+  assert.equal(workflow.candidateForMapPlant(plant, [{ ...unlinked, latitude: NaN }]), undefined)
+})
+
 test('manual edits preserve the real candidate reference and reject positions outside the farm or inside a hole', () => {
   const boundary = JSON.stringify({ type: 'Polygon', coordinates: [[[106, 10], [107, 10], [107, 11], [106, 11], [106, 10]], [[106.4, 10.4], [106.6, 10.4], [106.6, 10.6], [106.4, 10.6], [106.4, 10.4]]] })
   const candidate = { candidateId: 'real-candidate', correctedMatchedPlantId: plantId, proposedMatchedPlantId: 'stale-plant' }

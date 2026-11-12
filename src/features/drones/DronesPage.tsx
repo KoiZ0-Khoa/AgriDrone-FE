@@ -9,7 +9,7 @@ import { useAuth } from '../auth/AuthContext'
 import * as api from './api'
 import { DroneFormModal } from './DroneFormModal'
 import type { Drone, DroneMaintenanceRecord, DroneStatus } from './types'
-import { allowedTransitions, capabilityLabels, dateOnly, dateTime, droneError, droneStatusColors, droneStatusLabels, transitionLabels } from './workflow'
+import { allowedTransitions, capabilityLabels, dateOnly, dateTime, droneCapabilities, droneError, droneStatusColors, droneStatusLabels, transitionLabels } from './workflow'
 
 export function DronesPage() {
   const token = useAuth().session!.accessToken
@@ -45,7 +45,7 @@ export function DronesPage() {
     <section className="resource-panel">
       {query.isError ? <CommonState type="error" description={droneError(query.error)} retry={() => query.refetch()} /> : <Table<Drone> rowKey="id" loading={query.isPending} dataSource={query.data ?? []} pagination={false} scroll={{ x: 900 }} locale={{ emptyText: 'Chưa có drone nào được đăng ký.' }} columns={[
         { title: 'Drone', render: (_, drone) => <><strong>{drone.name}</strong><p className="form-hint">{drone.code}{drone.model ? ` · ${drone.model}` : ''}</p></> },
-        { title: 'Năng lực', render: (_, drone) => <Space size={4} wrap>{drone.specifications.capabilities.map(capability => <Tag key={capability}>{capabilityLabels[capability]}</Tag>)}</Space> },
+        { title: 'Năng lực', render: (_, drone) => { const capabilities = droneCapabilities(drone.specifications); return capabilities.length ? <Space size={4} wrap>{capabilities.map(capability => <Tag key={capability}>{capabilityLabels[capability]}</Tag>)}</Space> : <span className="form-hint">Chưa khai báo năng lực</span> } },
         { title: 'Trạng thái', render: (_, drone) => <Tag color={droneStatusColors[drone.status]}>{droneStatusLabels[drone.status]}</Tag> },
         { title: 'Bảo trì kế tiếp', render: (_, drone) => dateTime(drone.nextMaintenanceAt) },
         { title: 'Thao tác', render: (_, drone) => <Button onClick={() => setSelectedId(drone.id)}>Chi tiết</Button> },
