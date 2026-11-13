@@ -11,8 +11,15 @@ export const ownerOrderStatusQuery: Record<string, string> = Object.fromEntries(
 export const ownerGuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) && value !== '00000000-0000-0000-0000-000000000000'
 export const validOwnerVersion = (value: number) => Number.isInteger(value) && value > 0 && value <= 4_294_967_295
 export const ownerOrderFingerprint = (order: OwnerSurveyOrder) => JSON.stringify(order)
-export const paymentPurposeForOrder = (order: OwnerSurveyOrder): PaymentPurpose | null => order.status === 'AWAITING_BASELINE_DEPOSIT' ? 'BASELINE_DEPOSIT' : order.status === 'AWAITING_PAYMENT' ? 'FINAL_BALANCE' : null
-export const payableAmount = (order: OwnerSurveyOrder) => paymentPurposeForOrder(order) === 'BASELINE_DEPOSIT' ? order.depositAmount : order.remainingAmount ?? order.totalAmount
+const depositEligibleStatuses = ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_PRICING', 'AWAITING_PAID_APPOINTMENT', 'AWAITING_PAYMENT']
+export function paymentPurposeForOrder(order: OwnerSurveyOrder, history?: PaymentHistory): PaymentPurpose | null {
+  if (order.status === 'AWAITING_BASELINE_DEPOSIT') return 'BASELINE_DEPOSIT'
+  if (depositEligibleStatuses.includes(order.status) && order.depositAmount > 0 && historyMatchesOrder(order, history) &&
+    !history!.payments.some(item => item.purpose === 'BASELINE_DEPOSIT' && paymentIsPaid(item.status) && item.amount === order.depositAmount && item.currency === order.currency)) return 'BASELINE_DEPOSIT'
+  return order.status === 'AWAITING_PAYMENT' ? 'FINAL_BALANCE' : null
+}
+export const payableAmount = (order: OwnerSurveyOrder, history?: PaymentHistory) => paymentPurposeForOrder(order, history) === 'BASELINE_DEPOSIT' ? order.depositAmount : order.remainingAmount ?? order.totalAmount
+export const paymentRequiresAppointment = (order: OwnerSurveyOrder, history?: PaymentHistory) => paymentPurposeForOrder(order, history) !== 'BASELINE_DEPOSIT' || order.status === 'AWAITING_BASELINE_DEPOSIT'
 export function historyMatchesOrder(order: OwnerSurveyOrder, history: PaymentHistory | undefined) { return !!history && history.surveyOrderId.toLowerCase() === order.surveyOrderId.toLowerCase() }
 export const activePaymentStatus = (status: string) => ['PENDING', 'PROCESSING', 'PAID', 'CONFIRMED', 'ADJUSTMENT_REQUIRED'].includes(status)
 
@@ -35,15 +42,22 @@ export function ownerAppointmentBody(order: OwnerSurveyOrder): OwnerAppointmentB
   return { expectedOrderVersion: order.orderVersion, expectedAppointmentVersion: order.currentAppointment!.appointmentVersion }
 }
 export function canInitiateOwnerPayment(order: OwnerSurveyOrder, history: PaymentHistory | undefined, now = Date.now()) {
-  const purpose = paymentPurposeForOrder(order), amount = payableAmount(order), appointment = order.currentAppointment
-  return !!purpose && validAppointmentContext(order) && historyMatchesOrder(order, history) && Number.isFinite(amount) && amount !== null && (purpose === 'BASELINE_DEPOSIT' ? amount > 0 : amount >= 0) &&
-    appointment!.status === 'CONFIRMED' && appointment!.purpose === (purpose === 'BASELINE_DEPOSIT' ? 'BASELINE_MAPPING' : 'PAID_SERVICE') && Date.parse(appointment!.endAt) > now &&
+  const purpose = paymentPurposeForOrder(order, history), amount = payableAmount(order, history), appointment = order.currentAppointment
+  const validSchedule = !paymentRequiresAppointment(order, history) || (validAppointmentContext(order) &&
+    appointment!.status === 'CONFIRMED' && appointment!.purpose === (purpose === 'BASELINE_DEPOSIT' ? 'BASELINE_MAPPING' : 'PAID_SERVICE') && Date.parse(appointment!.endAt) > now)
+  return !!purpose && ownerGuid(order.surveyOrderId) && validOwnerVersion(order.orderVersion) && validSchedule && historyMatchesOrder(order, history) && Number.isFinite(amount) && amount !== null && (purpose === 'BASELINE_DEPOSIT' ? amount > 0 : amount >= 0) &&
     !history!.payments.some(item => item.purpose === purpose && activePaymentStatus(item.status))
 }
+export function canSynchronizeOwnerPayment(order: OwnerSurveyOrder, history: PaymentHistory | undefined, now = Date.now()) {
+  if (paymentPurposeForOrder(order, history) !== 'FINAL_BALANCE' || !historyMatchesOrder(order, history) || !validAppointmentContext(order) ||
+    order.currentAppointment!.purpose !== 'PAID_SERVICE' || order.currentAppointment!.status !== 'CONFIRMED' || Date.parse(order.currentAppointment!.endAt) <= now) return false
+  const active = history!.payments.filter(item => item.purpose === 'FINAL_BALANCE' && activePaymentStatus(item.status))
+  return active.length === 1 && paymentIsPaid(active[0].status) && active[0].amount === payableAmount(order, history) && active[0].currency === order.currency
+}
 export function ownerPaymentBody(order: OwnerSurveyOrder, history: PaymentHistory | undefined, now = Date.now()) {
-  if (!canInitiateOwnerPayment(order, history, now)) throw new Error('Đơn chưa sẵn sàng thanh toán hoặc đã có giao dịch đang xử lý. Kiểm tra lại lịch hẹn và trạng thái giao dịch.')
-  return { purpose: paymentPurposeForOrder(order)!, expectedOrderVersion: order.orderVersion }
+  if (!canInitiateOwnerPayment(order, history, now) && !canSynchronizeOwnerPayment(order, history, now)) throw new Error('Đơn chưa sẵn sàng thanh toán hoặc đã có giao dịch đang xử lý. Kiểm tra lại lịch hẹn và trạng thái giao dịch.')
+  return { purpose: paymentPurposeForOrder(order, history)!, expectedOrderVersion: order.orderVersion }
 }
 export function purposeAlreadyPaid(order: OwnerSurveyOrder, history: PaymentHistory | undefined) {
-  return historyMatchesOrder(order, history) && history!.payments.some(item => item.purpose === paymentPurposeForOrder(order) && paymentIsPaid(item.status))
+  return historyMatchesOrder(order, history) && history!.payments.some(item => item.purpose === paymentPurposeForOrder(order, history) && paymentIsPaid(item.status) && item.amount === payableAmount(order, history) && item.currency === order.currency)
 }

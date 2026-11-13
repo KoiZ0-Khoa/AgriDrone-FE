@@ -46,6 +46,17 @@ test('payment conflict is surfaced once, retaining server trace; no automatic ne
   assert.equal(calls, 1)
 })
 
+test('restored PAID final balance never exposes another checkout, and follow-up deposits allow no appointment', async () => {
+  globalThis.fetch = async () => Response.json({ surveyOrderId: 'order', amount: 50000, paymentStatus: 'PAID', redirectUrl: 'about:blank' })
+  const paid = await orders.initiateSurveyPayment('owner', 'order', { purpose: 'FINAL_BALANCE', expectedOrderVersion: 4165 })
+  assert.equal(paid.redirectUrl, null)
+  assert.equal(workflow.paymentCheckoutUrl(paid, 'order'), null)
+  globalThis.fetch = async () => Response.json({ surveyOrderId: 'order', amount: 5000, paymentStatus: 'PROCESSING', appointmentId: null, paidServiceAppointmentId: '00000000-0000-0000-0000-000000000000', redirectUrl: 'https://pay.sepay.vn/session' })
+  const deposit = await orders.initiateSurveyPayment('owner', 'order', { purpose: 'BASELINE_DEPOSIT', expectedOrderVersion: 4165 })
+  assert.equal(deposit.appointmentId, null)
+  assert.equal(deposit.redirectUrl, 'https://pay.sepay.vn/session')
+})
+
 const session = { surveyOrderId: 'order', amount: 10000, paymentStatus: 'PROCESSING', expiresAt: '2099-01-01T00:00:00Z', redirectUrl: 'https://pay-sandbox.sepay.vn/session' }
 test('checkout only accepts matching, unexpired HTTP(S) sessions; return URLs never mark a payment paid', () => {
   assert.equal(workflow.paymentCheckoutUrl(session, 'order'), session.redirectUrl)

@@ -47,6 +47,20 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     const catalogue = render(ServicesPage, 'SYSTEM_ADMIN', [[['survey-services'], services]])
     assert.match(catalogue, /Plant Health/)
     assert.match(catalogue, /Đặt đơn giá/)
+    const policies = [
+      [['survey-services'], services],
+      [['survey-payment-policy', 'deposit'], { policyId: 'private-policy-id', versionNumber: 0, amountVnd: 0, effectiveFrom: '2026-11-13T00:00:00Z' }],
+      [['survey-payment-policy', 'combo'], { policyId: 'private-combo-id', versionNumber: 3, discountPercentage: 20.25, effectiveFrom: '2026-11-13T00:00:00Z' }],
+    ]
+    const configured = render(ServicesPage, 'SYSTEM_ADMIN', policies)
+    assert.match(configured, /Chính sách thanh toán/)
+    assert.match(configured, /Không thu tiền cọc cho đơn mới/)
+    assert.match(configured, /20,25%/)
+    for (const label of ['Chỉnh tiền cọc', 'Chỉnh giảm giá', 'Lịch sử tiền cọc', 'Lịch sử giảm giá']) assert.match(configured, new RegExp(label))
+    assert.doesNotMatch(configured, /private-policy-id|private-combo-id|expectedVersion/)
+    const policyError = render(ServicesPage, 'SYSTEM_ADMIN', [[['survey-services'], services], [['survey-payment-policy', 'deposit'], new ApiError(500, 'Unavailable')], policies[2]])
+    assert.match(policyError, /Không thể tải dữ liệu/)
+    assert.match(policyError, /20,25%/)
     const intake = render(SurveyIntakePage, null, [[['public-survey-services'], services.map(service => ({ ...service, indicativePrice: service.currentPrice, isExperimental: false }))]])
     assert.match(intake, /Email nhận thông báo/)
     assert.match(intake, /Gửi yêu cầu khảo sát/)

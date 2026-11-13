@@ -6,6 +6,6 @@ export const ownerOrder = {
   currentAppointment: { appointmentId, purpose: 'BASELINE_MAPPING', startAt: '2099-01-01T00:00:00Z', endAt: '2099-01-01T02:00:00Z', status: 'PROPOSED', appointmentVersion: 73 },
 }
 export const confirmedOrder = { ...ownerOrder, status: 'AWAITING_BASELINE_DEPOSIT', orderVersion: 4166, currentAppointment: { ...ownerOrder.currentAppointment, status: 'CONFIRMED', appointmentVersion: 74 } }
-export const paidServiceOrder = { ...ownerOrder, status: 'AWAITING_PAYMENT', totalAmount: 60000, remainingAmount: 50000, currentAppointment: { ...ownerOrder.currentAppointment, purpose: 'PAID_SERVICE', status: 'CONFIRMED' } }
+export const paidServiceOrder = { ...ownerOrder, status: 'AWAITING_PAYMENT', depositAmount: 0, totalAmount: 50000, remainingAmount: 50000, currentAppointment: { ...ownerOrder.currentAppointment, purpose: 'PAID_SERVICE', status: 'CONFIRMED' } }
 export const history = { surveyOrderId: orderId, payments: [] }
 export const paymentItem = { surveyPaymentId: 'payment', purpose: 'BASELINE_DEPOSIT', amount: 10000, currency: 'VND', provider: 'sepay', providerReference: 'ref-1', status: 'PROCESSING', createdAt: '2026-10-29T00:00:00Z', updatedAt: '2026-10-29T00:00:00Z', confirmedAt: null, paymentVersion: 80, events: [] }

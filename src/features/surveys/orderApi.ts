@@ -55,8 +55,8 @@ export async function initiateSurveyPayment(token: string, orderId: string, body
   const payment = await apiRequest<PaymentSession>(`/api/tenant-owner/survey-orders/${encodeURIComponent(orderId)}/payments`, { method: 'POST', token, body })
   return {
     ...payment,
-    appointmentId: payment.appointmentId ?? payment.paidServiceAppointmentId ?? null,
-    // A confirmed zero balance is settled by BE; there is no payment page to open.
-    redirectUrl: payment.amount === 0 && ['PAID', 'CONFIRMED'].includes(payment.paymentStatus) ? null : payment.redirectUrl,
+    appointmentId: [payment.appointmentId, payment.paidServiceAppointmentId].find(value => value && value !== '00000000-0000-0000-0000-000000000000') ?? null,
+    // Zero balances and restored PAID transactions do not create another checkout.
+    redirectUrl: ['PAID', 'CONFIRMED'].includes(payment.paymentStatus) ? null : payment.redirectUrl,
   }
 }

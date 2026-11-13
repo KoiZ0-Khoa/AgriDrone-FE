@@ -17,6 +17,45 @@ const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 const base = 'http://test.local/api/tenant-owner/survey-orders'
 
+test('follow-up deposit is offered before an appointment and remains separate from the final balance', () => {
+  for (const status of ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_PRICING', 'AWAITING_PAID_APPOINTMENT', 'AWAITING_PAYMENT']) {
+    const order = { ...ownerOrder, status, depositAmount: 5000, currentAppointment: null }
+    assert.equal(flow.paymentPurposeForOrder(order, history), 'BASELINE_DEPOSIT')
+    assert.equal(flow.payableAmount(order, history), 5000)
+    assert.equal(flow.canInitiateOwnerPayment(order, history), true)
+    assert.deepEqual(flow.ownerPaymentBody(order, history), { purpose: 'BASELINE_DEPOSIT', expectedOrderVersion: order.orderVersion })
+    for (const paymentStatus of ['PENDING', 'PROCESSING', 'ADJUSTMENT_REQUIRED']) {
+      assert.equal(flow.canInitiateOwnerPayment(order, { ...history, payments: [{ ...paymentItem, amount: 5000, status: paymentStatus }] }), false)
+    }
+    const paidDeposit = { ...history, payments: [{ ...paymentItem, amount: 5000, status: 'PAID' }] }
+    assert.notEqual(flow.paymentPurposeForOrder(order, paidDeposit), 'BASELINE_DEPOSIT')
+    assert.equal(flow.canInitiateOwnerPayment(order, { ...history, surveyOrderId: 'another-order' }), false)
+    assert.equal(flow.canInitiateOwnerPayment(order, undefined), false)
+  }
+  assert.equal(flow.paymentPurposeForOrder({ ...ownerOrder, status: 'COMPLETED' }, history), null)
+  assert.equal(flow.canInitiateOwnerPayment({ ...ownerOrder, status: 'AWAITING_BASELINE_DEPOSIT', currentAppointment: null }, history), false)
+  assert.equal(flow.canInitiateOwnerPayment({ ...paidServiceOrder, depositAmount: 5000, currentAppointment: null }, history), true)
+  const paid = { ...history, payments: [{ ...paymentItem, amount: 5000, status: 'PAID' }] }
+  assert.equal(flow.paymentPurposeForOrder({ ...paidServiceOrder, depositAmount: 5000 }, paid), 'FINAL_BALANCE')
+})
+
+test('an existing matching PAID final balance can synchronize the order without allowing a duplicate checkout', () => {
+  const order = { ...paidServiceOrder, depositAmount: 0 }
+  const paidItem = { ...paymentItem, purpose: 'FINAL_BALANCE', status: 'PAID', amount: order.remainingAmount }
+  const paidHistory = { ...history, payments: [paidItem] }
+  assert.equal(flow.canInitiateOwnerPayment(order, paidHistory), false)
+  assert.equal(flow.canSynchronizeOwnerPayment(order, paidHistory), true)
+  assert.deepEqual(flow.ownerPaymentBody(order, paidHistory), { purpose: 'FINAL_BALANCE', expectedOrderVersion: order.orderVersion })
+  for (const changes of [{ amount: 1 }, { currency: 'USD' }, { status: 'PROCESSING' }, { status: 'REFUNDED' }]) {
+    assert.equal(flow.canSynchronizeOwnerPayment(order, { ...history, payments: [{ ...paidItem, ...changes }] }), false)
+  }
+  assert.equal(flow.canSynchronizeOwnerPayment(order, { ...paidHistory, surveyOrderId: 'another-order' }), false)
+  assert.equal(flow.canSynchronizeOwnerPayment({ ...order, currentAppointment: null }, paidHistory), false)
+  assert.equal(flow.canSynchronizeOwnerPayment({ ...order, status: 'COMPLETED' }, paidHistory), false)
+  assert.equal(flow.canSynchronizeOwnerPayment({ ...order, depositAmount: 5000 }, paidHistory), false)
+  assert.equal(flow.canSynchronizeOwnerPayment(order, { ...history, payments: [paidItem, { ...paidItem, status: 'PROCESSING' }] }), false)
+})
+
 test('Owner list uses BE pagination/filter enum and bearer, never sends a tenant ID supplied by URL', async () => {
   const abort = new AbortController()
   globalThis.fetch = async (url, options) => {

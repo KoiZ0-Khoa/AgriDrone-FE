@@ -23,8 +23,12 @@ export function readCheckout(key: string, orderId: string): PaymentSession | nul
   } catch { forgetCheckout(key); return null }
 }
 export function restoredCheckoutMatches(payment: PaymentSession, order: OwnerSurveyOrder, history: PaymentHistory | undefined) {
-  if (!history || history.surveyOrderId !== order.surveyOrderId || payment.surveyOrderId !== order.surveyOrderId || !order.currentAppointment || payment.appointmentId !== order.currentAppointment.appointmentId) return false
-  return history.payments.some(item => item.surveyPaymentId === payment.surveyPaymentId && item.amount === payment.amount && item.currency === payment.currency && ['PENDING', 'PROCESSING'].includes(item.status))
+  if (!history || history.surveyOrderId !== order.surveyOrderId || payment.surveyOrderId !== order.surveyOrderId) return false
+  const item = history.payments.find(item => item.surveyPaymentId === payment.surveyPaymentId && item.amount === payment.amount && item.currency === payment.currency && ['PENDING', 'PROCESSING'].includes(item.status))
+  if (!item) return false
+  if (item.purpose === 'BASELINE_DEPOSIT' && payment.appointmentId === null && payment.amount === order.depositAmount &&
+    ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_PRICING', 'AWAITING_PAID_APPOINTMENT', 'AWAITING_PAYMENT'].includes(order.status)) return true
+  return !!order.currentAppointment && payment.appointmentId === order.currentAppointment.appointmentId
 }
 export function clearSavedCheckouts() {
   try { for (let index = sessionStorage.length - 1; index >= 0; index--) { const key = sessionStorage.key(index); if (key?.startsWith(prefix)) sessionStorage.removeItem(key) } } catch { /* Logout must work even without storage. */ }

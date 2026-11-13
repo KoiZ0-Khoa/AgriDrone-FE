@@ -9,6 +9,7 @@ import { useAuth } from '../auth/AuthContext'
 import * as api from './api'
 import type { PriceHistory, SurveyService } from './types'
 import { dateTime, priceLabel, serviceLabels, workflowError } from './workflow'
+import { PaymentPoliciesPanel } from './PaymentPoliciesPanel'
 
 export function ServicesPage() {
   const token = useAuth().session!.accessToken
@@ -43,6 +44,7 @@ export function ServicesPage() {
         </Space> },
       ]} />}
     </section>
+    <PaymentPoliciesPanel token={token} />
     {history ? <PriceHistoryDrawer token={token} service={history} close={() => setHistory(null)} /> : null}
     {action ? <ActionModal action={action} close={() => setAction(null)} /> : null}
   </>

@@ -75,7 +75,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
   if (query.isPending) return <>{back}<CommonState type="loading" title="Đang tải đơn khảo sát" /></>
   if (!query.data) return <>{back}<SurveyMutationError error={query.error} /><Button onClick={() => { void query.refetch() }}>Tải lại đơn</Button></>
   const order = query.data, appointment = order.currentAppointment
-  const showDeposit = ['AWAITING_BASELINE_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'AWAITING_BOUNDARY_CAPTURE', 'BASELINE_READY', 'BASELINE_IN_PROGRESS', 'AWAITING_BASELINE_REVIEW'].includes(order.status) || history.data?.payments.some(item => item.purpose === 'BASELINE_DEPOSIT')
+  const showDeposit = order.depositAmount > 0 || ['AWAITING_BASELINE_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'AWAITING_BOUNDARY_CAPTURE', 'BASELINE_READY', 'BASELINE_IN_PROGRESS', 'AWAITING_BASELINE_REVIEW'].includes(order.status) || history.data?.payments.some(item => item.purpose === 'BASELINE_DEPOSIT')
   const busy = query.isFetching || query.isError || writes > 0
   const rescheduleBlockedByPayment = appointment?.purpose === 'PAID_SERVICE' && history.data?.payments.some(item => activePaymentStatus(item.status))
   return <>{back}
@@ -94,7 +94,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
       </> : <p>Chờ Manager đề xuất lịch. Khi có lịch, bạn có thể xác nhận hoặc gửi yêu cầu đổi thời gian.</p>}
     </section>
     <div className="workflow-section"><SurveyPaymentPanel order={order} history={history} refreshOrder={refreshOrder} disabled={busy || !!action} /></div>
-    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Chi phí khảo sát</strong><span>Số tiền theo thông tin của hệ thống</span></div><CreditCardOutlined aria-hidden="true" /></div><dl className="detail-list">{showDeposit ? <div><dt>Cọc bản đồ nền</dt><dd>{money(order.depositAmount, order.currency)}</dd></div> : null}<div><dt>Tổng tiền dịch vụ</dt><dd className={order.totalAmount === null ? 'is-pending' : undefined}>{money(order.totalAmount, order.currency)}</dd></div><div><dt>Số tiền còn lại</dt><dd className={order.remainingAmount === null ? 'is-pending' : undefined}>{money(order.remainingAmount, order.currency)}</dd></div></dl></section>
+    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Chi phí khảo sát</strong><span>Số tiền theo thông tin của hệ thống</span></div><CreditCardOutlined aria-hidden="true" /></div><dl className="detail-list">{showDeposit ? <div><dt>Cọc khảo sát</dt><dd>{money(order.depositAmount, order.currency)}</dd></div> : null}<div><dt>Tổng tiền dịch vụ</dt><dd className={order.totalAmount === null ? 'is-pending' : undefined}>{money(order.totalAmount, order.currency)}</dd></div><div><dt>Số tiền còn lại</dt><dd className={order.remainingAmount === null ? 'is-pending' : undefined}>{money(order.remainingAmount, order.currency)}</dd></div></dl></section>
     {action ? <OwnerAppointmentDialog token={token} tenantId={tenantId} action={action} current={order} history={history.isError ? undefined : history.data} disabled={query.isFetching || query.isError || history.isFetching} close={() => { setAction(null); void refresh() }} done={async () => {
       setNotice(action.kind === 'confirm' ? 'Đã xác nhận lịch. Kiểm tra khoản thanh toán bên dưới.' : 'Đã gửi yêu cầu đổi lịch. Chờ Manager đề xuất lại.')
       setAction(null); await refresh()

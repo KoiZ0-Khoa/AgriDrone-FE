@@ -8,7 +8,7 @@ import { initiateSurveyPayment } from './orderApi'
 import { checkoutStorageKey, forgetCheckout, readCheckout, rememberCheckout, restoredCheckoutMatches } from './checkoutStorage'
 import type { PaymentSession } from './orderTypes'
 import type { OwnerSurveyOrder } from './ownerOrderTypes'
-import { activePaymentStatus, canInitiateOwnerPayment, ownerOrderFingerprint, ownerPaymentBody, payableAmount, paymentPurposeForOrder, purposeAlreadyPaid } from './ownerOrderWorkflow'
+import { activePaymentStatus, canInitiateOwnerPayment, canSynchronizeOwnerPayment, ownerOrderFingerprint, ownerPaymentBody, payableAmount, paymentPurposeForOrder, paymentRequiresAppointment, purposeAlreadyPaid } from './ownerOrderWorkflow'
 import { money, paymentCheckoutUrl, paymentIsPaid, paymentPurposeLabels, paymentStatusLabels, type PaymentHistory, type PaymentHistoryItem } from './paymentWorkflow'
 import { SurveyMutationError } from './SurveyMutationError'
 import { dateTime } from './workflow'
@@ -25,18 +25,22 @@ export function SurveyPaymentPanel({ order, history, refreshOrder, disabled = fa
   const payment = useMutation({ mutationKey: ['owner-order-write', session!.tenant!.id, order.surveyOrderId], retry: false,
     mutationFn: async (snapshot: OwnerSurveyOrder) => {
       if (ownerOrderFingerprint(snapshot) !== ownerOrderFingerprint(order) || history.isError || history.isFetching) throw new Error('Đơn đã thay đổi. Tải lại và kiểm tra trước khi thanh toán.')
+      const synchronize = canSynchronizeOwnerPayment(snapshot, history.data)
       const result = await initiateSurveyPayment(token, snapshot.surveyOrderId, ownerPaymentBody(snapshot, history.data))
+      if (synchronize && !paymentIsPaid(result.paymentStatus)) throw new Error('Máy chủ chưa xác nhận đồng bộ đơn. Kiểm tra trạng thái trước khi tiếp tục.')
       paymentCheckoutUrl(result, snapshot.surveyOrderId)
       return result
     }, onSuccess: async result => { setCheckout(result); setRestored(false); rememberCheckout(storageKey, result); setConfirm(null); await Promise.all([history.refetch(), refreshOrder()]) },
     onError: async () => { setConfirm(null); await history.refetch() }, onSettled: () => { submitting.current = false } })
-  const purpose = paymentPurposeForOrder(order), amount = payableAmount(order)
+  const purpose = paymentPurposeForOrder(order, history.data), amount = payableAmount(order, history.data)
+  const synchronize = canSynchronizeOwnerPayment(order, history.data)
+  const requiresAppointment = paymentRequiresAppointment(order, history.data)
   const paid = purposeAlreadyPaid(order, history.data)
   const active = purpose ? history.data?.payments.find(item => item.purpose === purpose && activePaymentStatus(item.status)) : undefined
-  const canPay = session?.role === 'OWNER' && !disabled && !history.isError && !history.isPending && !history.isFetching && !payment.isPending && !payment.error && !checkout && canInitiateOwnerPayment(order, history.data)
   const currentCheckout = checkout ? history.data?.payments.find(item => item.surveyPaymentId === checkout.surveyPaymentId) : undefined
   const checkoutState = currentCheckout?.status ?? (restored ? undefined : checkout?.paymentStatus)
   const checkoutPaid = checkoutState ? paymentIsPaid(checkoutState) : false
+  const canPay = session?.role === 'OWNER' && !disabled && !history.isError && !history.isPending && !history.isFetching && !payment.isPending && !payment.error && (!checkout || checkoutPaid) && (synchronize || canInitiateOwnerPayment(order, history.data))
   const checkoutAmount = currentCheckout?.amount ?? (restored ? null : checkout?.amount ?? null)
   const checkoutCurrency = currentCheckout?.currency ?? checkout?.currency ?? order.currency
   let url: string | null = null, checkoutError: Error | null = null
@@ -47,11 +51,13 @@ export function SurveyPaymentPanel({ order, history, refreshOrder, disabled = fa
   const staleConfirm = confirm !== null && ownerOrderFingerprint(confirm) !== ownerOrderFingerprint(order)
   function start() { if (!confirm || !canPay || staleConfirm || submitting.current) return; submitting.current = true; payment.mutate(confirm) }
   return <section className="resource-panel">
-    <div className="resource-panel-heading"><div><strong>Thanh toán</strong><span>Cọc bản đồ nền và khoản còn lại</span></div><Button icon={<ReloadOutlined />} loading={history.isFetching} disabled={payment.isPending} onClick={() => { void refresh() }}>Kiểm tra trạng thái</Button></div>
-    {purpose ? <div className="payment-summary"><div><span className="payment-summary-label">Cần thanh toán · {paymentPurposeLabels[purpose]}</span><strong>{money(amount, order.currency)}</strong></div><Button type="primary" size="large" icon={<CreditCardOutlined />} disabled={!canPay} loading={payment.isPending} onClick={() => setConfirm(order)}>{amount === 0 ? 'Hoàn tất số dư 0' : 'Thanh toán'}</Button></div> : <p className="form-hint">Đơn chưa đến bước thanh toán hoặc đã chuyển sang bước tiếp theo. Bạn có thể xem các giao dịch bên dưới.</p>}
-    {purpose && order.currentAppointment?.status !== 'CONFIRMED' ? <Alert className="workflow-notice" type="info" showIcon title="Xác nhận lịch hẹn trước khi thanh toán." /> : null}
-    {purpose && order.currentAppointment?.status === 'CONFIRMED' && Date.parse(order.currentAppointment.endAt) <= Date.now() ? <Alert className="workflow-notice" type="warning" showIcon title="Lịch hẹn đã hết thời gian. Liên hệ Manager để điều chỉnh lịch trước khi thanh toán." /> : null}
+    <div className="resource-panel-heading"><div><strong>Thanh toán</strong><span>Cọc khảo sát và khoản còn lại</span></div><Button icon={<ReloadOutlined />} loading={history.isFetching} disabled={payment.isPending} onClick={() => { void refresh() }}>Kiểm tra trạng thái</Button></div>
+    {purpose ? <div className="payment-summary"><div><span className="payment-summary-label">{paid ? 'Đã thanh toán' : 'Cần thanh toán'} · {paymentPurposeLabels[purpose]}</span><strong>{money(amount, order.currency)}</strong></div><Button type="primary" size="large" icon={synchronize ? <ReloadOutlined /> : <CreditCardOutlined />} disabled={!canPay} loading={payment.isPending} onClick={() => setConfirm(order)}>{synchronize ? 'Đồng bộ trạng thái đơn' : amount === 0 ? 'Hoàn tất số dư 0' : 'Thanh toán'}</Button></div> : <p className="form-hint">Đơn chưa đến bước thanh toán hoặc đã chuyển sang bước tiếp theo. Bạn có thể xem các giao dịch bên dưới.</p>}
+    {purpose && !requiresAppointment ? <p className="form-hint">Thanh toán cọc theo đơn khảo sát. Khoản còn lại được xác định sau khi chốt số trụ và giá.</p> : null}
+    {purpose && requiresAppointment && order.currentAppointment?.status !== 'CONFIRMED' ? <Alert className="workflow-notice" type="info" showIcon title="Xác nhận lịch hẹn trước khi thanh toán." /> : null}
+    {purpose && requiresAppointment && order.currentAppointment?.status === 'CONFIRMED' && Date.parse(order.currentAppointment.endAt) <= Date.now() ? <Alert className="workflow-notice" type="warning" showIcon title="Lịch hẹn đã hết thời gian. Liên hệ Manager để điều chỉnh lịch trước khi thanh toán." /> : null}
     {paid ? <Alert className="workflow-notice" type="success" showIcon title="Máy chủ đã xác nhận khoản thanh toán này." /> : null}
+    {synchronize ? <p className="form-hint">Đồng bộ để cập nhật bước tiếp theo của đơn. Thao tác này dùng giao dịch đã thanh toán, không thu thêm tiền.</p> : null}
     {active && !paid && !checkout ? <Alert className="workflow-notice" type="warning" showIcon title={active.status === 'ADJUSTMENT_REQUIRED' ? 'Khoản thanh toán cần được quản trị viên đối soát.' : 'Đã có giao dịch đang xử lý'} description="Không tạo thêm giao dịch. Nếu trang thanh toán còn mở, hãy tiếp tục tại đó rồi kiểm tra trạng thái. Nếu đã đóng hoặc hết hạn, liên hệ hỗ trợ để kiểm tra phiên thanh toán." /> : null}
     <SurveyMutationError error={payment.error ?? (history.isError ? history.error : null) ?? checkoutError} />
     {payment.error ? <Button onClick={() => { void refresh() }}>Tải lại và kiểm tra trước khi thử lại</Button> : null}
@@ -66,9 +72,9 @@ export function SurveyPaymentPanel({ order, history, refreshOrder, disabled = fa
       { title: 'Trạng thái', render: (_, item) => <Tag color={paymentIsPaid(item.status) ? 'success' : item.status === 'FAILED' ? 'error' : 'default'}>{paymentStatusLabels[item.status] ?? item.status}</Tag> },
       { title: 'Thời điểm', render: (_, item) => dateTime(item.confirmedAt ?? item.createdAt) },
     ]} expandable={{ expandedRowRender: item => <><CopyReference value={item.providerReference ?? item.surveyPaymentId} label="Sao chép mã giao dịch" /><p>Cổng thanh toán: {item.provider}</p>{item.events.map((event, index) => <p key={index}>{event.eventType} · {dateTime(event.occurredAt)}</p>)}</> }} />
-    <Modal title={confirm ? paymentPurposeLabels[paymentPurposeForOrder(confirm)!] : 'Thanh toán'} open={confirm !== null} afterOpenChange={open => { if (open) document.getElementById(confirmButtonId)?.focus() }} onCancel={() => { if (!payment.isPending) setConfirm(null) }} onOk={start} okText="Tạo phiên thanh toán" cancelText="Hủy" confirmLoading={payment.isPending} closable={!payment.isPending} mask={{ closable: !payment.isPending }} cancelButtonProps={{ disabled: payment.isPending }} okButtonProps={{ disabled: !canPay || staleConfirm, autoFocus: true, id: confirmButtonId }}>
+    <Modal title={synchronize ? 'Đồng bộ trạng thái đơn' : confirm ? paymentPurposeLabels[paymentPurposeForOrder(confirm, history.data)!] : 'Thanh toán'} open={confirm !== null} afterOpenChange={open => { if (open) document.getElementById(confirmButtonId)?.focus() }} onCancel={() => { if (!payment.isPending) setConfirm(null) }} onOk={start} okText={synchronize ? 'Đồng bộ đơn' : 'Xác nhận'} cancelText="Hủy" confirmLoading={payment.isPending} closable={!payment.isPending} mask={{ closable: !payment.isPending }} cancelButtonProps={{ disabled: payment.isPending }} okButtonProps={{ disabled: !canPay || staleConfirm, autoFocus: true, id: confirmButtonId }}>
       {staleConfirm ? <Alert showIcon type="warning" title="Đơn đã thay đổi. Đóng và kiểm tra lại số tiền, lịch hẹn trước khi thanh toán." /> : null}
-      <p>Số tiền: <strong>{confirm ? money(payableAmount(confirm), confirm.currency) : '—'}</strong></p><p>Thanh toán qua cổng do hệ thống cung cấp. Kết quả được cập nhật sau khi máy chủ xác nhận.</p>
+      <p>{synchronize ? 'Số tiền đã thanh toán' : 'Số tiền'}: <strong>{confirm ? money(payableAmount(confirm, history.data), confirm.currency) : '—'}</strong></p><p>{synchronize ? 'Yêu cầu máy chủ cập nhật trạng thái từ giao dịch đã thanh toán. Không tạo phiên thanh toán mới.' : 'Thanh toán qua cổng do hệ thống cung cấp. Kết quả được cập nhật sau khi máy chủ xác nhận.'}</p>
     </Modal>
   </section>
 }
