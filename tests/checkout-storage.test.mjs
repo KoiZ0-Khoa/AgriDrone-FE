@@ -10,6 +10,14 @@ const workflowUrl = dataUrl(compile('../src/features/surveys/paymentWorkflow.ts'
 const storage = await import(dataUrl(compile('../src/features/surveys/checkoutStorage.ts').replace("'./paymentWorkflow'", JSON.stringify(workflowUrl))))
 const payment = { surveyPaymentId: 'payment', surveyOrderId: orderId, appointmentId: confirmedOrder.currentAppointment.appointmentId, paidServiceAppointmentId: confirmedOrder.currentAppointment.appointmentId, amount: 10000, currency: 'VND', paymentStatus: 'PROCESSING', redirectUrl: 'https://pay-sandbox.sepay.vn/session', expiresAt: '2099-01-01T00:00:00Z', paymentVersion: 80, orderVersion: 4166, clientToken: 'must-not-save', accessToken: 'must-not-save' }
 
+test('final checkout restoration uses the server invoice and payment history without requiring an appointment', () => {
+  const order = { ...confirmedOrder, status: 'AWAITING_PAYMENT', remainingAmount: 10000, currentAppointment: null }
+  const checkout = { ...payment, appointmentId: null }
+  const current = { ...history, payments: [{ ...paymentItem, purpose: 'FINAL_BALANCE' }] }
+  assert.equal(storage.restoredCheckoutMatches(checkout, order, current), true)
+  for (const change of [{ remainingAmount: 1 }, { currency: 'USD' }, { status: 'COMPLETED' }]) assert.equal(storage.restoredCheckoutMatches(checkout, { ...order, ...change }, current), false)
+})
+
 test('a follow-up deposit checkout survives without an appointment only after matching server history', () => {
   const order = { ...confirmedOrder, status: 'PENDING_BOUNDARY_VERIFICATION', currentAppointment: null }
   const checkout = { ...payment, appointmentId: null }
@@ -19,7 +27,7 @@ test('a follow-up deposit checkout survives without an appointment only after ma
   assert.equal(storage.restoredCheckoutMatches(checkout, order, { ...current, surveyOrderId: 'another-order' }), false)
   assert.equal(storage.restoredCheckoutMatches(checkout, { ...order, depositAmount: 1 }, current), false)
   assert.equal(storage.restoredCheckoutMatches(checkout, { ...order, status: 'COMPLETED' }, current), false)
-  assert.equal(storage.restoredCheckoutMatches(checkout, confirmedOrder, current), false)
+  assert.equal(storage.restoredCheckoutMatches(checkout, confirmedOrder, current), true)
   assert.equal(storage.restoredCheckoutMatches(checkout, order, { ...history, payments: [{ ...paymentItem, purpose: 'FINAL_BALANCE' }] }), false)
 })
 

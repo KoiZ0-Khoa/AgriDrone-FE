@@ -29,7 +29,7 @@ export function PricingConfirmationModal({ token, order, scope, close, done }: {
     <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p>
     {farm.isPending || farm.isFetching ? <CommonState type="loading" title="Đang kiểm tra bản đồ hiện hành" /> : farm.isError ? <CommonState type="error" description={workflowError(farm.error)} retry={() => farm.refetch()} /> : problem ? <Alert showIcon type="warning" title={problem} /> : map ? <>
       <p>Bản đồ đã phát hành: <strong>phiên bản {map.versionNumber}</strong> · {dateTime(map.publishedAt)}</p>
-      <Alert className="workflow-notice" showIcon type="info" title="Hệ thống xác định số trụ và tổng tiền" description="Máy chủ sẽ đếm trụ đang hoạt động trong phạm vi đã duyệt và áp dụng đơn giá đang hiệu lực. Kết quả chính thức sẽ hiển thị sau khi xác nhận." />
+      <Alert className="workflow-notice" showIcon type="info" title="Chốt hóa đơn sau khi duyệt kết quả" description="Máy chủ đếm riêng trụ bản đồ và trụ trong phạm vi khảo sát sức khỏe, dùng hai đơn giá đã lưu khi duyệt đơn, áp dụng giảm giá và trừ cọc. Số cây phát hiện bệnh không phải số trụ tính tiền." />
     </> : null}
     <Form form={form} layout="vertical" disabled={disabled} onFinish={values => {
       if (disabled || submitting.current) return

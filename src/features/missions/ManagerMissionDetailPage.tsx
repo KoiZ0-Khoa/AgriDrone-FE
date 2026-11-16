@@ -404,7 +404,7 @@ export function ManagerMissionDetailPage() {
     </StepSection> : null}
     {scheduled && !preflightDone ? <Alert className="workflow-notice" type="info" showIcon message="Hoàn tất checklist trước khi bay để mở bước &quot;Bắt đầu bay&quot;." /> : null}
     {preflightDone ? <StepSection title="Bắt đầu bay" status={scheduled ? 'active' : 'done'} summary="Đã bắt đầu bay.">
-      <p className="form-hint">Chỉ bắt đầu được trong khung giờ đã lên lịch và lịch hẹn Owner đã xác nhận, sau khi checklist preflight đã hoàn tất với kết quả phù hợp để bay.</p>
+      <p className="form-hint">Chỉ bắt đầu được trong khung giờ và lịch khảo sát đã được chốt, sau khi checklist preflight đã hoàn tất với kết quả phù hợp để bay.</p>
       {startMutation.error ? <Alert type="error" showIcon message={missionError(startMutation.error)} /> : null}
       <Button type="primary" loading={startMutation.isPending} onClick={() => startMutation.mutate()}>Bắt đầu bay</Button>
     </StepSection> : null}

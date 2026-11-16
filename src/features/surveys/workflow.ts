@@ -40,7 +40,7 @@ export function workflowError(error: unknown) {
       'SurveyPricing.BaselineSourceMismatch': 'Nguồn bản đồ không khớp yêu cầu khảo sát. Đóng biểu mẫu và tải lại để kiểm tra.',
       'SurveyPricing.PersistenceConflict': 'Dữ liệu đã thay đổi trong lúc xác nhận. Đóng biểu mẫu và tải lại trước khi tiếp tục.',
       'Payment.ActivePaymentExists': 'Đơn đã có giao dịch đang xử lý. Kiểm tra lịch sử trước khi thanh toán tiếp.',
-      'Payment.OrderNotReady': 'Đơn chưa đủ điều kiện thanh toán. Kiểm tra lịch hẹn đã xác nhận và giá của đơn.',
+      'Payment.OrderNotReady': 'Đơn chưa đủ điều kiện thanh toán. Kiểm tra bước trả cọc hoặc hóa đơn đã chốt sau khi duyệt kết quả.',
       'Payment.ProviderUnavailable': 'Chưa kết nối được cổng thanh toán. Vui lòng thử lại sau.',
       'SurveyAppointment.ActivePaymentBlocksReschedule': 'Đơn đã có giao dịch đang hiệu lực nên chưa thể đổi lịch dịch vụ.',
       'SurveyRequest.FarmProfileIncomplete': 'Thông tin nông trại chưa đầy đủ hoặc chưa hợp lệ. Cần có tên, địa chỉ, diện tích lớn hơn 0 và tọa độ tâm hợp lệ. Nhờ Manager phụ trách cập nhật trước khi gửi yêu cầu khảo sát.',

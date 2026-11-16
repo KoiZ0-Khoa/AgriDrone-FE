@@ -14,8 +14,25 @@ const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
 const pricingOrder = { surveyOrderId: '11111111-1111-4111-8111-111111111111', tenantId: 'tenant', farmId: 'farm', status: 'AWAITING_PRICING', orderVersion: 4165, requiresBaselineMapping: true }
-const pricingScope = { ...pricingOrder, orderStatus: pricingOrder.status, currentApprovedBoundary: { farmBoundaryId: 'boundary', versionNumber: 2 } }
+const pricingScope = { ...pricingOrder, serviceReviewedAt: '2026-11-16T03:00:00Z', orderStatus: pricingOrder.status, currentApprovedBoundary: { farmBoundaryId: 'boundary', versionNumber: 2 } }
 const pricingFarm = { farmId: 'farm', tenantId: 'tenant', status: 'ACTIVE', publishedBaseMap: { id: '22222222-2222-4222-8222-222222222222', versionNumber: 3, sourceSurveyOrderId: pricingOrder.surveyOrderId } }
+
+test('new flow schedules service after baseline and prices only after review', () => {
+  const order = { ...pricingOrder, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null, currentAppointmentPurpose: null }
+  const before = { ...pricingScope, serviceReviewedAt: null }
+  assert.equal(workflow.canProposeAppointment(order, before), true)
+  assert.equal(workflow.appointmentBody(order, before, '2099-01-01').purpose, 'PAID_SERVICE')
+  assert.equal(workflow.appointmentBody(order, before, '2099-01-01').expectedCurrentAppointmentId, null)
+  assert.equal(workflow.appointmentBody(order, before, '2099-01-01').expectedCurrentAppointmentVersion, null)
+  assert.throws(() => workflow.pricingConfirmationBody(order, before, pricingFarm, 'checked'), /duyệt kết quả/)
+  assert.equal(workflow.canProposeAppointment(order, pricingScope), false)
+  assert.equal(workflow.pricingConfirmationBody(order, pricingScope, pricingFarm, 'checked').expectedOrderVersion, 4165)
+  for (const serviceReviewedAt of [undefined, 'invalid']) {
+    const unknown = { ...pricingScope, serviceReviewedAt }
+    assert.equal(workflow.canProposeAppointment(order, unknown), false)
+    assert.throws(() => workflow.pricingConfirmationBody(order, unknown, pricingFarm, 'checked'))
+  }
+})
 
 test('pricing confirmation uses published map/version and leaves pole count, unit price and total to BE', async () => {
   const body = workflow.pricingConfirmationBody(pricingOrder, pricingScope, pricingFarm, '  Đã đối chiếu bản đồ  ')
@@ -78,7 +95,7 @@ test('Order context searches assigned pages without inventing a detail route or 
 })
 
 test('Manager directory normalizes the BE reschedule status for dashboard, detail and replacement proposals', async () => {
-  const current = { surveyOrderId: 'order', tenantId: 'tenant', farmId: 'farm', status: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true, orderVersion: 2345, currentAppointmentId: 'appointment', currentAppointmentVersion: 2494 }
+  const current = { surveyOrderId: 'order', tenantId: 'tenant', farmId: 'farm', status: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true, orderVersion: 2345, currentAppointmentId: 'appointment', currentAppointmentVersion: 2494, currentAppointmentPurpose: 'BASELINE_MAPPING' }
   const response = { items: [{ ...current, currentAppointmentStatus: 'RESCHEDULEREQUESTED' }], totalCount: 3, pageNumber: 1, pageSize: 20, hasNextPage: false }
   globalThis.fetch = async () => Response.json(response)
   const page = await api.getAssignedOrders('manager')
@@ -87,7 +104,7 @@ test('Manager directory normalizes the BE reschedule status for dashboard, detai
   assert.equal(page.items[0].orderVersion, 2345)
   assert.equal(page.totalCount, 3)
   assert.equal((await api.getAssignedOrder('manager', 'order')).currentAppointmentStatus, 'RESCHEDULE_REQUESTED')
-  const body = workflow.appointmentBody(page.items[0], { ...current, orderStatus: current.status }, '2099-01-01')
+  const body = workflow.appointmentBody(page.items[0], { ...current, orderStatus: current.status, serviceReviewedAt: null }, '2099-01-01')
   assert.equal(body.expectedCurrentAppointmentId, 'appointment')
   assert.equal(body.expectedCurrentAppointmentVersion, 2494)
   for (const status of ['RESCHEDULE_REQUESTED', 'PROPOSED', 'CONFIRMED', null]) {
@@ -96,19 +113,19 @@ test('Manager directory normalizes the BE reschedule status for dashboard, detai
   }
 })
 
-const scope = { surveyOrderId: 'order', farmId: 'farm', tenantId: 'tenant', orderVersion: 51, orderStatus: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true }
-const order = { surveyOrderId: 'order', farmId: 'farm', tenantId: 'tenant', orderVersion: 51, status: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null }
-const scheduledDate = '2026-11-10'
+const scope = { surveyOrderId: 'order', farmId: 'farm', tenantId: 'tenant', orderVersion: 51, orderStatus: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true, serviceReviewedAt: null }
+const order = { surveyOrderId: 'order', farmId: 'farm', tenantId: 'tenant', orderVersion: 51, status: 'AWAITING_BASELINE_APPOINTMENT', requiresBaselineMapping: true, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null, currentAppointmentPurpose: null }
+const scheduledDate = '2099-11-10'
 
-test('first paid-service proposal ignores the completed baseline appointment and sends no baseline ID/version', async () => {
-  const raw = { ...order, status: 'AWAITING_PAID_APPOINTMENT', currentAppointmentId: 'baseline-appointment', currentAppointmentVersion: 73, currentAppointmentStatus: 'CONFIRMED' }
+test('First Combo schedules a confirmed Health appointment after map publication without an Owner confirm request', async () => {
+  const raw = { ...order, status: 'AWAITING_PAID_APPOINTMENT' }
   const paidScope = { ...scope, orderStatus: raw.status }
   let sent
   globalThis.fetch = async (url, options) => {
     if (options.method === 'POST') {
       assert.equal(new URL(url).pathname, '/api/system-manager/survey-orders/order/appointments')
       sent = JSON.parse(options.body)
-      return Response.json({ appointmentId: 'new-service-appointment', purpose: 'PAID_SERVICE', appointmentStatus: 'PROPOSED' })
+      return Response.json({ appointmentId: 'new-service-appointment', purpose: 'PAID_SERVICE', appointmentStatus: 'CONFIRMED', orderStatus: 'READY_FOR_PAID_SERVICE' })
     }
     return Response.json({ items: [raw], hasNextPage: false })
   }
@@ -116,27 +133,54 @@ test('first paid-service proposal ignores the completed baseline appointment and
   assert.equal(current.orderVersion, raw.orderVersion)
   assert.equal(current.currentAppointmentStatus, null)
   const body = workflow.appointmentBody(current, paidScope, scheduledDate)
-  await api.proposeAppointment('manager', 'order', body)
+  const result = await api.proposeAppointment('manager', 'order', body)
   assert.deepEqual(sent, { purpose: 'PAID_SERVICE', scheduledDate, expectedOrderVersion: 51, expectedCurrentAppointmentId: null, expectedCurrentAppointmentVersion: null })
-  assert.equal(raw.currentAppointmentId, 'baseline-appointment')
+  assert.equal(result.appointmentStatus, 'CONFIRMED')
+  assert.equal(result.orderStatus, 'READY_FOR_PAID_SERVICE')
 })
 
-test('paid-service appointments still block duplicate proposals and retain exact versions when rescheduling', async () => {
+test('Manager can take over an old proposed Health schedule using its exact ID/version', async () => {
   const paidScope = { ...scope, orderStatus: 'AWAITING_PAID_APPOINTMENT' }
   for (const status of ['PROPOSED', 'RESCHEDULEREQUESTED']) {
-    const raw = { ...order, status: paidScope.orderStatus, currentAppointmentId: 'paid-appointment', currentAppointmentVersion: 91, currentAppointmentStatus: status }
+    const raw = { ...order, status: paidScope.orderStatus, currentAppointmentId: 'paid-appointment', currentAppointmentVersion: 91, currentAppointmentStatus: status, currentAppointmentPurpose: 'PAID_SERVICE' }
     globalThis.fetch = async () => Response.json({ items: [raw] })
     const current = (await api.getAssignedOrders('manager')).items[0]
     assert.equal(current.currentAppointmentId, 'paid-appointment')
     assert.equal(current.currentAppointmentVersion, 91)
-    if (status === 'PROPOSED') assert.throws(() => workflow.appointmentBody(current, paidScope, scheduledDate))
-    else assert.deepEqual(workflow.appointmentBody(current, paidScope, scheduledDate), { purpose: 'PAID_SERVICE', scheduledDate, expectedOrderVersion: 51, expectedCurrentAppointmentId: 'paid-appointment', expectedCurrentAppointmentVersion: 91 })
+    assert.equal(workflow.canProposeAppointment(current, paidScope), true)
+    assert.deepEqual(workflow.appointmentBody(current, paidScope, scheduledDate), { purpose: 'PAID_SERVICE', scheduledDate, expectedOrderVersion: 51, expectedCurrentAppointmentId: 'paid-appointment', expectedCurrentAppointmentVersion: 91 })
   }
   for (const changes of [{ status: 'AWAITING_PAYMENT' }, { status: 'AWAITING_PAID_APPOINTMENT', requiresBaselineMapping: false }]) {
-    const raw = { ...order, ...changes, currentAppointmentId: 'confirmed-appointment', currentAppointmentVersion: 91, currentAppointmentStatus: 'CONFIRMED' }
+    const raw = { ...order, ...changes, currentAppointmentId: 'confirmed-appointment', currentAppointmentVersion: 91, currentAppointmentStatus: 'CONFIRMED', currentAppointmentPurpose: 'PAID_SERVICE' }
     globalThis.fetch = async () => Response.json({ items: [raw] })
     assert.equal((await api.getAssignedOrders('manager')).items[0].currentAppointmentId, 'confirmed-appointment')
+    assert.equal(workflow.canProposeAppointment(raw, { ...paidScope, orderStatus: raw.status, requiresBaselineMapping: raw.requiresBaselineMapping }), false)
   }
+})
+
+test('confirmed service schedules are never discarded or mistaken for baseline, even in the old post-map state', async () => {
+  const paidScope = { ...scope, orderStatus: 'AWAITING_PRICING' }
+  for (const purpose of ['PAID_SERVICE', 'BASELINE_MAPPING', null, undefined]) {
+    const raw = { ...order, status: paidScope.orderStatus, currentAppointmentId: 'confirmed', currentAppointmentVersion: 91, currentAppointmentStatus: 'CONFIRMED', currentAppointmentPurpose: purpose }
+    globalThis.fetch = async () => Response.json({ items: [raw] })
+    const current = (await api.getAssignedOrders('manager')).items[0]
+    assert.equal(current.currentAppointmentId, 'confirmed')
+    assert.equal(current.currentAppointmentVersion, 91)
+    assert.equal(workflow.canProposeAppointment(current, paidScope), false)
+    assert.throws(() => workflow.appointmentBody(current, paidScope, scheduledDate))
+  }
+})
+
+test('Health date checks use Vietnam time and respect the same-day BE five-minute window', () => {
+  const health = { ...order, status: 'AWAITING_PAID_APPOINTMENT' }
+  const healthScope = { ...scope, orderStatus: health.status }
+  const now = Date.parse('2026-11-16T17:01:00Z') // 00:01 on 17 November in Vietnam.
+  assert.equal(workflow.operationsDate(now), '2026-11-17')
+  assert.throws(() => workflow.appointmentBody(health, healthScope, '2026-11-16', now), /thời gian/)
+  assert.equal(workflow.appointmentBody(health, healthScope, '2026-11-17', now).scheduledDate, '2026-11-17')
+  const nearlyMidnight = Date.parse('2026-11-17T16:56:00Z')
+  assert.throws(() => workflow.appointmentBody(health, healthScope, '2026-11-17', nearlyMidnight), /thời gian/)
+  assert.equal(workflow.appointmentBody(health, healthScope, '2026-11-18', nearlyMidnight).purpose, 'PAID_SERVICE')
 })
 
 test('unmapped Orders propose Baseline appointment first by sending the chosen day, not a computed UTC window, and retain server versions', () => {
@@ -160,7 +204,7 @@ test('appointment proposal refuses mismatched contexts, active appointments and 
 })
 
 test('rescheduling sends the current appointment ID and exact version, never an assumed default', () => {
-  const body = workflow.appointmentBody({ ...order, currentAppointmentId: 'appointment', currentAppointmentVersion: 73, currentAppointmentStatus: 'RESCHEDULE_REQUESTED' }, scope, scheduledDate)
+  const body = workflow.appointmentBody({ ...order, currentAppointmentId: 'appointment', currentAppointmentVersion: 73, currentAppointmentStatus: 'RESCHEDULE_REQUESTED', currentAppointmentPurpose: 'BASELINE_MAPPING' }, scope, scheduledDate)
   assert.equal(body.expectedCurrentAppointmentId, 'appointment')
   assert.equal(body.expectedCurrentAppointmentVersion, 73)
 })

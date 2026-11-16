@@ -17,7 +17,7 @@ export function PaymentPoliciesPanel({ token }: { token: string }) {
   function editDeposit() {
     const policy = deposit.data
     if (!policy || !api.validPolicyVersion(policy.versionNumber)) return
-    setAction({ title: 'Cập nhật tiền cọc khảo sát', description: 'Áp dụng cho đơn tạo sau khi lưu. Đặt 0đ để không thu cọc; các đơn đã có giữ chính sách cũ.', fields: [{ key: 'amount', label: 'Tiền cọc (VND)', kind: 'number', value: String(policy.amountVnd) }],
+    setAction({ title: 'Cập nhật tiền cọc khảo sát', description: 'Đơn mới, kể cả khảo sát lại, cần cọc lớn hơn 0 trước khi bay. Mức mới áp dụng cho đơn được duyệt sau khi lưu.', fields: [{ key: 'amount', label: 'Tiền cọc (VND)', kind: 'number', value: String(policy.amountVnd) }],
       run: values => api.saveDepositPolicy(token, text(values, 'amount'), policy.versionNumber) })
   }
   function editCombo() {
@@ -31,12 +31,12 @@ export function PaymentPoliciesPanel({ token }: { token: string }) {
     <div className="payment-policy-grid">
       <article className="payment-policy-card">
         <h2>Cọc khảo sát</h2>
-        {deposit.isPending ? <p>Đang tải tiền cọc…</p> : deposit.isError ? <CommonState type="error" description={workflowError(deposit.error)} retry={() => deposit.refetch()} /> : <><strong className="payment-policy-value">{money(deposit.data.amountVnd)}</strong><p className="form-hint">{deposit.data.amountVnd === 0 ? 'Không thu tiền cọc cho đơn mới.' : 'Thu cọc trước bước thực hiện khảo sát.'}</p><p className="form-hint">{deposit.data.versionNumber === 0 ? 'Mức mặc định của hệ thống' : 'Áp dụng từ ' + dateTime(deposit.data.effectiveFrom)}</p></>}
+        {deposit.isPending ? <p>Đang tải tiền cọc…</p> : deposit.isError ? <CommonState type="error" description={workflowError(deposit.error)} retry={() => deposit.refetch()} /> : <><strong className="payment-policy-value">{money(deposit.data.amountVnd)}</strong><p className="form-hint">{deposit.data.amountVnd <= 0 ? 'Cần đặt cọc lớn hơn 0 để duyệt đơn mới.' : 'Thu cọc trước bước thực hiện khảo sát, kể cả khảo sát lại.'}</p><p className="form-hint">{deposit.data.versionNumber === 0 ? 'Mức mặc định của hệ thống' : 'Áp dụng từ ' + dateTime(deposit.data.effectiveFrom)}</p></>}
         <Space wrap><Button disabled={deposit.isFetching || deposit.isError || !deposit.data || !api.validPolicyVersion(deposit.data.versionNumber)} onClick={editDeposit}>Chỉnh tiền cọc</Button><Button onClick={() => setHistory('deposit')}>Lịch sử tiền cọc</Button></Space>
       </article>
       <article className="payment-policy-card">
         <h2>Giảm giá Combo</h2>
-        {combo.isPending ? <p>Đang tải ưu đãi…</p> : combo.isError ? <CommonState type="error" description={workflowError(combo.error)} retry={() => combo.refetch()} /> : <><strong className="payment-policy-value">{combo.data.discountPercentage.toLocaleString('vi-VN', { maximumFractionDigits: 2 })}%</strong><p className="form-hint">Mức giảm trên đơn giá trụ của đơn đủ điều kiện Combo.</p><p className="form-hint">{combo.data.versionNumber === 0 ? 'Mức mặc định của hệ thống' : 'Áp dụng từ ' + dateTime(combo.data.effectiveFrom)}</p></>}
+        {combo.isPending ? <p>Đang tải ưu đãi…</p> : combo.isError ? <CommonState type="error" description={workflowError(combo.error)} retry={() => combo.refetch()} /> : <><strong className="payment-policy-value">{combo.data.discountPercentage.toLocaleString('vi-VN', { maximumFractionDigits: 2 })}%</strong><p className="form-hint">Giảm một lần trên tổng phí MAP và Health của Combo, gồm khảo sát lại.</p><p className="form-hint">{combo.data.versionNumber === 0 ? 'Mức mặc định của hệ thống' : 'Áp dụng từ ' + dateTime(combo.data.effectiveFrom)}</p></>}
         <Space wrap><Button disabled={combo.isFetching || combo.isError || !combo.data || !api.validPolicyVersion(combo.data.versionNumber)} onClick={editCombo}>Chỉnh giảm giá</Button><Button onClick={() => setHistory('combo')}>Lịch sử giảm giá</Button></Space>
       </article>
     </div>

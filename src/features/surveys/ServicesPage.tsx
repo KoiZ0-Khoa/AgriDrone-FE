@@ -21,22 +21,18 @@ export function ServicesPage() {
     setAction({ title, description: state === 'retire' ? 'Dịch vụ ngừng cung cấp không thể kích hoạt lại. Lịch sử được giữ nguyên.' : `Thay đổi trạng thái của ${service.name}.`, danger: state === 'retire', fields: [{ key: 'reason', label: 'Lý do', kind: 'multiline', max: 2000 }], run: values => api.changeServiceState(token, service.surveyServiceId, state, { expectedVersion: service.version, reason: text(values, 'reason') }) })
   }
   return <>
-    <section className="resource-page-heading"><div><span className="page-kicker">DỊCH VỤ KHẢO SÁT</span><h1>Dịch vụ & đơn giá</h1><p>Giá theo trụ bằng VND. Hiện chỉ cung cấp dịch vụ sức khỏe cây trồng (Plant Health).</p></div><Button icon={<ReloadOutlined />} onClick={() => { void query.refetch() }}>Tải lại</Button></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">DỊCH VỤ KHẢO SÁT</span><h1>Dịch vụ & đơn giá</h1><p>Cấu hình đơn giá bản đồ nền và khảo sát sức khỏe. Đơn mới lưu mức giá này khi được phê duyệt.</p></div><Button icon={<ReloadOutlined />} onClick={() => { void query.refetch() }}>Tải lại</Button></section>
     <section className="resource-panel">
       {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /> : <Table<SurveyService> rowKey="surveyServiceId" loading={query.isPending} dataSource={query.data ?? []} pagination={false} scroll={{ x: 900 }} locale={{ emptyText: 'Chưa có dịch vụ được cấu hình.' }} columns={[
         { title: 'Dịch vụ', render: (_, service) => <><strong>{service.name}</strong><p className="form-hint">{service.code}</p><span>{service.description}</span></> },
         { title: 'Trạng thái', render: (_, service) => <Tag color={service.status === 'ACTIVE' ? 'success' : 'default'}>{serviceLabels[service.status]}</Tag> },
-        { title: 'Đơn giá hiện hành', render: (_, service) => service.currentPrice ? <><strong>{priceLabel(service.currentPrice.amountPerPole, service.currentPrice.currency)}</strong><div className="form-hint">Từ {dateTime(service.currentPrice.effectiveFrom)}</div></> : 'Chưa thiết lập' },
+        { title: 'Đơn giá hiện hành', render: (_, service) => service.currentPrice ? <><strong>{priceLabel(service.currentPrice.amountPerPole, service.currentPrice.currency)}</strong><p className="form-hint">{service.currentPrice.mappingPricePerPole != null && service.currentPrice.plantHealthPricePerPole != null ? `MAP: ${priceLabel(service.currentPrice.mappingPricePerPole, service.currentPrice.currency)} · Health: ${priceLabel(service.currentPrice.plantHealthPricePerPole, service.currentPrice.currency)}` : 'Cần đặt hai đơn giá để duyệt Combo mới.'}</p><div className="form-hint">Từ {dateTime(service.currentPrice.effectiveFrom)}</div></> : 'Chưa thiết lập' },
         { title: 'Thao tác', width: 340, render: (_, service) => <Space wrap>
           <Button onClick={() => setHistory(service)}>Lịch sử giá</Button>
           {service.status !== 'RETIRED' ? <>
             <Button onClick={() => setAction({ title: `Chỉnh sửa · ${service.name}`, fields: [{ key: 'name', label: 'Tên dịch vụ', value: service.name, max: 150 }, { key: 'description', label: 'Mô tả', kind: 'multiline', value: service.description, max: 4000 }], run: values => api.updateService(token, service.surveyServiceId, { name: text(values, 'name'), description: text(values, 'description'), expectedVersion: service.version }) })}>Chỉnh sửa</Button>
             {service.serviceType === 'PLANT_HEALTH' ? <>
-              <Button onClick={() => setAction({ title: `Đơn giá mới · ${service.name}`, description: 'Đơn giá có hiệu lực ngay khi lưu. Giá cũ được giữ trong lịch sử; các đơn hàng đã chốt giá không tự thay đổi.', fields: [{ key: 'amount', label: 'Đơn giá (VND/trụ)', kind: 'number' }], run: values => {
-                const amount = Number(text(values, 'amount'))
-                if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.00001) throw new Error('Đơn giá phải lớn hơn 0 và có tối đa hai chữ số thập phân.')
-                return api.createServicePrice(token, service.surveyServiceId, { amountPerPole: amount, currency: 'VND', expectedServiceVersion: service.version })
-              } })}>Đặt đơn giá</Button>
+              <Button onClick={() => setAction({ title: `Đơn giá mới · ${service.name}`, description: 'Nhập hai đơn giá nguyên VND. Giá gộp được cộng tự động; đơn đã duyệt giữ mức giá đã lưu.', fields: [{ key: 'mapping', label: 'Bản đồ nền (VND/trụ)', kind: 'number', value: service.currentPrice?.mappingPricePerPole?.toString() ?? '' }, { key: 'health', label: 'Khảo sát sức khỏe (VND/trụ)', kind: 'number', value: service.currentPrice?.plantHealthPricePerPole?.toString() ?? '' }], run: values => api.createServicePrice(token, service.surveyServiceId, api.componentServicePriceBody(text(values, 'mapping'), text(values, 'health'), service.version)) })}>Đặt đơn giá</Button>
               {service.status === 'EXPERIMENTAL' ? <Button disabled={!service.currentPrice} onClick={() => statusAction(service, 'activate')}>Kích hoạt</Button> : <Button onClick={() => statusAction(service, 'experimental')}>Chuyển thử nghiệm</Button>}
             </> : <span className="form-hint">Chưa cung cấp trong phiên bản hiện tại</span>}
             <Button danger onClick={() => statusAction(service, 'retire')}>Ngừng cung cấp</Button>
@@ -54,6 +50,7 @@ function PriceHistoryDrawer({ token, service, close }: { token: string; service:
   return <Drawer open size={680} title={`Lịch sử giá · ${service.name}`} onClose={close}>
     {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /> : <Table<PriceHistory> rowKey="priceVersionId" loading={query.isPending} dataSource={query.data ?? []} pagination={false} columns={[
       { title: 'Đơn giá', render: (_, price) => price.isLegacyPerHectarePrice ? `${price.legacyPricePerHa?.toLocaleString('vi-VN')} ${price.currency}/ha (giá cũ)` : price.pricePerPole == null ? 'Chưa có' : priceLabel(price.pricePerPole, price.currency) },
+      { title: 'Giá thành phần', render: (_, price) => price.mappingPricePerPole != null && price.plantHealthPricePerPole != null ? <>MAP: {priceLabel(price.mappingPricePerPole, price.currency)}<br />Health: {priceLabel(price.plantHealthPricePerPole, price.currency)}</> : 'Chưa có' },
       { title: 'Hiệu lực từ', render: (_, price) => dateTime(price.effectiveFrom) },
       { title: 'Kết thúc', render: (_, price) => price.effectiveTo ? dateTime(price.effectiveTo) : 'Chưa kết thúc' },
     ]} />}

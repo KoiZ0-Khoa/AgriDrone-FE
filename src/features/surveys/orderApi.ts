@@ -14,15 +14,6 @@ export async function getAssignedOrders(token: string, page = 1, status = '', si
   // consistent with the Owner and appointment mutation responses.
   return { ...result, items: result.items.map(order => {
     if (order.currentAppointmentStatus === 'RESCHEDULEREQUESTED') return { ...order, currentAppointmentStatus: 'RESCHEDULE_REQUESTED' }
-    // The directory selects the latest appointment across both purposes. At this transition,
-    // a confirmed appointment belongs to the completed baseline: confirming PAID_SERVICE moves
-    // the order to AWAITING_PAYMENT. The proposal API checks current appointments per purpose,
-    // so the first service proposal must send null IDs rather than reuse the baseline ID.
-    if (order.status === 'AWAITING_PAID_APPOINTMENT' && order.requiresBaselineMapping &&
-        order.currentAppointmentStatus === 'CONFIRMED' && order.currentAppointmentId &&
-        Number.isSafeInteger(order.currentAppointmentVersion) && order.currentAppointmentVersion! > 0) {
-      return { ...order, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null }
-    }
     return order
   }) }
 }

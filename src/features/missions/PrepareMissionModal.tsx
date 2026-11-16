@@ -50,7 +50,7 @@ export function PrepareMissionModal({ token, order, orderStatus, close }: { toke
           options={(drones.data ?? []).map(drone => ({ value: drone.id, label: `${drone.name} · ${drone.code}` }))}
           notFoundContent={drones.isError ? missionError(drones.error) : 'Không có drone khả dụng cho ngày này'} />
       </Form.Item>
-      <p className="form-hint">Ngày bay phải nằm trong khoảng lịch hẹn đã được Owner xác nhận cho bước này.</p>
+      <p className="form-hint">{purpose === 'BaselineMapping' ? 'Ngày bay phải nằm trong lịch bản đồ nền đã được Owner xác nhận.' : 'Ngày bay phải nằm trong lịch bay bệnh đã được Manager chốt. Owner không cần xác nhận lịch này.'}</p>
     </Form>}
     {mutation.error ? <Alert type="error" showIcon title={missionError(mutation.error)} /> : null}
   </Modal>

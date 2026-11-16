@@ -13,7 +13,7 @@ export const getComboDiscountHistory = (token: string, signal?: AbortSignal) => 
 
 export function depositPolicyBody(raw: string, expectedVersion: number) {
   const amountVnd = Number(raw.trim())
-  if (!/^\d+$/.test(raw.trim()) || !Number.isSafeInteger(amountVnd) || amountVnd < 0) throw new Error('Tiền cọc phải là số nguyên VND từ 0 trở lên.')
+  if (!/^\d+$/.test(raw.trim()) || !Number.isSafeInteger(amountVnd) || amountVnd <= 0) throw new Error('Tiền cọc cho đơn mới phải là số nguyên VND lớn hơn 0.')
   if (!validPolicyVersion(expectedVersion)) throw new Error('Tải lại chính sách cọc trước khi cập nhật.')
   return { amountVnd, expectedVersion }
 }
