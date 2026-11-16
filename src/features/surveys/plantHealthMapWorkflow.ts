@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client'
 import type { PlantHealthStatus } from './plantHealthMapTypes'
-import type { FlaggedMatchingParameters } from './plantHealthReviewTypes'
+import type { FlaggedMatchingParameters, FlaggedObservation } from './plantHealthReviewTypes'
 
 export const healthStatusLabels: Record<PlantHealthStatus, string> = {
   NORMAL: 'Bình thường', HEALTHY_FRUIT: 'Có trái khỏe', DISEASE: 'Phát hiện bệnh',
@@ -53,6 +53,25 @@ export function plantHealthReviewError(error: unknown) {
     if (error.status === 401) return 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.'
   }
   return plantHealthMapError(error)
+}
+
+// A3 — vết lệch tọa độ (observation PENDING: lệch > 2.5 m, chưa gắn trụ). Chỉ hiển thị; xử lý nằm ở trang kiểm duyệt đơn (B5 "Sửa").
+export type FlaggedMarker = {
+  id: string; lat: number | null; lon: number | null; distance: number | null; confidence: number | null
+  className: string | null; cropImageUrl: string | null; imageName: string | null
+  suggested: { id: string; plantCode: string; lat: number; lon: number } | null
+}
+export function flaggedMarkers(items: FlaggedObservation[], plants: { id: string; plantCode: string; lat: number; lon: number }[]): FlaggedMarker[] {
+  const byId = new Map(plants.map(plant => [plant.id.toLowerCase(), plant]))
+  return items.map(item => {
+    const params = parseMatchingParameters(item.matchingParametersJson)
+    const plant = item.suggestedPlantId ? byId.get(item.suggestedPlantId.toLowerCase()) ?? null : null
+    return {
+      id: item.observationId, lat: item.detectedLat, lon: item.detectedLon, distance: item.gpsDistanceMeters, confidence: item.detectionConfidence,
+      className: params?.className ?? null, cropImageUrl: params?.cropImageUrl ?? null, imageName: params?.imageName ?? null,
+      suggested: plant ? { id: plant.id, plantCode: plant.plantCode, lat: plant.lat, lon: plant.lon } : null,
+    }
+  })
 }
 
 const stringOrNull = (value: unknown) => typeof value === 'string' && value.length > 0 ? value : null

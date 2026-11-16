@@ -178,6 +178,115 @@ test('a Correct item built from correctionFields passes the API validation uncha
   assert.deepEqual(calls[0].body.items[0], { findingId: 'f1', expectedSourceVersion: 1, expectedReviewVersion: null, decision: 'Correct', reason: 'lá khô', evidenceMediaIds: [], correctedPlantId: 'p1' })
 })
 
+const findingItem = (id, sourceId, review = null, blockingReasons = []) => ({ id, sourceVersion: 1, sourceRowVersion: 9, original: { FindingId: sourceId, SuspectedClassCode: 'SUNBURN' }, review, blockingReasons })
+const exceptionItem = (sourceId, review = null) => ({ id: 'ex-1', sourceVersion: null, sourceRowVersion: 77, original: { SourceReferenceId: sourceId, BoundaryClassification: 'NEEDS_REVIEW', MeasuredBoundaryDistanceM: 0.8, BoundaryThresholdM: 1.5 }, review, blockingReasons: ['UnresolvedBoundaryException'] })
+
+test('linkedFinding matches a boundary exception to its finding by the original FindingId (case-insensitive)', () => {
+  const findings = [findingItem('f-1', 'AAAA-1'), findingItem('f-2', 'bbbb-2')]
+  assert.equal(workflow.linkedFinding(exceptionItem('BBBB-2'), findings).id, 'f-2')
+  assert.equal(workflow.linkedFinding(exceptionItem('cccc-3'), findings), null)
+  assert.equal(workflow.linkedFinding({ ...exceptionItem('x'), original: {} }, findings), null)
+})
+
+test('boundaryOptions follows the linked finding review state', () => {
+  const review = decision => ({ reviewId: 'rv', version: 1, decision })
+  assert.deepEqual(workflow.boundaryOptions(null).allowed, ['NeedsEvidence'])
+  assert.deepEqual(workflow.boundaryOptions(findingItem('f', 's')).allowed, ['NeedsEvidence'])
+  assert.deepEqual(workflow.boundaryOptions(findingItem('f', 's', review('Ambiguous'))).allowed, ['NeedsEvidence'])
+  assert.deepEqual(workflow.boundaryOptions(findingItem('f', 's', review('Reject'))).allowed, ['ExcludeEvidence', 'NeedsEvidence'])
+  assert.deepEqual(workflow.boundaryOptions(findingItem('f', 's', review('NonDisease'))).allowed, ['ExcludeEvidence', 'NeedsEvidence'])
+  assert.deepEqual(workflow.boundaryOptions(findingItem('f', 's', review('Approve'))).allowed, ['AcceptCorrectedPosition', 'NeedsEvidence'])
+  assert.deepEqual(workflow.boundaryOptions(findingItem('f', 's', review('Correct'), ['PlantAssociationChanged'])).allowed, ['NeedsEvidence'])
+})
+
+test('buildBoundaryReview links the current finding review except for NeedsEvidence, and passes API validation', async () => {
+  const finding = findingItem('f-1', 'src', { reviewId: 'rv-9', version: 2, decision: 'Reject' })
+  const exclude = workflow.buildBoundaryReview({ batchId: 'b', resultVersion: 5 }, exceptionItem('src'), finding, 'ExcludeEvidence', 'ngoài vườn', 'op-1')
+  assert.deepEqual(exclude, { operationId: 'op-1', batchId: 'b', expectedResultVersion: 5, expectedExceptionVersion: 77, expectedReviewVersion: null, decision: 'ExcludeEvidence', reason: 'ngoài vườn', evidenceMediaIds: [], findingId: 'f-1', findingReviewId: 'rv-9' })
+  const needs = workflow.buildBoundaryReview({ batchId: 'b', resultVersion: 5 }, exceptionItem('src', { reviewId: 'x', version: 3 }), null, 'NeedsEvidence', 'chờ', 'op-2')
+  assert.equal('findingId' in needs, false); assert.equal(needs.expectedReviewVersion, 3)
+  assert.throws(() => workflow.buildBoundaryReview({ batchId: 'b', resultVersion: 5 }, exceptionItem('src'), findingItem('f', 's'), 'ExcludeEvidence', 'x', 'op'), /chưa được review/)
+  const calls = capture({ ...outcome, operationId: 'op-1' })
+  await api.reviewHealthBoundaryException('tok', 'order-1', 'ex-1', exclude)
+  assert.deepEqual(calls[0].body, exclude)
+})
+
+test('getAllHealthFindings pages through the batch with pageSize 100 and pins the batchId', async () => {
+  const urls = []
+  globalThis.fetch = async url => {
+    const u = new URL(url.toString()); urls.push(u.search)
+    const page = Number(u.searchParams.get('pageNumber'))
+    return Response.json({ batchId: 'b', resultVersion: 5, totalCount: 150, isCurrentBatch: true, items: Array.from({ length: page === 1 ? 100 : 50 }, (_, i) => ({ id: `${page}-${i}` })) })
+  }
+  const all = await api.getAllHealthFindings('tok', 'order-1')
+  assert.equal(all.items.length, 150)
+  assert.deepEqual(urls, ['?pageNumber=1&pageSize=100', '?pageNumber=2&pageSize=100&batchId=b'])
+  globalThis.fetch = async url => Response.json({ batchId: 'b', resultVersion: new URL(url.toString()).searchParams.get('pageNumber') === '1' ? 5 : 6, totalCount: 150, items: [] })
+  await assert.rejects(api.getAllHealthFindings('tok', 'order-1'), /thay đổi/)
+})
+
+const square = [[106.49, 10.46], [106.4910, 10.46], [106.4910, 10.4610], [106.49, 10.4610], [106.49, 10.46]]
+const zoneItem = (overrides = {}) => ({ id: 'z-1', sourceVersion: null, sourceRowVersion: 900, original: { SourceProposalId: 'p1', SuspectedClassCode: 'SUNBURN', Geometry: { Type: 'Polygon', Coordinates: [square] },
+  Memberships: [{ PlantId: 'plant-a', MappingCandidateId: null, Confidence: 0.9 }, { PlantId: 'plant-b', MappingCandidateId: null, Confidence: 0.8 }] }, review: null, guidanceReview: null, blockingReasons: ['UnreviewedZone'], ...overrides })
+const accepted = (id, plantId, classCode = 'SUNBURN', position = [106.4905, 10.4605], extra = {}) => ({ id, sourceVersion: 1, sourceRowVersion: 9, blockingReasons: [], original: { FindingId: `src-${id}`, PlantId: plantId },
+  review: { reviewId: `rv-${id}`, version: 1, decision: 'Approve', snapshot: { PlantId: plantId, ClassCode: classCode, Position: position } }, ...extra })
+
+test('pointInRing and readZoneOriginal read the PascalCase proposal geometry', () => {
+  assert.equal(workflow.pointInRing(106.4905, 10.4605, square), true)
+  assert.equal(workflow.pointInRing(106.4920, 10.4605, square), false)
+  const original = workflow.readZoneOriginal(zoneItem().original)
+  assert.equal(original.ring.length, 5); assert.equal(original.memberships.length, 2); assert.equal(original.suspectedClassCode, 'SUNBURN')
+  assert.equal(workflow.readZoneOriginal({ Geometry: { Coordinates: [[[1, 2]]] } }).ring, null)
+})
+
+test('approveReadiness mirrors BE member auto-resolution', () => {
+  const both = [accepted('f-a', 'plant-a'), accepted('f-b', 'plant-b')]
+  assert.deepEqual(workflow.approveReadiness(zoneItem(), both), { ready: true, reason: null })
+  assert.match(workflow.approveReadiness(zoneItem(), [both[0]]).reason, /1\/2 cây/)
+  assert.match(workflow.approveReadiness(zoneItem(), [...both, accepted('f-a2', 'plant-a')]).reason, /nhiều phát hiện/)
+  assert.match(workflow.approveReadiness(zoneItem(), [both[0], accepted('f-b', 'plant-b', 'SUNBURN', [106.50, 10.47])]).reason, /ngoài hình vùng/)
+  // Phát hiện cùng trụ nhưng khác loại, hoặc còn mục chặn, không được tính.
+  assert.equal(workflow.approveReadiness(zoneItem(), [both[0], accepted('f-b', 'plant-b', 'ANTHRACNOSE')]).ready, false)
+  assert.equal(workflow.approveReadiness(zoneItem(), [both[0], accepted('f-b', 'plant-b', 'SUNBURN', undefined, { blockingReasons: ['CatalogueChanged'] })]).ready, false)
+})
+
+test('zoneMemberCandidates keeps accepted findings of the class with an inside flag', () => {
+  const candidates = workflow.zoneMemberCandidates([accepted('f-a', 'plant-a'), accepted('f-x', 'plant-x', 'SUNBURN', [106.50, 10.47]), accepted('f-y', 'plant-y', 'ANTHRACNOSE'),
+    { id: 'f-r', sourceVersion: 1, blockingReasons: [], original: {}, review: { reviewId: 'r', version: 1, decision: 'Reject', snapshot: {} } }], 'sunburn', square)
+  assert.deepEqual(candidates.map(c => [c.findingId, c.insideZone, c.findingReviewId]), [['f-a', true, 'rv-f-a'], ['f-x', false, 'rv-f-x']])
+})
+
+test('buildZoneReview / buildGuidanceReview carry the right versions and pass API validation', async () => {
+  const page = { batchId: 'b', resultVersion: 5 }
+  const zone = zoneItem({ review: { reviewId: 'zr-1', version: 2, decision: 'Correct', snapshot: {} }, guidanceReview: { reviewId: 'g', version: 4, decision: 'NeedsEvidence', snapshot: {} } })
+  const correct = workflow.buildZoneReview(page, zone, 'Correct', 'gộp lại', 'op-1', { classCode: 'ANTHRACNOSE', members: [{ findingId: 'f-a', sourceVersion: 1, findingReviewId: 'rv-f-a', plantId: 'plant-a' }] })
+  assert.deepEqual(correct, { operationId: 'op-1', batchId: 'b', expectedResultVersion: 5, expectedZoneVersion: 900, expectedReviewVersion: 2, decision: 'Correct', reason: 'gộp lại', evidenceMediaIds: [],
+    correctedClassCode: 'ANTHRACNOSE', members: [{ findingId: 'f-a', sourceVersion: 1, findingReviewId: 'rv-f-a' }] })
+  const approve = workflow.buildZoneReview(page, zoneItem(), 'Approve', 'ok', 'op-2', { classCode: 'X', members: [] })
+  assert.equal('members' in approve || 'correctedClassCode' in approve, false); assert.equal(approve.expectedReviewVersion, null)
+  const guidance = workflow.buildGuidanceReview(page, zone, 'Select', 'theo hướng dẫn', 'op-3', 'gd-1')
+  assert.deepEqual(guidance, { operationId: 'op-3', batchId: 'b', expectedResultVersion: 5, expectedZoneVersion: 900, expectedReviewVersion: 4, zoneReviewId: 'zr-1', decision: 'Select', reason: 'theo hướng dẫn', evidenceMediaIds: [], guidanceId: 'gd-1' })
+  assert.throws(() => workflow.buildGuidanceReview(page, zoneItem(), 'RejectAll', 'x', 'op'), /Xác nhận hoặc sửa vùng/)
+  const calls = capture({ ...outcome, operationId: 'op-1' })
+  await api.reviewHealthZone('tok', 'order-1', 'z-1', correct)
+  assert.equal(calls[0].url, `${base}/disease-zones/z-1/review`); assert.deepEqual(calls[0].body, correct)
+  capture({ ...outcome, operationId: 'op-3' })
+  await api.reviewZoneGuidance('tok', 'order-1', 'z-1', guidance)
+})
+
+test('zone/guidance API reject invalid combinations before calling BE', async () => {
+  const calls = capture(outcome)
+  const request = { operationId: 'op-1', batchId: 'b', expectedResultVersion: 5, expectedZoneVersion: 1, expectedReviewVersion: null, reason: 'x', evidenceMediaIds: [] }
+  await assert.rejects(api.reviewHealthZone('tok', 'order-1', 'z', { ...request, decision: 'Correct' }), /ít nhất một trường/)
+  await assert.rejects(api.reviewHealthZone('tok', 'order-1', 'z', { ...request, decision: 'Approve', correctedClassCode: 'A' }), /Chỉ quyết định Sửa/)
+  await assert.rejects(api.reviewHealthZone('tok', 'order-1', 'z', { ...request, decision: 'Correct', members: [] }), /ít nhất 1 phát hiện/)
+  await assert.rejects(api.reviewZoneGuidance('tok', 'order-1', 'z', { ...request, zoneReviewId: 'r', decision: 'Select' }), /Chọn một hướng dẫn/)
+  await assert.rejects(api.reviewZoneGuidance('tok', 'order-1', 'z', { ...request, zoneReviewId: 'r', decision: 'RejectAll', guidanceId: 'g' }), /Chọn một hướng dẫn/)
+  assert.equal(calls.length, 0)
+  await api.getZoneGuidanceOptions('tok', 'order-1', 'z-9')
+  assert.equal(calls[0].url, 'http://test.local/api/system-manager/survey-orders/order-1/disease-zones/z-9/guidance-options')
+})
+
 test('version helpers map list items to expected versions (null before first review)', () => {
   const unreviewed = { id: 'f1', sourceVersion: 1, sourceRowVersion: 5434, review: null }
   assert.deepEqual(workflow.findingVersions(unreviewed), { findingId: 'f1', expectedSourceVersion: 1, expectedReviewVersion: null })

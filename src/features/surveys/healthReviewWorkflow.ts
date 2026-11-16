@@ -1,5 +1,5 @@
 import { ApiError } from '../../api/client'
-import type { BoundaryExceptionOriginal, FindingOriginal, HealthReviewItem } from './healthReviewTypes'
+import type { BoundaryDecision, BoundaryExceptionOriginal, FindingOriginal, GuidanceDecision, HealthReviewItem, HealthZoneMember, ZoneDecision, ZoneOriginal } from './healthReviewTypes'
 
 // Mã lỗi PlantHealthReview.* lấy từ PlantHealthReviewService*.cs (mốc BE fda57ec).
 const errorMessages: Record<string, string> = {
@@ -42,7 +42,7 @@ export const resolutionStateLabels: Record<string, string> = { PENDING_REVIEW: '
 export const blockingReasonLabels: Record<string, string> = {
   Unreviewed: 'Chưa review', Ambiguous: 'Đánh dấu chưa chắc chắn', AnnotationRuleChanged: 'Quy tắc gán nhãn đã đổi',
   CatalogueChanged: 'Danh mục bệnh đã đổi', PlantAssociationChanged: 'Trụ cây liên kết đã đổi',
-  UnresolvedBoundaryException: 'Chưa xử lý', StaleBoundaryAssociation: 'Review phát hiện liên quan đã đổi',
+  UnresolvedBoundaryException: 'Chưa có quyết định cuối cùng', StaleBoundaryAssociation: 'Review phát hiện liên quan đã đổi',
   InvalidExclusion: 'Chỉ loại bỏ được khi phát hiện bị bác bỏ', InvalidBoundaryResolution: 'Phát hiện liên quan chưa được xác nhận hợp lệ',
   UnreviewedZone: 'Vùng chưa review', AmbiguousZone: 'Vùng chưa chắc chắn', UnresolvedZoneMembers: 'Vùng chưa có thành viên',
   StaleMemberReview: 'Review thành viên đã đổi', MissingGuidanceDecision: 'Chưa chọn hướng dẫn', GuidanceNotApplicable: 'Hướng dẫn không còn áp dụng',
@@ -163,6 +163,145 @@ export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: n
 export function plantsByDistance<T extends { lat: number; lon: number }>(plants: T[], lat: number | null, lon: number | null) {
   if (lat === null || lon === null) return plants.map(plant => ({ plant, distance: null as number | null }))
   return plants.map(plant => ({ plant, distance: distanceMeters(lat, lon, plant.lat, plant.lon) as number | null })).sort((a, b) => a.distance! - b.distance!)
+}
+
+// B6 — ngoại lệ ranh giới. BE (MissionPlantHealthPublisher) tạo 1 ngoại lệ cho mỗi phát hiện sát/ngoài ranh giới,
+// với SourceReferenceId = FindingId gốc của phát hiện đó ⇒ khớp qua original.FindingId.
+export const boundaryClassificationLabels: Record<string, string> = { NEEDS_REVIEW: 'Sát ranh giới', OUT_OF_BOUNDARY: 'Ngoài ranh giới' }
+export function linkedFinding(exception: HealthReviewItem, findings: HealthReviewItem[]) {
+  const reference = readBoundaryOriginal(exception.original).sourceReferenceId?.toLowerCase()
+  if (!reference) return null
+  return findings.find(item => readFindingOriginal(item.original).findingId?.toLowerCase() === reference) ?? null
+}
+// Quyết định hợp lệ theo trạng thái review của phát hiện liên quan (BE ReviewBoundaryAsync + BoundaryIssues).
+export function boundaryOptions(finding: HealthReviewItem | null): { allowed: BoundaryDecision[]; hint: string | null } {
+  if (!finding) return { allowed: ['NeedsEvidence'], hint: 'Không tìm thấy phát hiện tương ứng trong lô hiện tại — chỉ có thể đánh dấu cần thêm bằng chứng.' }
+  const decision = finding.review?.decision
+  if (!decision || decision === 'Ambiguous') return { allowed: ['NeedsEvidence'], hint: 'Review phát hiện liên quan trước (Bác bỏ / Không phải bệnh để loại bỏ chứng cứ; Xác nhận / Sửa để chấp nhận vị trí).' }
+  if (decision === 'Reject' || decision === 'NonDisease') return { allowed: ['ExcludeEvidence', 'NeedsEvidence'], hint: null }
+  if (finding.blockingReasons.length > 0) return { allowed: ['NeedsEvidence'], hint: 'Phát hiện liên quan còn mục chặn — xử lý xong phát hiện đó trước khi chấp nhận vị trí.' }
+  return { allowed: ['AcceptCorrectedPosition', 'NeedsEvidence'], hint: null }
+}
+export const boundaryDecisionHints: Record<BoundaryDecision, string> = {
+  ExcludeEvidence: 'Phát hiện đã bị bác bỏ — loại bằng chứng này khỏi kết quả. Ngoại lệ được tính là đã xử lý.',
+  AcceptCorrectedPosition: 'Giữ phát hiện đã xác nhận, chấp nhận vị trí hiện tại của nó. BE kiểm tra vị trí phải nằm trong ranh giới lúc bay; nếu đang ở ngoài, hãy "Sửa" vị trí phát hiện trước.',
+  NeedsEvidence: 'Chưa đủ thông tin để quyết định. Ngoại lệ VẪN chặn phê duyệt cho tới khi được xử lý.',
+}
+export function buildBoundaryReview(page: { batchId: string; resultVersion: number }, exception: HealthReviewItem, finding: HealthReviewItem | null, decision: BoundaryDecision, reason: string, operationId: string) {
+  const link = decision === 'NeedsEvidence' ? {} : (() => {
+    if (!finding?.review) throw new Error('Phát hiện liên quan chưa được review.')
+    return { findingId: finding.id, findingReviewId: finding.review.reviewId }
+  })()
+  return { operationId, batchId: page.batchId, expectedResultVersion: page.resultVersion, ...boundaryVersions(exception), decision, reason, evidenceMediaIds: [] as string[], ...link }
+}
+
+// B7 — vùng bệnh theo đơn. Quy tắc lấy từ PlantHealthReviewService.Commands.cs (ReviewZoneAsync/ReviewGuidanceAsync)
+// và .Validation.cs (ZoneIssues).
+export const zoneDecisionLabels: Record<string, string> = { Pending: 'Chưa review', Approve: 'Xác nhận vùng', Correct: 'Đã sửa', Reject: 'Bác bỏ vùng', Ambiguous: 'Chưa chắc chắn' }
+export const guidanceDecisionLabels: Record<string, string> = { Select: 'Áp dụng hướng dẫn', RejectAll: 'Không áp dụng hướng dẫn nào', NeedsEvidence: 'Cần thêm bằng chứng' }
+export const isAccepted = (decision: string | null | undefined) => decision === 'Approve' || decision === 'Correct'
+
+const ringOf = (value: unknown): [number, number][] | null => {
+  if (!Array.isArray(value) || value.length < 4) return null
+  if (!value.every(point => Array.isArray(point) && point.length >= 2 && num(point[0]) !== null && num(point[1]) !== null)) return null
+  return value.map(point => [(point as number[])[0], (point as number[])[1]] as [number, number])
+}
+export function readZoneOriginal(original: unknown): ZoneOriginal {
+  const value = isRecord(original) ? original : {}
+  const geometry = isRecord(value.Geometry) ? value.Geometry : null
+  const ring = geometry && Array.isArray(geometry.Coordinates) ? ringOf(geometry.Coordinates[0]) : null
+  const memberships = Array.isArray(value.Memberships) ? value.Memberships.filter(isRecord).map(member => ({
+    plantId: str(member.PlantId), mappingCandidateId: str(member.MappingCandidateId), confidence: num(member.Confidence),
+  })) : []
+  return { sourceProposalId: str(value.SourceProposalId), suspectedClassCode: str(value.SuspectedClassCode), ring, memberships }
+}
+// Vòng [lon, lat] của vùng hiện hành: hình trong review hiện tại (snapshot.Geometry) nếu có, nếu không thì hình đề xuất.
+export function zoneRing(item: HealthReviewItem): [number, number][] | null {
+  const snapshot = item.review && isRecord(item.review.snapshot) ? item.review.snapshot : null
+  const reviewed = snapshot && Array.isArray(snapshot.Geometry) ? ringOf(snapshot.Geometry[0]) : null
+  return reviewed ?? readZoneOriginal(item.original).ring
+}
+export const zoneClass = (item: HealthReviewItem) => (item.review ? readReviewSnapshot(item.review.snapshot).classCode : null) ?? readZoneOriginal(item.original).suspectedClassCode
+export function zoneMemberCount(item: HealthReviewItem) {
+  const snapshot = item.review && isRecord(item.review.snapshot) ? item.review.snapshot : null
+  return snapshot && Array.isArray(snapshot.Members) ? snapshot.Members.length : readZoneOriginal(item.original).memberships.length
+}
+// Ray casting trên mặt phẳng lon/lat — đủ chính xác cho đa giác nhỏ trong một vườn. Điểm nằm đúng trên cạnh có thể khác PostGIS.
+export function pointInRing(lon: number, lat: number, ring: [number, number][]) {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j]
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+// Phát hiện đủ điều kiện làm thành viên vùng: đã Xác nhận/Sửa, không còn mục chặn, đúng loại bệnh, có trụ.
+export type ZoneMemberCandidate = HealthZoneMember & { plantId: string; lat: number | null; lon: number | null; insideZone: boolean | null }
+export function zoneMemberCandidates(findings: HealthReviewItem[], classCode: string, ring: [number, number][] | null): ZoneMemberCandidate[] {
+  return findings.flatMap(item => {
+    if (!item.review || !isAccepted(item.review.decision) || item.blockingReasons.length > 0 || item.sourceVersion === null) return []
+    const value = readReviewSnapshot(item.review.snapshot)
+    if (!value.plantId || !value.classCode || value.classCode.toUpperCase() !== classCode.toUpperCase()) return []
+    const insideZone = ring && value.lat !== null && value.lon !== null ? pointInRing(value.lon, value.lat, ring) : null
+    return [{ findingId: item.id, sourceVersion: item.sourceVersion, findingReviewId: item.review.reviewId, plantId: value.plantId, lat: value.lat, lon: value.lon, insideZone }]
+  })
+}
+// Mô phỏng cách BE tự suy thành viên khi Approve (không gửi Members): mỗi membership đề xuất phải khớp ĐÚNG 1 phát hiện
+// đã chấp nhận cùng loại, theo PlantId hoặc MappingCandidateId gốc của phát hiện.
+export function resolveOriginalMembers(zone: HealthReviewItem, findings: HealthReviewItem[], classCode: string) {
+  const candidates = new Map(zoneMemberCandidates(findings, classCode, readZoneOriginal(zone.original).ring).map(candidate => [candidate.findingId, candidate]))
+  return readZoneOriginal(zone.original).memberships.map(membership => {
+    const matches = findings.filter(item => {
+      if (!candidates.has(item.id)) return false
+      const original = readFindingOriginal(item.original)
+      return (membership.plantId !== null && original.plantId?.toLowerCase() === membership.plantId.toLowerCase())
+        || (membership.mappingCandidateId !== null && original.mappingCandidateId?.toLowerCase() === membership.mappingCandidateId.toLowerCase())
+    }).map(item => candidates.get(item.id)!)
+    return { membership, matches }
+  })
+}
+// Approve chỉ thành công khi mọi thành viên đề xuất tự khớp được duy nhất và không trùng trụ.
+export function approveReadiness(zone: HealthReviewItem, findings: HealthReviewItem[]): { ready: boolean; reason: string | null } {
+  const classCode = readZoneOriginal(zone.original).suspectedClassCode
+  if (!classCode) return { ready: false, reason: 'Vùng không có loại bệnh đề xuất.' }
+  const resolved = resolveOriginalMembers(zone, findings, classCode)
+  if (resolved.length === 0) return { ready: false, reason: 'Vùng đề xuất không có thành viên — dùng "Sửa" để chọn thành viên.' }
+  const missing = resolved.filter(entry => entry.matches.length === 0).length
+  const ambiguous = resolved.filter(entry => entry.matches.length > 1).length
+  if (missing > 0) return { ready: false, reason: `${missing}/${resolved.length} cây trong vùng chưa có phát hiện "${classCode}" được xác nhận. Xác nhận các phát hiện đó trước, hoặc dùng "Sửa" để chọn thành viên.` }
+  if (ambiguous > 0) return { ready: false, reason: `${ambiguous} cây khớp nhiều phát hiện cùng lúc — dùng "Sửa" để chọn rõ thành viên.` }
+  const outside = resolved.filter(entry => entry.matches[0].insideZone === false).length
+  if (outside > 0) return { ready: false, reason: `${outside} phát hiện thành viên nằm ngoài hình vùng đề xuất — BE sẽ từ chối. Dùng "Sửa" để chọn lại thành viên.` }
+  const plants = resolved.map(entry => entry.matches[0].plantId.toLowerCase())
+  if (new Set(plants).size !== plants.length) return { ready: false, reason: 'Hai thành viên trùng một trụ — dùng "Sửa" để chọn lại.' }
+  return { ready: true, reason: null }
+}
+
+// Quyết định hướng dẫn chỉ còn hiệu lực khi gắn với review vùng HIỆN TẠI (snapshot.BoundReviewId); review lại vùng thì phải chọn lại.
+export function guidanceIsCurrent(zone: HealthReviewItem) {
+  const snapshot = zone.guidanceReview && isRecord(zone.guidanceReview.snapshot) ? zone.guidanceReview.snapshot : null
+  return Boolean(zone.review && snapshot && str(snapshot.BoundReviewId)?.toLowerCase() === zone.review.reviewId.toLowerCase())
+}
+
+export function buildZoneReview(page: { batchId: string; resultVersion: number }, zone: HealthReviewItem, decision: ZoneDecision, reason: string, operationId: string,
+  correction: { classCode?: string; members?: HealthZoneMember[] } = {}) {
+  return {
+    operationId, batchId: page.batchId, expectedResultVersion: page.resultVersion,
+    expectedZoneVersion: zone.sourceRowVersion, expectedReviewVersion: zone.review?.version ?? null,
+    decision, reason, evidenceMediaIds: [] as string[],
+    ...(decision === 'Correct' && correction.classCode ? { correctedClassCode: correction.classCode } : {}),
+    ...(decision === 'Correct' && correction.members ? { members: correction.members.map(({ findingId, sourceVersion, findingReviewId }) => ({ findingId, sourceVersion, findingReviewId })) } : {}),
+  }
+}
+export function buildGuidanceReview(page: { batchId: string; resultVersion: number }, zone: HealthReviewItem, decision: GuidanceDecision, reason: string, operationId: string, guidanceId?: string) {
+  if (!zone.review || !isAccepted(zone.review.decision)) throw new Error('Xác nhận hoặc sửa vùng trước khi chọn hướng dẫn.')
+  return {
+    operationId, batchId: page.batchId, expectedResultVersion: page.resultVersion,
+    expectedZoneVersion: zone.sourceRowVersion, expectedReviewVersion: zone.guidanceReview?.version ?? null,
+    zoneReviewId: zone.review.reviewId, decision, reason, evidenceMediaIds: [] as string[],
+    ...(decision === 'Select' && guidanceId ? { guidanceId } : {}),
+  }
 }
 
 // Giá trị optimistic-concurrency cho 1 mục review, lấy từ item trong response danh sách mới nhất.

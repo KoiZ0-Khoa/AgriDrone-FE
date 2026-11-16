@@ -1,7 +1,7 @@
 import { apiRequest } from '../../api/client'
 import type {
-  BoundaryReviewRequest, FindingBatchRequest, FindingReviewItemInput, HealthReviewOutcome, HealthReviewPage, HealthReviewQuery,
-  HealthReviewQueue, HealthReviewSummary,
+  BoundaryReviewRequest, FindingBatchRequest, FindingReviewItemInput, GuidanceReviewRequest, HealthGuidanceOption, HealthReviewOutcome,
+  HealthReviewPage, HealthReviewQuery, HealthReviewQueue, HealthReviewSummary, ZoneReviewRequest,
 } from './healthReviewTypes'
 
 const root = (orderId: string) => `/api/system-manager/survey-orders/${encodeURIComponent(orderId)}`
@@ -23,10 +23,24 @@ function queryString(query: HealthReviewQuery) {
   if (query.resolutionState) params.set('resolutionState', query.resolutionState)
   return params
 }
-const queuePath: Record<HealthReviewQueue, string> = { findings: 'health-findings', exceptions: 'health-boundary-exceptions' }
+const queuePath: Record<HealthReviewQueue, string> = { findings: 'health-findings', exceptions: 'health-boundary-exceptions', zones: 'disease-zones' }
 export async function getHealthReviewQueue(token: string, orderId: string, queue: HealthReviewQueue, query: HealthReviewQuery = {}, signal?: AbortSignal) {
   if (queue !== 'findings' && query.zoneId) throw new Error('Chỉ lọc theo vùng bệnh được với danh sách phát hiện.')
   return apiRequest<HealthReviewPage>(`${root(orderId)}/${queuePath[queue]}?${queryString(query)}`, { token, signal })
+}
+
+// Toàn bộ findings của lô (gom các trang 100) — dùng để khớp ngoại lệ ranh giới với phát hiện của nó.
+// Dừng nếu lô đổi giữa chừng để không trộn dữ liệu 2 lô.
+export async function getAllHealthFindings(token: string, orderId: string, signal?: AbortSignal) {
+  const first = await getHealthReviewQueue(token, orderId, 'findings', { pageNumber: 1, pageSize: MAX_REVIEW_PAGE_SIZE }, signal)
+  const items = [...first.items]
+  const pages = Math.ceil(first.totalCount / MAX_REVIEW_PAGE_SIZE)
+  for (let pageNumber = 2; pageNumber <= Math.min(pages, 50); pageNumber++) {
+    const next = await getHealthReviewQueue(token, orderId, 'findings', { pageNumber, pageSize: MAX_REVIEW_PAGE_SIZE, batchId: first.batchId }, signal)
+    if (next.batchId !== first.batchId || next.resultVersion !== first.resultVersion) throw new Error('Dữ liệu review vừa thay đổi trong lúc tải. Tải lại để thử lại.')
+    items.push(...next.items)
+  }
+  return { ...first, pageSize: items.length, items }
 }
 
 function validateReason(reason: string) {
@@ -66,6 +80,37 @@ export async function reviewHealthBoundaryException(token: string, orderId: stri
     ...(needsFinding ? { findingId: request.findingId, findingReviewId: request.findingReviewId } : {}),
   }
   return checkOutcome(await apiRequest<HealthReviewOutcome>(`${root(orderId)}/health-boundary-exceptions/${encodeURIComponent(exceptionId)}/review`, { method: 'POST', token, body }), request.operationId)
+}
+
+export async function reviewHealthZone(token: string, orderId: string, zoneId: string, request: ZoneReviewRequest) {
+  const corrected = Boolean(request.correctedGeometry || request.correctedClassCode?.trim() || request.members)
+  if ((request.decision === 'Correct') !== corrected) throw new Error('Chỉ quyết định Sửa mới kèm thông tin sửa, và phải sửa ít nhất một trường.')
+  if (request.members && (request.members.length === 0 || new Set(request.members.map(member => member.findingId.toLowerCase())).size !== request.members.length))
+    throw new Error('Danh sách thành viên vùng phải có ít nhất 1 phát hiện và không trùng.')
+  const body = {
+    operationId: request.operationId, batchId: request.batchId, expectedResultVersion: request.expectedResultVersion,
+    expectedZoneVersion: request.expectedZoneVersion, expectedReviewVersion: request.expectedReviewVersion,
+    decision: request.decision, reason: validateReason(request.reason), evidenceMediaIds: request.evidenceMediaIds,
+    ...(request.decision === 'Correct' && request.correctedGeometry ? { correctedGeometry: request.correctedGeometry } : {}),
+    ...(request.decision === 'Correct' && request.correctedClassCode?.trim() ? { correctedClassCode: request.correctedClassCode.trim() } : {}),
+    ...(request.decision === 'Correct' && request.members ? { members: request.members } : {}),
+  }
+  return checkOutcome(await apiRequest<HealthReviewOutcome>(`${root(orderId)}/disease-zones/${encodeURIComponent(zoneId)}/review`, { method: 'POST', token, body }), request.operationId)
+}
+
+// BE chỉ trả lựa chọn khi vùng đã được Xác nhận/Sửa (409 DependencyChanged nếu chưa).
+export const getZoneGuidanceOptions = (token: string, orderId: string, zoneId: string, signal?: AbortSignal) =>
+  apiRequest<HealthGuidanceOption[]>(`${root(orderId)}/disease-zones/${encodeURIComponent(zoneId)}/guidance-options`, { token, signal })
+
+export async function reviewZoneGuidance(token: string, orderId: string, zoneId: string, request: GuidanceReviewRequest) {
+  if ((request.decision === 'Select') !== Boolean(request.guidanceId)) throw new Error('Chọn một hướng dẫn khi quyết định "Áp dụng hướng dẫn"; quyết định khác không kèm hướng dẫn.')
+  const body = {
+    operationId: request.operationId, batchId: request.batchId, expectedResultVersion: request.expectedResultVersion,
+    expectedZoneVersion: request.expectedZoneVersion, expectedReviewVersion: request.expectedReviewVersion, zoneReviewId: request.zoneReviewId,
+    decision: request.decision, reason: validateReason(request.reason), evidenceMediaIds: request.evidenceMediaIds,
+    ...(request.decision === 'Select' ? { guidanceId: request.guidanceId } : {}),
+  }
+  return checkOutcome(await apiRequest<HealthReviewOutcome>(`${root(orderId)}/disease-zones/${encodeURIComponent(zoneId)}/guidance-review`, { method: 'POST', token, body }), request.operationId)
 }
 
 function checkOutcome(outcome: HealthReviewOutcome, operationId: string) {

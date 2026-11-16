@@ -86,7 +86,7 @@ export function CorrectFindingModal({ token, orderId, page, item, row, labels, p
       </Form.Item>
       <Form.Item label="Vị trí phát hiện" required>
         <Radio.Group value={positionMode} onChange={event => setPositionMode(event.target.value)}>
-          <Space direction="vertical">
+          <Space orientation="vertical">
             <Radio value="keep">Giữ vị trí hiện tại ({fmt(row.lat)}, {fmt(row.lon)})</Radio>
             <Radio value="plant" disabled={!selectedPlant}>Đặt tại trụ đã chọn{selectedPlant ? ` (${fmt(selectedPlant.lat)}, ${fmt(selectedPlant.lon)})` : ''}</Radio>
             <Radio value="manual">Nhập tọa độ</Radio>

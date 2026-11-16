@@ -5,7 +5,9 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
+import { HealthBoundaryExceptionsSection } from './HealthBoundaryExceptionsSection'
 import { HealthFindingsTable } from './HealthFindingsTable'
+import { HealthZonesSection } from './HealthZonesSection'
 import { getHealthReviewSummary } from './healthReviewApi'
 import type { HealthReviewSummary } from './healthReviewTypes'
 import { healthReviewError } from './healthReviewWorkflow'
@@ -36,7 +38,8 @@ export function ManagerHealthReviewPage() {
   })
   const back = <Link className="back-link" to={`/manager/orders/${encodeURIComponent(orderId)}`}><ArrowLeftOutlined /> Đơn khảo sát</Link>
   async function refresh() {
-    await Promise.all([client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['health-review-summary', orderId] }), client.invalidateQueries({ queryKey: ['health-findings', orderId] })])
+    await Promise.all([client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['health-review-summary', orderId] }), client.invalidateQueries({ queryKey: ['health-findings', orderId] }),
+      client.invalidateQueries({ queryKey: ['health-findings-all', orderId] }), client.invalidateQueries({ queryKey: ['health-boundary-exceptions', orderId] }), client.invalidateQueries({ queryKey: ['health-disease-zones', orderId] })])
   }
 
   if (context.isPending) return <>{back}<CommonState type="loading" /></>
@@ -80,5 +83,7 @@ export function ManagerHealthReviewPage() {
         {data.undecidedZones > 0 || data.invalidGuidance > 0 ? <p className="form-hint">Review vùng bệnh và chọn hướng dẫn xử lý theo đơn chưa có trên giao diện.</p> : null}
       </section> : null}
     {data ? <HealthFindingsTable token={token} orderId={orderId} farmId={order.farmId} tenantId={order.tenantId} canReview={order.status === 'PENDING_REVIEW'} /> : null}
+    {data ? <HealthBoundaryExceptionsSection token={token} orderId={orderId} canReview={order.status === 'PENDING_REVIEW'} /> : null}
+    {data ? <HealthZonesSection token={token} orderId={orderId} farmId={order.farmId} tenantId={order.tenantId} canReview={order.status === 'PENDING_REVIEW'} /> : null}
   </>
 }

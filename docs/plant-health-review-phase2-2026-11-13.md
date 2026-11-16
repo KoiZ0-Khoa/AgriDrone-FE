@@ -14,21 +14,21 @@ Mốc đối chiếu: FE `bfe547f`, BE `fda57ec`. Contract dưới đây lấy t
 | --- | --- | --- | --- |
 | A0 | Bản đồ sức khỏe cây (chỉ đọc) | 2.1 | [x] có sẵn, chưa test tay |
 | A1 | API + types nhóm theo farm | 2.5–2.7, 2.9–2.11 | [x] |
-| A2 | Duyệt vết bệnh/trái trên trụ (UC-28) | 2.5 | [ ] tạm hoãn — BE chặn với dữ liệu mới (xem Rủi ro 0) |
-| A3 | Hiển thị vết lệch tọa độ (UC-29, đọc) | 2.6 | [ ] |
-| A4 | Xử lý vết lệch: SNAP / tạo trụ / bỏ qua (UC-29) | 2.7 | [ ] |
-| A5 | Chọn vùng bệnh + xem cây thành viên (nền cho A6–A8) | 2.1 | [ ] |
-| A6 | Thêm/bớt cây thành viên vùng bệnh (UC-30c) | 2.11 | [ ] |
-| A7 | Chỉnh viền vùng bệnh (UC-30b) | 2.10 | [ ] |
-| A8 | Gộp vùng bệnh (UC-30a) | 2.9 | [ ] |
+| A2 | Duyệt vết bệnh/trái trên trụ (UC-28) | 2.5 | bỏ (đã chốt) — BE chặn với dữ liệu mới; thay bằng B4/B5 |
+| A3 | Hiển thị vết lệch tọa độ (UC-29, đọc) | 2.6 | [x] chưa test tay |
+| A4 | Xử lý vết lệch: SNAP / tạo trụ / bỏ qua (UC-29) | 2.7 | bỏ (đã chốt) — BE chặn; thay bằng B5 "Sửa" gắn trụ |
+| A5 | Chọn vùng bệnh + xem cây thành viên (nền cho A6–A8) | 2.1 | bỏ (đã chốt) — thay bằng B7 |
+| A6 | Thêm/bớt cây thành viên vùng bệnh (UC-30c) | 2.11 | bỏ (đã chốt) — lỗi với vùng V4; thay bằng B7 "Sửa" thành viên |
+| A7 | Chỉnh viền vùng bệnh (UC-30b) | 2.10 | bỏ (đã chốt) — lỗi với vùng V4; B7 chưa hỗ trợ vẽ lại hình |
+| A8 | Gộp vùng bệnh (UC-30a) | 2.9 | bỏ (đã chốt) — lỗi với vùng V4; không có tương đương ở B |
 | B1 | API + types nhóm theo đơn khảo sát | 2.2–2.4, 2.8 | [x] |
 | B2 | Trang review theo đơn + tóm tắt tiến độ | 2.2 | [x] chưa test tay |
 | B3 | Danh sách findings (phân trang, lọc) | 2.3 | [x] chưa test tay |
 | B4 | Review findings: Reject / NonDisease / Approve (đơn lẻ + hàng loạt) | 2.4 | [x] chưa test tay |
 | B5 | Review findings: Correct (sửa loại bệnh / cây / vị trí) | 2.4 | [x] chưa test tay |
-| B6 | Ngoại lệ ranh giới: danh sách + xử lý | 2.8 | [ ] |
-| B7 | Review vùng bệnh + chọn hướng dẫn theo đơn (chưa có trong tài liệu, nhưng BE bắt buộc nếu có vùng) | — | [ ] đã chốt làm |
-| C1 | Kiểm thử tổng Giai đoạn 2 | — | [ ] |
+| B6 | Ngoại lệ ranh giới: danh sách + xử lý | 2.8 | [x] chưa test tay |
+| B7 | Review vùng bệnh + chọn hướng dẫn theo đơn (chưa có trong tài liệu, nhưng BE bắt buộc nếu có vùng) | — | [x] chưa test tay |
+| C1 | Kiểm thử tổng Giai đoạn 2 | — | [~] tự động + API giả lập xong; chờ test tay với BE thật |
 
 Thứ tự (đổi 13/11 theo yêu cầu người dùng sau phát hiện ở Rủi ro 0): A1 → **B1 → B2 → B3 → B4 → B5 → B6** → (B7 nếu cần) → A5 → A6 → A7 → A8 → C1. A2/A4 chỉ làm nếu cần hỗ trợ dữ liệu cũ; A3 (hiển thị vết lệch, chỉ đọc) vẫn làm được.
 
@@ -75,7 +75,18 @@ Gốc route BE: `api/system-manager/farms/{farmId}/plant-health/...`, policy Sys
 - Nguồn danh sách mã cho `correctedConditionCode`: xác định từ BE (catalog `GET /api/catalog/plant-health` hay tên lớp AI như `Disease_Sun_Burn`) trước khi dựng dropdown.
 - **Test tay:** Xác nhận 1 vết trên trụ NORMAL → trụ chuyển đỏ; Bác bỏ → vết biến mất, trụ về xanh nếu không còn vết khác.
 
-### A3. Hiển thị vết lệch tọa độ — UC-29 đọc (2.6) — [ ]
+### A3. Hiển thị vết lệch tọa độ — UC-29 đọc (2.6) — [x] chưa test tay
+
+**Đã làm (16/11/2026)** trong `ManagerPlantHealthMapPage.tsx` (bản đồ sức khỏe cây theo farm):
+- Gọi `GET .../plant-health/flagged-observations` (chỉ đọc observation `PENDING`, không có guard V4 nên an toàn). Marker tím nét đứt tại vị trí phát hiện, đường nét đứt nối tới trụ gần nhất (`suggestedPlantId`) nếu trụ có trên bản đồ, tooltip loại + khoảng lệch + mã trụ. Chú thích "◌ Vết lệch tọa độ".
+- Bảng "Vết lệch tọa độ (n)": ảnh crop, loại, độ tin cậy, khoảng lệch, trụ gần nhất, vị trí ("Không có tọa độ" nếu thiếu); bấm dòng → bản đồ bay tới điểm. Ghi rõ chỉ để xem, xử lý ở trang Kiểm duyệt đơn (B5 "Sửa" / B4 "Bác bỏ").
+- Thêm ghi chú trên bản đồ: **màu trụ là kết quả AI chưa qua kiểm duyệt** (BE không cập nhật màu theo review ở nhóm B — xem "Kết luận đọc BE", câu 3).
+- Lỗi tải vết lệch chỉ hiện cảnh báo, không chặn bản đồ. Nút "Tải lại" đầu trang làm mới cả vết lệch (sửa sau khi test).
+- Helper `flaggedMarkers()` trong `plantHealthMapWorkflow.ts` (+1 test).
+
+**Tự test:** build ✓, 248/248 test ✓. Trình duyệt với API giả lập: ghi chú, chú thích, 2 đường tím (marker + đường nối), bảng 2 dòng (1 dòng không có tọa độ), bấm dòng → bản đồ zoom tới, lỗi 403 → cảnh báo đã dịch và bản đồ vẫn dùng được.
+
+**Phạm vi ban đầu:**
 - Query mới `['farm-flagged-observations', farmId]`.
 - Trên bản đồ: marker **màu tím nét đứt** tại `detectedLat/detectedLon`, kèm nhãn `gpsDistanceMeters`; đường nét đứt nối tới trụ `suggestedPlantId` nếu có. Item thiếu tọa độ chỉ hiện trong danh sách.
 - Panel "Vết lệch tọa độ (n)": loại bệnh + ảnh crop (từ `matchingParametersJson`), độ tin cậy, khoảng lệch; bấm dòng → bản đồ tới điểm đó.
@@ -224,7 +235,22 @@ BE còn có các API mà tài liệu Giai đoạn 2 **không nhắc**: review 1 
 **Phạm vi ban đầu:**
 - Form riêng cho 1 finding: `correctedClassCode`, `correctedPlantId` (chọn trụ), `correctedPosition`. Tách khỏi B4 vì cần chọn trụ/vị trí trên bản đồ và phải đọc service để biết tổ hợp trường nào hợp lệ.
 
-### B6. Ngoại lệ ranh giới (2.8) — [ ]
+### B6. Ngoại lệ ranh giới (2.8) — [x] chưa test tay
+
+**Đã làm (13/11/2026):** `HealthBoundaryExceptionsSection.tsx`, gắn dưới bảng phát hiện; chỉ hiện khi lô có ngoại lệ (hoặc tải lỗi).
+- **Khớp ngoại lệ ↔ phát hiện:** BE (`MissionPlantHealthPublisher`) tạo 1 ngoại lệ cho mỗi phát hiện sát (`NEEDS_REVIEW`) hoặc ngoài (`OUT_OF_BOUNDARY`) ranh giới, `SourceReferenceId` = `FindingId` gốc ⇒ `linkedFinding()` khớp qua `original.FindingId` (không phân biệt hoa thường). Danh sách phát hiện đầy đủ lấy bằng `getAllHealthFindings()` (gom trang 100, cố định `batchId`, báo lỗi nếu lô/phiên bản đổi giữa chừng).
+- **Bảng:** phân loại, khoảng cách tới ranh giới + ngưỡng, vị trí, phát hiện liên quan + quyết định hiện tại của nó, quyết định ngoại lệ, lý do còn chặn, nút "Xử lý".
+- **Hộp thoại xử lý:** chỉ cho chọn quyết định hợp lệ theo `boundaryOptions()` — phát hiện chưa review/Chưa chắc chắn → chỉ "Cần thêm bằng chứng" + hướng dẫn review phát hiện trước; phát hiện Bác bỏ/Không phải bệnh → "Loại bỏ chứng cứ"; phát hiện Xác nhận/Sửa và không còn mục chặn → "Chấp nhận vị trí". "Cần thêm bằng chứng" vẫn tính là chặn (ghi rõ trong hộp thoại). Body: `findingId` + `findingReviewId` (= `review.reviewId` hiện tại của phát hiện) trừ khi `NeedsEvidence`.
+- Review phát hiện ở bảng trên giờ tải lại cả phần ngoại lệ (vì đổi review phát hiện làm ngoại lệ thành `StaleBoundaryAssociation`).
+
+**Tự test:** build ✓, 242/242 test ✓ (thêm test `linkedFinding`, `boundaryOptions`, `buildBoundaryReview`, `getAllHealthFindings`). Trình duyệt với API giả lập có trạng thái: 2 ngoại lệ hiện đúng phân loại/khoảng cách, khớp đúng phát hiện (kể cả khác hoa thường); phát hiện chưa review → chỉ "Cần thêm bằng chứng"; Bác bỏ phát hiện → bảng ngoại lệ tự cập nhật, mặc định "Loại bỏ chứng cứ", payload đúng `findingReviewId`, tóm tắt giảm 1 ngoại lệ; đổi quyết định phát hiện sang Không phải bệnh → ngoại lệ hiện "Review phát hiện liên quan đã đổi" và tính chặn lại. 375px không tràn ngang. **Sửa khi test:** nhãn "Chưa xử lý" bị trùng giữa cột quyết định và cột còn chặn → đổi nhãn lý do chặn.
+
+**Giới hạn đã biết:**
+- Chấp nhận vị trí với phát hiện **ngoài** ranh giới sẽ bị BE từ chối (`InvalidGeometry`) — phải "Sửa" vị trí phát hiện vào trong trước (gợi ý đã ghi trong hộp thoại).
+- Chưa có chọn ảnh bằng chứng; vị trí sát ranh giới dùng ảnh gốc của phát hiện nếu có.
+- Chỉ hiện 100 ngoại lệ đầu (có thông báo nếu nhiều hơn).
+
+**Phạm vi ban đầu:**
 - Danh sách `health-boundary-exceptions` (cùng dạng trang như findings) + nút **Loại bỏ chứng cứ** (`ExcludeEvidence`) / **Giữ lại** (`RetainEvidence`), bắt buộc lý do.
 - Body: `operationId, batchId, expectedResultVersion, expectedExceptionVersion` (= `sourceRowVersion` của item — xác nhận lại ở B1), `expectedReviewVersion, decision, reason, evidenceMediaIds: []`.
 - Xác định ở B1: `RetainEvidence` có bắt buộc kèm `findingId`/`findingReviewId` không.
@@ -232,7 +258,46 @@ BE còn có các API mà tài liệu Giai đoạn 2 **không nhắc**: review 1 
 
 ---
 
-## C1. Kiểm thử tổng — [ ]
+### B7. Review vùng bệnh + chọn hướng dẫn xử lý theo đơn — [x] chưa test tay
+
+Không có trong tài liệu Giai đoạn 2, nhưng BE bắt buộc: vùng chưa review (`UnreviewedZone`) hoặc chưa có quyết định hướng dẫn (`MissingGuidanceDecision`) chặn phê duyệt.
+
+**Contract (từ `PlantHealthReviewService.Commands.cs`):**
+- `GET disease-zones` (cùng dạng trang như findings; `original` = `ProposedDiseaseZoneV4`: `SuspectedClassCode`, `Geometry`, `Memberships[{PlantId, MappingCandidateId, Confidence}]`; có thêm `guidanceReview`).
+- `POST disease-zones/{zoneId}/review`: `operationId, batchId, expectedResultVersion, expectedZoneVersion (= sourceRowVersion), expectedReviewVersion, decision (Approve|Correct|Reject|Ambiguous), reason, evidenceMediaIds` + chỉ với Correct: `correctedGeometry?`, `correctedClassCode?`, `members?: [{findingId, sourceVersion, findingReviewId}]`.
+  - Approve không gửi members: BE tự khớp mỗi membership đề xuất với ĐÚNG 1 phát hiện đã Xác nhận/Sửa cùng loại (theo `PlantId`/`MappingCandidateId` gốc); không khớp/khớp nhiều → `InvalidAssociation`.
+  - Mọi thành viên phải đã Xác nhận/Sửa, không còn mục chặn, cùng loại với vùng, nằm trong hình vùng, không trùng trụ; hình vùng phải nằm trong ranh giới lúc bay.
+- `GET disease-zones/{zoneId}/guidance-options`: chỉ khi vùng đã Xác nhận/Sửa (nếu không → 409 `DependencyChanged`).
+- `POST disease-zones/{zoneId}/guidance-review`: `… expectedZoneVersion, expectedReviewVersion (= guidanceReview.version), zoneReviewId (= review.reviewId hiện tại), decision (Select|RejectAll|NeedsEvidence), reason, evidenceMediaIds, guidanceId? (bắt buộc với Select, cấm với quyết định khác)`.
+- Review lại vùng làm quyết định hướng dẫn cũ hết hiệu lực (BE so `snapshot.BoundReviewId`); review lại phát hiện thành viên làm vùng thành `StaleMemberReview`.
+
+**Đã làm (16/11/2026):** `HealthZonesSection.tsx` (dưới phần ngoại lệ, chỉ hiện khi lô có vùng). API `reviewHealthZone`, `getZoneGuidanceOptions`, `reviewZoneGuidance`; helper `readZoneOriginal`, `zoneRing`, `pointInRing`, `zoneMemberCandidates`, `resolveOriginalMembers`, `approveReadiness`, `guidanceIsCurrent`, `buildZoneReview`, `buildGuidanceReview`.
+- Bảng: loại bệnh (kèm loại AI nếu đã sửa), số cây, quyết định vùng, hướng dẫn ("Cần chọn lại" khi vùng đã review lại; "Không cần" khi vùng bị bác bỏ), lý do chặn, nút "Review vùng" / "Chọn hướng dẫn" (chỉ bật khi vùng đã Xác nhận/Sửa).
+- Hộp thoại review vùng: "Xác nhận như AI đề xuất" chỉ bật khi `approveReadiness()` (mô phỏng đúng cách BE tự khớp thành viên + kiểm trong hình vùng) thành công, nếu không thì nêu lý do; "Sửa": chọn loại bệnh + chọn thành viên từ các phát hiện đã Xác nhận/Sửa đúng loại (hiện mã trụ, phát hiện ngoài hình vùng bị khóa), mặc định tick các thành viên tự khớp được; "Bác bỏ".
+- Hộp thoại hướng dẫn: liệt kê hướng dẫn BE trả (mã, phiên bản, nguồn, nội dung) + "Không áp dụng hướng dẫn nào" + "Cần thêm bằng chứng (vẫn chặn)".
+- Review phát hiện ở bảng trên và nút "Tải lại" đầu trang đều tải lại phần vùng bệnh.
+- Không làm: vẽ lại hình vùng (`correctedGeometry`), quyết định `Ambiguous`, ảnh bằng chứng.
+
+**Tự test:** build ✓, 247/247 test ✓ (thêm 5 test: hình học, `approveReadiness` các nhánh, ứng viên thành viên, body vùng/hướng dẫn, chặn tổ hợp sai trước khi gọi API). Trình duyệt với API giả lập có trạng thái: 1/2 thành viên đã xác nhận → "Xác nhận" khóa kèm lý do, thành viên ngoài vùng bị khóa; "Sửa" bấm 2 lần → 1 request, chỉ gửi `members`; chọn hướng dẫn → `expectedZoneVersion`/`zoneReviewId` lấy đúng bản mới, vùng hết chặn; xác nhận đủ 2 thành viên → "Xác nhận" bật, gửi không kèm members; review lại vùng → cột hướng dẫn báo cần chọn lại; bác bỏ vùng → "Không cần". 375px không tràn ngang. **Sửa khi test:** cột hướng dẫn hiển thị quyết định cũ đã hết hiệu lực như thể còn dùng được.
+
+**Test tay (người dùng):** cần đơn có vùng bệnh do AI đề xuất — kiểm tra trên dữ liệu thật xem `Memberships` có `PlantId` (để Approve tự khớp được) và danh sách hướng dẫn có trả về không (cần System Admin đã kích hoạt hướng dẫn cho đúng loại bệnh + phiên bản nhãn).
+
+## C1. Kiểm thử tổng — [~]
+
+**Đã chạy (16/11/2026):** `npm run build` (gồm typecheck) ✓; `npm test` **248/248** ✓ (36 test mới cho Giai đoạn 2 trong `tests/health-review-order.test.mjs` và `tests/plant-health-review.test.mjs`). Mỗi task B1–B7, A3 đã tự test trên trình duyệt bằng API giả lập có trạng thái (chi tiết ở từng task): đúng payload, chống bấm đôi, hủy không ghi, lỗi 409 → "Đóng và tải lại", 375px không tràn ngang. Dự án không có cấu hình ESLint nên không chạy lint. Đã đổi `Space direction` → `orientation` trong các file mới (cảnh báo AntD).
+
+**Chưa làm — cần người dùng test tay với BE thật** (theo thứ tự luồng):
+1. Đơn Plant Health đã chạy nhận diện + gửi kết quả sơ bộ (Giai đoạn 1) → Chi tiết đơn → "Kiểm duyệt kết quả sức khỏe cây".
+2. Bảng phát hiện: Bác bỏ / Không phải bệnh / Xác nhận / Sửa (gắn trụ cho phát hiện chưa có trụ). Mở 2 tab review cùng 1 mục → tab sau phải báo dữ liệu đã thay đổi.
+3. Ngoại lệ ranh giới: sau khi review phát hiện liên quan → Loại bỏ chứng cứ / Chấp nhận vị trí.
+4. Vùng bệnh (nếu có): Xác nhận/Sửa/Bác bỏ → Chọn hướng dẫn (cần System Admin đã kích hoạt hướng dẫn cho đúng loại bệnh).
+5. Tóm tắt tiến độ phải về "Sẵn sàng phê duyệt" khi xử lý hết.
+6. Bản đồ sức khỏe cây của farm: vết lệch hiện đúng; màu trụ chưa đổi theo review (đúng như BE hiện tại).
+Chưa kiểm bằng trình duyệt: link "Kiểm duyệt kết quả sức khỏe cây" trên trang Chi tiết đơn.
+
+**Ngoài phạm vi Giai đoạn 2:** nút Phê duyệt / Phát hành / Xem ấn bản (Giai đoạn 3); lưu ý BE mới đổi trạng thái đơn sau phát hành cho đơn "thanh toán sau bay" (xem Nhật ký 15/11).
+
+**Phạm vi ban đầu:**
 - Tự động: `npm run typecheck`, `npm test`, `npm run build`.
 - Trình duyệt với API giả lập: từng thao tác ghi gửi đúng payload, chống bấm đôi, hủy không ghi, lỗi 409 hiển thị đúng, bố cục 390px.
 - Test tay với BE thật (người dùng): cần 1 đơn Plant Health đã chạy detect + publish sơ bộ (Giai đoạn 1) để có findings, vết lệch và vùng bệnh.
@@ -285,3 +350,7 @@ BE còn có các API mà tài liệu Giai đoạn 2 **không nhắc**: review 1 
 - 13/11/2026 — Đọc BE trả lời 3 câu hỏi về quan hệ A ↔ B (mục "Kết luận đọc BE"). Đề xuất bỏ A2, A4–A8 cho dữ liệu hiện tại; chờ người dùng chốt.
 - 13/11/2026 — **Người dùng chốt:** chỉ làm nhóm B + B7; bỏ A2, A4–A8 (giữ A0, A3 chỉ xem).
 - 13/11/2026 — Xong B5 (238/238 test, build ✓, tự test trình duyệt). Chưa commit, chưa test tay.
+- 13/11/2026 — Xong B6 (242/242 test, build ✓, tự test trình duyệt). Chưa commit, chưa test tay.
+- 15/11/2026 — Người dùng đã commit B1–B5 (`112acb1`). BE có commit mới (`c81063d`): chỉ ảnh hưởng Giai đoạn 3 — đơn "thanh toán sau bay" (`PostFlightSettlement`) sau khi phát hành chuyển sang `AWAITING_PRICING` thay vì `COMPLETED`, và không phát sự kiện cho Owner trong lúc review nội bộ. Ghi nhận cho Giai đoạn 3; link vào trang kiểm duyệt hiện chỉ hiện với `PENDING_REVIEW`/`COMPLETED`.
+- 16/11/2026 — Xong B7 (247/247 test, build ✓, tự test trình duyệt). Chưa commit, chưa test tay.
+- 16/11/2026 — Xong A3 + ghi chú màu AI trên bản đồ; chốt bỏ A2, A4–A8 trong bảng tiến độ; C1 phần tự động xong (248/248). Chưa commit, chờ test tay.

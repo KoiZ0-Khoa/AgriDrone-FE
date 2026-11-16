@@ -7,7 +7,9 @@ export type FindingDecision = 'Approve' | 'Correct' | 'Reject' | 'NonDisease' | 
 // Tài liệu ghi "RetainEvidence" nhưng BE không có giá trị đó.
 export type BoundaryDecision = 'AcceptCorrectedPosition' | 'ExcludeEvidence' | 'NeedsEvidence'
 export type ResolutionState = 'PENDING_REVIEW' | 'NEEDS_REVIEW' | 'RESOLVED'
-export type HealthReviewQueue = 'findings' | 'exceptions'
+export type HealthReviewQueue = 'findings' | 'exceptions' | 'zones'
+export type ZoneDecision = 'Approve' | 'Correct' | 'Reject' | 'Ambiguous'
+export type GuidanceDecision = 'Select' | 'RejectAll' | 'NeedsEvidence'
 
 export type HealthReviewQuery = {
   pageNumber?: number; pageSize?: number; batchId?: string
@@ -79,4 +81,30 @@ export type BoundaryExceptionOriginal = {
   sourceReferenceId: string | null; lon: number | null; lat: number | null
   boundaryClassification: string | null; measuredBoundaryDistanceM: number | null; boundaryThresholdM: number | null
   evidenceMediaIds: string[]
+}
+
+// B7 — vùng bệnh theo đơn (ProposedDiseaseZoneV4 trong `original`, khóa PascalCase).
+export type ZoneOriginal = {
+  sourceProposalId: string | null; suspectedClassCode: string | null
+  ring: [number, number][] | null // vòng ngoài [lon, lat]
+  memberships: { plantId: string | null; mappingCandidateId: string | null; confidence: number | null }[]
+}
+export type HealthZoneMember = { findingId: string; sourceVersion: number; findingReviewId: string }
+export type HealthReviewPolygon = { type: 'Polygon'; coordinates: number[][][] }
+export type ZoneReviewRequest = {
+  operationId: string; batchId: string; expectedResultVersion: number
+  expectedZoneVersion: number; expectedReviewVersion: number | null
+  decision: ZoneDecision; reason: string; evidenceMediaIds: string[]
+  // Chỉ đi kèm Correct; Correct cần ít nhất 1 trong 3.
+  correctedGeometry?: HealthReviewPolygon; correctedClassCode?: string; members?: HealthZoneMember[]
+}
+export type HealthGuidanceOption = {
+  id: string; code: string; versionNumber: number; suspectedClassCode: string
+  sourceTitle: string; sourceReference: string; guidanceText: string; effectiveFrom: string; effectiveTo: string | null
+}
+export type GuidanceReviewRequest = {
+  operationId: string; batchId: string; expectedResultVersion: number
+  expectedZoneVersion: number; expectedReviewVersion: number | null
+  zoneReviewId: string; decision: GuidanceDecision; reason: string; evidenceMediaIds: string[]
+  guidanceId?: string // bắt buộc với Select, phải bỏ trống với quyết định khác
 }

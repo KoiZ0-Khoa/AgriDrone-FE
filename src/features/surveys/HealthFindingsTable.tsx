@@ -70,7 +70,8 @@ export function HealthFindingsTable({ token, orderId, farmId, tenantId, canRevie
     if (reloadNeeded) { resetSelection(); void reload() }
   }
   async function reload() {
-    await Promise.all([client.invalidateQueries({ queryKey: ['health-findings', orderId] }), client.invalidateQueries({ queryKey: ['health-review-summary', orderId] })])
+    // Review phát hiện làm đổi trạng thái ngoại lệ ranh giới (B6) và vùng bệnh có phát hiện đó làm thành viên (B7) ⇒ tải lại cả 2 phần.
+    await Promise.all(['health-findings', 'health-review-summary', 'health-findings-all', 'health-boundary-exceptions', 'health-disease-zones'].map(key => client.invalidateQueries({ queryKey: [key, orderId] })))
   }
 
   const filters = <div className="workflow-toolbar"><Space wrap>
