@@ -1,5 +1,7 @@
 # Hướng dẫn test thủ công phần Khoa trên WEB
 
+> Cập nhật thanh toán 16/11: dùng [flow thanh toán sau bay](./post-flight-flow-2026-11-16.md) cho đơn mới. Các bước chốt giá/thanh toán trước bay dịch vụ bên dưới là tài liệu của phiên bản trước.
+
 Đối chiếu giao diện và source ngày 12/11/2026. Đây là checklist để chạy với BE thật, **chưa phải báo cáo các bước dưới đây đều đã pass**. Bằng chứng test trước đó xem [báo cáo tích hợp](./khoa-api-integration-2026-11-11.md).
 
 Phạm vi: các bước chuẩn bị đơn cần thiết, bản đồ nền và biến động trụ, Mission PlantHealth, detect bệnh và gửi kết quả sơ bộ. Không bao gồm kiểm duyệt/phát hành bệnh của Phú hoặc các policy MAP/COMBO chưa có contract BE.

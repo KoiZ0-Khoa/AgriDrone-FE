@@ -1,5 +1,7 @@
 # Thanh toán FE theo BE sau merge main — 13/11/2026
 
+> Đây là báo cáo lịch sử. Với đơn mới, dùng [flow thanh toán sau bay ngày 16/11](./post-flight-flow-2026-11-16.md): cọc dương, hai giá thành phần và thanh toán cuối sau review.
+
 Đối chiếu BE `fda57ec`, gồm chính sách thanh toán của `998339e`. Chỉ thay đổi FE;
 không sửa BE, migration, dữ liệu đơn hoặc giao dịch thật.
 

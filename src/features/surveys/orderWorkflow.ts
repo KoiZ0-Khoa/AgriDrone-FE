@@ -8,7 +8,7 @@ export const orderStatusLabels: Record<string, string> = {
   AWAITING_BASELINE_DEPOSIT: 'Chờ thanh toán cọc bản đồ nền',
   PENDING_BOUNDARY_VERIFICATION: 'Chờ xác minh ranh giới', AWAITING_BASELINE_APPOINTMENT: 'Chờ lịch khảo sát bản đồ',
   AWAITING_BOUNDARY_CAPTURE: 'Chờ thu thập ranh giới', BASELINE_READY: 'Sẵn sàng bay bản đồ', BASELINE_IN_PROGRESS: 'Đang bay bản đồ', AWAITING_BASELINE_REVIEW: 'Chờ duyệt bản đồ',
-  AWAITING_PRICING: 'Chờ xác nhận số trụ và giá', AWAITING_PAID_APPOINTMENT: 'Chờ lịch dịch vụ', AWAITING_PAYMENT: 'Chờ thanh toán', READY_FOR_PAID_SERVICE: 'Sẵn sàng dịch vụ', IN_PROGRESS: 'Đang thực hiện', PENDING_REVIEW: 'Chờ duyệt kết quả', COMPLETED: 'Hoàn tất', CANCELLED: 'Đã hủy',
+  AWAITING_PRICING: 'Chờ xử lý khảo sát', AWAITING_PAID_APPOINTMENT: 'Chờ lịch dịch vụ', AWAITING_PAYMENT: 'Chờ thanh toán còn lại', READY_FOR_PAID_SERVICE: 'Sẵn sàng dịch vụ', IN_PROGRESS: 'Đang thực hiện', PENDING_REVIEW: 'Chờ duyệt kết quả', COMPLETED: 'Hoàn tất', CANCELLED: 'Đã hủy',
 }
 export const appointmentStatusLabels: Record<string, string> = { PROPOSED: 'Chờ Owner xác nhận', CONFIRMED: 'Đã xác nhận', RESCHEDULE_REQUESTED: 'Owner yêu cầu đổi lịch', SUPERSEDED: 'Đã có lịch thay thế', CANCELLED: 'Đã hủy' }
 export const baselineStageNotices: Record<string, { type: 'info' | 'warning'; title: string; description: string }> = {
@@ -22,9 +22,28 @@ export function matchingOrderSnapshot(order: AssignedOrder, scope: OrderScope) {
   return order.surveyOrderId === scope.surveyOrderId && order.farmId === scope.farmId && order.tenantId === scope.tenantId && order.orderVersion === scope.orderVersion && order.status === scope.orderStatus && order.requiresBaselineMapping === scope.requiresBaselineMapping && Number.isSafeInteger(scope.orderVersion) && scope.orderVersion > 0
 }
 
+export const serviceIsReviewed = (scope: OrderScope) => typeof scope.serviceReviewedAt === 'string' && Number.isFinite(Date.parse(scope.serviceReviewedAt))
+export function appointmentPurpose(scope: OrderScope): AppointmentBody['purpose'] | null {
+  if (scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' && scope.requiresBaselineMapping) return 'BASELINE_MAPPING'
+  if (scope.serviceReviewedAt === null && (scope.orderStatus === 'AWAITING_PAID_APPOINTMENT' || (scope.orderStatus === 'AWAITING_PRICING' && scope.requiresBaselineMapping))) return 'PAID_SERVICE'
+  return null
+}
+export function proposalAppointment(order: AssignedOrder) {
+  return order.currentAppointmentId ? { id: order.currentAppointmentId, version: order.currentAppointmentVersion, status: order.currentAppointmentStatus, purpose: order.currentAppointmentPurpose } : null
+}
+export function canProposeAppointment(order: AssignedOrder, scope: OrderScope) {
+  const purpose = appointmentPurpose(scope)
+  const current = proposalAppointment(order)
+  return matchingOrderSnapshot(order, scope) && purpose !== null &&
+    (current ? current.purpose === purpose && Number.isSafeInteger(current.version) && current.version! > 0 &&
+      (current.status === 'RESCHEDULE_REQUESTED' || (purpose === 'PAID_SERVICE' && current.status === 'PROPOSED'))
+      : order.currentAppointmentVersion === null && order.currentAppointmentStatus === null && order.currentAppointmentPurpose === null)
+}
+
 export function pricingSnapshotError(order: AssignedOrder, scope: OrderScope, farm: FarmContext): string | null {
   if (!matchingOrderSnapshot(order, scope) || scope.orderVersion > 4294967295) return 'Dữ liệu đơn không đồng nhất. Đóng biểu mẫu và tải lại trước khi xác nhận.'
   if (scope.orderStatus !== 'AWAITING_PRICING') return 'Đơn chưa ở bước xác nhận số trụ và giá.'
+  if (!serviceIsReviewed(scope)) return 'Cần hoàn tất chuyến bay dịch vụ và duyệt kết quả trước khi xác nhận số trụ và giá.'
   if (farm.farmId !== scope.farmId || farm.tenantId !== scope.tenantId) return 'Thông tin nông trại không khớp đơn khảo sát.'
   if (!['ACTIVE', '0'].includes(String(farm.status).toUpperCase())) return 'Nông trại không còn hoạt động.'
   if (!scope.currentApprovedBoundary) return 'Cần xác minh ranh giới và phạm vi khảo sát trước khi xác nhận giá.'
@@ -51,14 +70,17 @@ function isValidScheduledDate(value: string): boolean {
 
 // Sends the chosen day as-is; BE (SurveyAppointmentWindow.TryResolveForDate) resolves it to the
 // full Asia/Ho_Chi_Minh day Prepare Mission Set expects, so FE no longer does its own UTC/timezone math.
-export function appointmentBody(order: AssignedOrder, scope: OrderScope, scheduledDate: string): AppointmentBody {
+export const operationsDate = (now = Date.now()) => new Date(now + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+export function appointmentBody(order: AssignedOrder, scope: OrderScope, scheduledDate: string, now = Date.now()): AppointmentBody {
   if (!matchingOrderSnapshot(order, scope)) throw new Error('Dữ liệu đơn không đồng nhất hoặc thiếu version. Tải lại trước khi đề xuất lịch.')
-  const purpose = scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' && scope.requiresBaselineMapping ? 'BASELINE_MAPPING' : scope.orderStatus === 'AWAITING_PAID_APPOINTMENT' ? 'PAID_SERVICE' : null
+  const purpose = appointmentPurpose(scope)
   if (!purpose) throw new Error('Trạng thái đơn chưa cho phép đề xuất lịch.')
-  if (order.currentAppointmentId && (order.currentAppointmentStatus !== 'RESCHEDULE_REQUESTED' || !Number.isSafeInteger(order.currentAppointmentVersion) || order.currentAppointmentVersion! < 1)) throw new Error('Đơn đã có lịch đang hoạt động hoặc thiếu version lịch. Tải lại để kiểm tra.')
-  if (!order.currentAppointmentId && order.currentAppointmentVersion !== null) throw new Error('Dữ liệu lịch không đồng nhất. Tải lại trước khi tiếp tục.')
+  const current = proposalAppointment(order)
+  if (!canProposeAppointment(order, scope)) throw new Error('Đơn đã có lịch đang hoạt động hoặc thông tin mục đích/phiên bản lịch chưa đầy đủ. Tải lại để kiểm tra.')
   if (!isValidScheduledDate(scheduledDate)) throw new Error('Chọn ngày khảo sát hợp lệ.')
-  return { purpose, scheduledDate, expectedOrderVersion: scope.orderVersion, expectedCurrentAppointmentId: order.currentAppointmentId, expectedCurrentAppointmentVersion: order.currentAppointmentVersion }
+  // BE resolves today's date to now + 5 minutes; dates before today cannot be scheduled.
+  if (purpose === 'PAID_SERVICE' && (scheduledDate < operationsDate(now) || Date.parse(`${scheduledDate}T23:55:00+07:00`) <= now)) throw new Error('Chọn ngày bay bệnh còn thời gian thực hiện theo giờ Việt Nam.')
+  return { purpose, scheduledDate, expectedOrderVersion: scope.orderVersion, expectedCurrentAppointmentId: current?.id ?? null, expectedCurrentAppointmentVersion: current?.version ?? null }
 }
 
 export function polygonFromPoints(points: { longitude: number; latitude: number }[], interiorRings: number[][][] = []): GeoJsonPolygon {

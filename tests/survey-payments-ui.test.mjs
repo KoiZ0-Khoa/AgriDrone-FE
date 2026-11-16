@@ -60,12 +60,25 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     assert.match(render('OWNER', []), /Chưa có giao dịch/)
     const zero = render('OWNER', [], { order: { ...paidServiceOrder, remainingAmount: 0 } })
     assert.doesNotMatch(button(zero, 'Hoàn tất số dư 0'), /disabled=""/)
+    const invoice = { ...paidServiceOrder, currentAppointment: null, confirmedMappingPoleCount: 1000, confirmedPlantHealthPoleCount: 300, mappingPricePerPole: 1500, plantHealthPricePerPole: 1000, mappingSubtotal: 1500000, plantHealthSubtotal: 300000, comboDiscountPercentage: 20, comboDiscountAmount: 360000, totalAmount: 1440000, remainingAmount: 940000 }
+    const finalInvoice = render('OWNER', [], { order: invoice })
+    for (const value of ['Trụ bản đồ nền', 'Trụ khảo sát sức khỏe', '1.500.000', '300.000', '360.000', '1.440.000', '940.000', '20%']) assert.match(finalInvoice, new RegExp(value))
+    assert.doesNotMatch(button(finalInvoice, 'Thanh toán'), /disabled=""/)
+    assert.doesNotMatch(finalInvoice, /Lịch hẹn đã hết thời gian.*trước khi thanh toán/)
     const followUp = { ...ownerOrder, status: 'PENDING_BOUNDARY_VERIFICATION', depositAmount: 5000, currentAppointment: null }
     const deposit = render('OWNER', [], { order: followUp })
     assert.match(deposit, /Cọc khảo sát/)
     assert.match(deposit, /5\.000/)
     assert.doesNotMatch(button(deposit, 'Thanh toán'), /disabled=""/)
     assert.doesNotMatch(deposit, /Xác nhận lịch hẹn trước khi thanh toán/)
+    const healthOrder = { ...followUp, status: 'AWAITING_BASELINE_DEPOSIT', currentAppointment: { ...confirmedOrder.currentAppointment, purpose: 'PAID_SERVICE' } }
+    const healthDeposit = render('OWNER', [], { order: healthOrder })
+    assert.match(healthDeposit, /Manager đã chốt lịch bay bệnh/)
+    assert.doesNotMatch(healthDeposit, /<span>Xác nhận lịch<\/span>|<span>Yêu cầu đổi lịch<\/span>|Xác nhận lịch.*trước khi thanh toán/)
+    assert.doesNotMatch(button(healthDeposit, 'Thanh toán'), /disabled=""/)
+    const oldHealthProposal = render('OWNER', [], { order: { ...healthOrder, status: 'AWAITING_PAID_APPOINTMENT', currentAppointment: { ...healthOrder.currentAppointment, status: 'PROPOSED' } } })
+    assert.match(oldHealthProposal, /Chờ Manager chốt lịch/)
+    assert.doesNotMatch(oldHealthProposal, /Chờ Owner xác nhận|<span>Xác nhận lịch<\/span>|<span>Yêu cầu đổi lịch<\/span>/)
     const finalPaid = { ...paymentItem, purpose: 'FINAL_BALANCE', status: 'PAID', amount: paidServiceOrder.remainingAmount }
     const synchronize = render('OWNER', [finalPaid], { order: paidServiceOrder })
     assert.doesNotMatch(button(synchronize, 'Đồng bộ trạng thái đơn'), /disabled=""/)

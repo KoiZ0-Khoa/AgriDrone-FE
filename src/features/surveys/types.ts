@@ -4,13 +4,13 @@ export type Manager = {
   status: 'ACTIVE' | 'SUSPENDED'; availability: 'AVAILABLE' | 'UNAVAILABLE'
   version: number
 }
-export type ServicePrice = { priceVersionId: string; amountPerPole: number; currency: string; effectiveFrom: string; effectiveTo: string | null }
+export type ServicePrice = { priceVersionId: string; amountPerPole: number; currency: string; effectiveFrom: string; effectiveTo: string | null; mappingPricePerPole: number | null; plantHealthPricePerPole: number | null }
 export type SurveyService = {
   surveyServiceId: string; code: string; name: string; description: string; serviceType: string
   status: 'ACTIVE' | 'EXPERIMENTAL' | 'RETIRED'; version: number; currentPrice: ServicePrice | null
 }
 export type PublicService = Pick<SurveyService, 'surveyServiceId' | 'code' | 'name' | 'description' | 'serviceType'> & { isExperimental: boolean; indicativePrice: Omit<ServicePrice, 'priceVersionId'> }
-export type PriceHistory = { priceVersionId: string; pricePerPole: number | null; legacyPricePerHa: number | null; currency: string; effectiveFrom: string; effectiveTo: string | null; isLegacyPerHectarePrice: boolean }
+export type PriceHistory = { priceVersionId: string; pricePerPole: number | null; legacyPricePerHa: number | null; currency: string; effectiveFrom: string; effectiveTo: string | null; isLegacyPerHectarePrice: boolean; mappingPricePerPole: number | null; plantHealthPricePerPole: number | null }
 export type RequestKind = 'NEW_CUSTOMER' | 'EXISTING_TENANT_NEW_FARM' | 'EXISTING_FARM_SURVEY'
 export type RequestStatus = 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN'
 export type SurveyRequest = {

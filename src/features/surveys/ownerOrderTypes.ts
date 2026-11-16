@@ -3,6 +3,10 @@ export type OwnerAppointment = {
   scheduledDate: string | null; scheduledStartDate: string | null; scheduledEndDate: string | null
 }
 export type OwnerSurveyOrder = {
+  confirmedMappingPoleCount: number | null; confirmedPlantHealthPoleCount: number | null
+  mappingPricePerPole: number | null; plantHealthPricePerPole: number | null
+  mappingSubtotal: number | null; plantHealthSubtotal: number | null
+  comboDiscountPercentage: number | null; comboDiscountAmount: number | null
   surveyOrderId: string; orderNumber: string; farmId: string; farmName: string; status: string; orderVersion: number
   depositAmount: number; totalAmount: number | null; remainingAmount: number | null; currency: string; currentAppointment: OwnerAppointment | null
 }

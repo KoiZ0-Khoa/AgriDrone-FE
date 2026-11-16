@@ -98,14 +98,21 @@ test('manual assignment preserves missing Farm, ineligible Manager and permissio
   }
 })
 
-test('service pricing sends only the current per-pole VND contract and server version', async () => {
+test('service pricing sends both component rates, their sum and the observed server version', async () => {
+  const body = api.componentServicePriceBody('1500', '1000', 37)
+  assert.equal(body.amountPerPole, 2500)
+  for (const value of ['', '0', '-1', '1.5', 'NaN', '1e3', '9007199254740992']) {
+    assert.throws(() => api.componentServicePriceBody(value, '1000', 37))
+    assert.throws(() => api.componentServicePriceBody('1500', value, 37))
+  }
+  for (const version of [undefined, 0, -1, 1.2, 4294967296]) assert.throws(() => api.componentServicePriceBody('1500', '1000', version))
   globalThis.fetch = async (url, options) => {
     assert.equal(url, 'http://test.local/api/system-admin/survey-services/s%2F1/prices')
     assert.equal(options.method, 'POST')
-    assert.deepEqual(JSON.parse(options.body), { amountPerPole: 1250.5, currency: 'VND', expectedServiceVersion: 37 })
+    assert.deepEqual(JSON.parse(options.body), { amountPerPole: 2500, mappingPricePerPole: 1500, plantHealthPricePerPole: 1000, currency: 'VND', expectedServiceVersion: 37 })
     return Response.json({ serviceVersion: 38, effectiveFrom: '2026-10-16T00:00:00Z' })
   }
-  assert.equal((await api.createServicePrice('admin', 's/1', { amountPerPole: 1250.5, currency: 'VND', expectedServiceVersion: 37 })).serviceVersion, 38)
+  assert.equal((await api.createServicePrice('admin', 's/1', body)).serviceVersion, 38)
 })
 
 test('catalogue reads use separate public, admin and price history routes', async () => {

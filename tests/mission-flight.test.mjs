@@ -62,7 +62,7 @@ test('mission operation error codes (Start readiness gates) translate to actiona
   const { ApiError } = await import(clientUrl)
   assert.match(workflow.missionError(new ApiError(409, 'x', 'MissionOperation.PreflightRequired')), /checklist preflight/)
   assert.match(workflow.missionError(new ApiError(409, 'x', 'MissionOperation.ScheduleWindowClosed')), /khung giờ đã lên lịch/)
-  assert.match(workflow.missionError(new ApiError(409, 'x', 'MissionOperation.AppointmentWindowClosed')), /lịch hẹn Owner/)
+  assert.match(workflow.missionError(new ApiError(409, 'x', 'MissionOperation.AppointmentWindowClosed')), /lịch khảo sát đã được chốt/)
   assert.match(workflow.missionError(new ApiError(409, 'x', 'MissionOperation.DroneNotOperational')), /không khả dụng/)
   assert.match(workflow.missionError(new ApiError(409, 'x', 'MissionOperation.BaselineNotCompleted')), /bản đồ nền/)
   assert.match(workflow.missionError(new ApiError(409, 'x', 'Mission.InvalidTransition')), /Không thể chuyển/)

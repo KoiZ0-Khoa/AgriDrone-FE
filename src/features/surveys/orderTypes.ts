@@ -6,9 +6,11 @@ export type AssignedOrder = {
   status: string; orderVersion: number; requiresBaselineMapping: boolean; farmBoundaryVersionId: string | null
   boundaryCaptureSessionId: string | null; baselineRoutePlanId: string | null
   currentAppointmentId: string | null; currentAppointmentVersion: number | null; currentAppointmentStatus: string | null
+  currentAppointmentPurpose: string | null
   createdAt: string; updatedAt: string
 }
 export type OrderScope = {
+  serviceReviewedAt: string | null
   surveyOrderId: string; orderNumber: string; tenantId: string; farmId: string; orderStatus: string; orderVersion: number; requiresBaselineMapping: boolean
   currentApprovedBoundary: { farmBoundaryId: string; versionNumber: number; version: number; geometry: GeoJsonPolygon; source: string; evidenceReference: string | null; reviewedBy: string | null; reviewedAt: string | null } | null
   zones: { zoneId: string; code: string; name: string; boundary: GeoJsonPolygon | null; status: string; version: number }[]
@@ -22,6 +24,11 @@ export type VerifyBoundaryBody = { boundary: GeoJsonPolygon; reason: string; evi
 export type VerifiedBoundary = { surveyOrderId: string; farmId: string; farmBoundaryId: string; farmBoundaryVersionNumber: number; currentFarmBaseMapVersionId: string | null; confirmedSurveyPoleCount: number | null; requiresBaselineMapping: boolean; orderStatus: string; orderVersion: number }
 export type ConfirmPricingBody = { expectedFarmBaseMapVersionId: string; evidenceReference: string; expectedOrderVersion: number }
 export type ConfirmedPricing = {
+  remainingAmount: number | null
+  confirmedMappingPoleCount: number | null; confirmedPlantHealthPoleCount: number | null
+  mappingPricePerPole: number | null; plantHealthPricePerPole: number | null
+  mappingSubtotal: number | null; plantHealthSubtotal: number | null
+  comboDiscountPercentage: number | null; comboDiscountAmount: number | null
   surveyOrderId: string; orderNumber: string; tenantId: string; farmId: string; surveyServiceId: string
   farmBoundaryVersionId: string; farmBaseMapVersionId: string; poleCountSource: string; poleCountEvidenceReference: string
   confirmedSurveyPoleCount: number; surveyServicePriceId: string; pricePerPole: number; currency: string; finalPrice: number

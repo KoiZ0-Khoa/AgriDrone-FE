@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { ApiError } from '../../api/client'
 import { proposeAppointment, verifyOrderBoundary } from './orderApi'
 import type { Appointment, AssignedOrder, OrderScope } from './orderTypes'
-import { appointmentBody, polygonFromPoints } from './orderWorkflow'
+import { appointmentBody, appointmentPurpose, operationsDate, polygonFromPoints } from './orderWorkflow'
 import { workflowError } from './workflow'
 import { intakeCoordinate } from './intakeNumbers'
 
@@ -20,11 +20,13 @@ export function AppointmentModal({ token, order, scope, close, done }: { token: 
   const [form] = Form.useForm<{ date: string }>()
   const mutation = useMutation({ retry: false, mutationFn: (values: { date: string }) => proposeAppointment(token, snapshot.scope.surveyOrderId, appointmentBody(snapshot.order, snapshot.scope, values.date)), onSuccess: done })
   const locked = cannotRetry(mutation.error)
-  return <Modal open title="Đề xuất lịch khảo sát" okText="Gửi đề xuất lịch" cancelText={locked ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
-    <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p><p>Đề xuất lịch {snapshot.scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' ? 'bay bản đồ nền' : 'dịch vụ'}. Lịch chỉ chính thức khi Owner xác nhận. Lịch áp dụng trọn ngày (00:00 → 24:00 giờ Việt Nam) theo quy định chuẩn bị nhiệm vụ bay.</p>
+  const health = appointmentPurpose(snapshot.scope) === 'PAID_SERVICE'
+  return <Modal open title={health ? 'Lên lịch bay bệnh' : 'Đề xuất lịch khảo sát bản đồ'} okText={health ? 'Lưu lịch bay bệnh' : 'Gửi đề xuất lịch'} cancelText={locked ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
+    <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p><p>{health ? 'Thống nhất thời gian với Owner trước khi lưu. Manager chốt lịch bay bệnh trên hệ thống; Owner xem lịch và không cần xác nhận.' : 'Đề xuất lịch bay bản đồ nền. Lịch chỉ chính thức khi Owner xác nhận.'}</p><p>Chọn ngày theo giờ Việt Nam. Nếu chọn hôm nay, thời gian bắt đầu do hệ thống điều chỉnh theo thời gian còn lại trong ngày.</p>
+    {health && snapshot.order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="info" title="Lịch dịch vụ cũ đang chờ xác nhận" description="Lưu lại để Manager chốt lịch bay bệnh. Hệ thống kiểm tra đúng phiên bản lịch đang có." /> : null}
     <Form form={form} layout="vertical" disabled={mutation.isPending || locked} onFinish={values => { if (!mutation.isPending && !locked) mutation.mutate(values) }}>
       <FormSubmit disabled={mutation.isPending || locked} />
-      <Form.Item name="date" label="Ngày khảo sát (giờ Việt Nam)" rules={[{ required: true }]}><Input type="date" /></Form.Item>
+      <Form.Item name="date" label="Ngày khảo sát (giờ Việt Nam)" rules={[{ required: true }]}><Input type="date" min={health ? operationsDate() : undefined} /></Form.Item>
     </Form>
     <MutationError error={mutation.error} />
   </Modal>

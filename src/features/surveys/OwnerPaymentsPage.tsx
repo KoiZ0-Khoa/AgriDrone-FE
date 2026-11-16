@@ -9,12 +9,13 @@ import { useAuth } from '../auth/AuthContext'
 import { OwnerAppointmentDialog, type OwnerAppointmentAction } from './OwnerAppointmentDialog'
 import { getOwnerOrder, getOwnerOrders } from './ownerOrderApi'
 import type { OwnerSurveyOrder } from './ownerOrderTypes'
-import { activePaymentStatus, canConfirmOwnerAppointment, canRescheduleOwnerAppointment, ownerGuid, ownerOrderStatusQuery, validOwnerVersion } from './ownerOrderWorkflow'
+import { canConfirmOwnerAppointment, canRescheduleOwnerAppointment, ownerGuid, ownerOrderStatusQuery, validOwnerVersion } from './ownerOrderWorkflow'
 import { getPaymentHistory } from './paymentApi'
 import { money } from './paymentWorkflow'
 import { appointmentStatusLabels, orderStatusLabels } from './orderWorkflow'
 import { SurveyMutationError } from './SurveyMutationError'
 import { SurveyPaymentPanel } from './SurveyPaymentPanel'
+import { SurveyInvoiceLines } from './SurveyInvoiceLines'
 import { appointmentScheduleLabel, dateTime, workflowError } from './workflow'
 
 export function OwnerPaymentsPage() {
@@ -77,26 +78,25 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
   const order = query.data, appointment = order.currentAppointment
   const showDeposit = order.depositAmount > 0 || ['AWAITING_BASELINE_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'AWAITING_BOUNDARY_CAPTURE', 'BASELINE_READY', 'BASELINE_IN_PROGRESS', 'AWAITING_BASELINE_REVIEW'].includes(order.status) || history.data?.payments.some(item => item.purpose === 'BASELINE_DEPOSIT')
   const busy = query.isFetching || query.isError || writes > 0
-  const rescheduleBlockedByPayment = appointment?.purpose === 'PAID_SERVICE' && history.data?.payments.some(item => activePaymentStatus(item.status))
+  const healthAppointment = appointment?.purpose === 'PAID_SERVICE'
   return <>{back}
     <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT & THANH TOÁN</span><h1>{order.farmName}</h1><p>{orderStatusLabels[order.status] ?? order.status}</p><CopyReference value={order.orderNumber} label="Sao chép mã đơn" /></div><Button icon={<ReloadOutlined />} disabled={writes > 0 || !!action} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button></section>
     {notice ? <Alert className="workflow-notice" showIcon type="success" title={notice} /> : null}
     <SurveyMutationError error={query.isError ? query.error : null} />
     {!validOwnerVersion(order.orderVersion) ? <Alert className="workflow-notice" showIcon type="warning" title="Thông tin đơn chưa đầy đủ. Tải lại trước khi xác nhận lịch hoặc thanh toán." /> : null}
-    <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Lịch khảo sát</strong><span>{appointment?.purpose === 'BASELINE_MAPPING' ? 'Khảo sát bản đồ nền' : appointment?.purpose === 'PAID_SERVICE' ? 'Khảo sát dịch vụ' : 'Thời gian do Manager đề xuất'}</span></div>{appointment ? <Tag>{appointmentStatusLabels[appointment.status] ?? appointment.status}</Tag> : null}</div>
+    <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Lịch khảo sát</strong><span>{appointment?.purpose === 'BASELINE_MAPPING' ? 'Khảo sát bản đồ nền' : healthAppointment ? 'Bay bệnh · Manager chốt lịch' : 'Chờ Manager lên lịch'}</span></div>{appointment ? <Tag>{healthAppointment && appointment.status === 'PROPOSED' ? 'Chờ Manager chốt lịch' : appointmentStatusLabels[appointment.status] ?? appointment.status}</Tag> : null}</div>
       {appointment ? <><dl className="detail-list"><div><dt>Lịch khảo sát</dt><dd>{appointmentScheduleLabel(appointment.scheduledDate, appointment.scheduledStartDate, appointment.scheduledEndDate, appointment.startAt, appointment.endAt)}</dd></div></dl>
-        <Space wrap>{canConfirmOwnerAppointment(order) ? <Button type="primary" disabled={busy || !!action} onClick={() => { setNotice(''); setAction({ kind: 'confirm', snapshot: order }) }}>Xác nhận lịch</Button> : null}
+        {!healthAppointment ? <Space wrap>{canConfirmOwnerAppointment(order) ? <Button type="primary" disabled={busy || !!action} onClick={() => { setNotice(''); setAction({ kind: 'confirm', snapshot: order }) }}>Xác nhận lịch</Button> : null}
           <Button disabled={busy || !!action || history.isFetching || history.isPending || history.isError || !canRescheduleOwnerAppointment(order, history.data)} onClick={() => { setNotice(''); setAction({ kind: 'reschedule', snapshot: order }) }}>Yêu cầu đổi lịch</Button>
-        </Space>
-        {appointment.status === 'PROPOSED' && Date.parse(appointment.endAt) <= Date.now() ? <p className="form-hint">Lịch hẹn đã hết thời gian xác nhận. Hãy yêu cầu Manager đề xuất lại.</p> : null}
-        {appointment.status === 'RESCHEDULE_REQUESTED' ? <p className="form-hint">Đã gửi yêu cầu đổi lịch. Chờ Manager đề xuất thời gian mới.</p> : null}
-        {rescheduleBlockedByPayment ? <p className="form-hint">Đơn đã có giao dịch đang hiệu lực. Liên hệ hỗ trợ nếu cần đổi lịch dịch vụ.</p> : null}
-      </> : <p>Chờ Manager đề xuất lịch. Khi có lịch, bạn có thể xác nhận hoặc gửi yêu cầu đổi thời gian.</p>}
+        </Space> : <p className="form-hint">{appointment.status === 'CONFIRMED' ? 'Manager đã chốt lịch bay bệnh. Bạn không cần xác nhận trên hệ thống; liên hệ Manager nếu cần điều chỉnh thời gian.' : 'Liên hệ Manager để lưu và chốt lại lịch bay bệnh. Bạn không cần xác nhận lịch dịch vụ trên hệ thống.'}</p>}
+        {!healthAppointment && appointment.status === 'PROPOSED' && Date.parse(appointment.endAt) <= Date.now() ? <p className="form-hint">Lịch hẹn đã hết thời gian xác nhận. Hãy yêu cầu Manager đề xuất lại.</p> : null}
+        {!healthAppointment && appointment.status === 'RESCHEDULE_REQUESTED' ? <p className="form-hint">Đã gửi yêu cầu đổi lịch. Chờ Manager đề xuất thời gian mới.</p> : null}
+      </> : <p>Chờ Manager lên lịch. Lịch bản đồ nền cần bạn xác nhận; lịch bay bệnh do Manager chốt sau khi thống nhất thời gian.</p>}
     </section>
     <div className="workflow-section"><SurveyPaymentPanel order={order} history={history} refreshOrder={refreshOrder} disabled={busy || !!action} /></div>
-    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Chi phí khảo sát</strong><span>Số tiền theo thông tin của hệ thống</span></div><CreditCardOutlined aria-hidden="true" /></div><dl className="detail-list">{showDeposit ? <div><dt>Cọc khảo sát</dt><dd>{money(order.depositAmount, order.currency)}</dd></div> : null}<div><dt>Tổng tiền dịch vụ</dt><dd className={order.totalAmount === null ? 'is-pending' : undefined}>{money(order.totalAmount, order.currency)}</dd></div><div><dt>Số tiền còn lại</dt><dd className={order.remainingAmount === null ? 'is-pending' : undefined}>{money(order.remainingAmount, order.currency)}</dd></div></dl></section>
+    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Chi phí khảo sát</strong><span>Hóa đơn được chốt sau khi Manager duyệt kết quả</span></div><CreditCardOutlined aria-hidden="true" /></div><dl className="detail-list">{showDeposit ? <div><dt>Cọc khảo sát</dt><dd>{money(order.depositAmount, order.currency)}</dd></div> : null}<SurveyInvoiceLines invoice={order} /><div><dt>Tổng tiền dịch vụ</dt><dd className={order.totalAmount === null ? 'is-pending' : undefined}>{money(order.totalAmount, order.currency)}</dd></div><div><dt>Số tiền còn lại</dt><dd className={order.remainingAmount === null ? 'is-pending' : undefined}>{money(order.remainingAmount, order.currency)}</dd></div></dl></section>
     {action ? <OwnerAppointmentDialog token={token} tenantId={tenantId} action={action} current={order} history={history.isError ? undefined : history.data} disabled={query.isFetching || query.isError || history.isFetching} close={() => { setAction(null); void refresh() }} done={async () => {
-      setNotice(action.kind === 'confirm' ? 'Đã xác nhận lịch. Kiểm tra khoản thanh toán bên dưới.' : 'Đã gửi yêu cầu đổi lịch. Chờ Manager đề xuất lại.')
+      setNotice(action.kind === 'confirm' ? 'Đã xác nhận lịch. Trả cọc nếu còn thiếu; khoản còn lại được chốt sau khi duyệt kết quả.' : 'Đã gửi yêu cầu đổi lịch. Chờ Manager đề xuất lại.')
       setAction(null); await refresh()
     }} /> : null}
   </>

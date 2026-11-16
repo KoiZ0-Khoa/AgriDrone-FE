@@ -33,7 +33,7 @@ export function RescheduleMissionModal({ token, farmId, missionId, currentVersio
         <Select value={droneId} allowClear loading={drones.isPending} disabled={mutation.isPending} placeholder="Giữ nguyên drone hiện tại" onChange={setDroneId}
           options={(drones.data ?? []).map(drone => ({ value: drone.id, label: `${drone.name} · ${drone.code}${drone.id === currentDroneId ? ' (hiện tại)' : ''}` }))} />
       </Form.Item>
-      <p className="form-hint">Ngày bay mới phải nằm trong khoảng lịch hẹn Owner đã xác nhận. Checklist preflight đã hoàn tất sẽ hết hiệu lực và cần làm lại.</p>
+      <p className="form-hint">Ngày bay mới phải nằm trong khoảng lịch khảo sát đã được chốt. Checklist preflight đã hoàn tất sẽ hết hiệu lực và cần làm lại.</p>
     </Form>
     {mutation.error ? <Alert type="error" showIcon message={missionError(mutation.error)} /> : null}
   </Modal>

@@ -19,7 +19,13 @@ export const getPublicServices = (signal?: AbortSignal) => apiRequest<PublicServ
 export const getPriceHistory = (token: string, serviceId: string, signal?: AbortSignal) => apiRequest<PriceHistory[]>(`${adminServices}/${id(serviceId)}/prices`, { token, signal })
 export const updateService = (token: string, serviceId: string, body: { name: string; description: string; expectedVersion: number }) => apiRequest(`${adminServices}/${id(serviceId)}`, { method: 'PUT', token, body })
 export const changeServiceState = (token: string, serviceId: string, state: 'activate' | 'experimental' | 'retire', body: { reason: string; expectedVersion: number }) => apiRequest(`${adminServices}/${id(serviceId)}/${state}`, { method: 'POST', token, body })
-export const createServicePrice = (token: string, serviceId: string, body: { amountPerPole: number; currency: 'VND'; expectedServiceVersion: number }) => apiRequest(`${adminServices}/${id(serviceId)}/prices`, { method: 'POST', token, body })
+export function componentServicePriceBody(mapping: string, health: string, expectedServiceVersion: number) {
+  const mappingPricePerPole = Number(mapping.trim()), plantHealthPricePerPole = Number(health.trim())
+  if (![mapping, health].every(value => /^\d+$/.test(value.trim())) || ![mappingPricePerPole, plantHealthPricePerPole].every(value => Number.isSafeInteger(value) && value > 0) || !Number.isSafeInteger(mappingPricePerPole + plantHealthPricePerPole)) throw new Error('Mỗi đơn giá phải là số nguyên VND lớn hơn 0.')
+  if (!Number.isInteger(expectedServiceVersion) || expectedServiceVersion < 1 || expectedServiceVersion > 4294967295) throw new Error('Tải lại dịch vụ để lấy phiên bản hiện tại trước khi đặt giá.')
+  return { amountPerPole: mappingPricePerPole + plantHealthPricePerPole, mappingPricePerPole, plantHealthPricePerPole, currency: 'VND' as const, expectedServiceVersion }
+}
+export const createServicePrice = (token: string, serviceId: string, body: ReturnType<typeof componentServicePriceBody>) => apiRequest(`${adminServices}/${id(serviceId)}/prices`, { method: 'POST', token, body })
 export function getRequests(token: string, page = 1, filters: { status?: string; kind?: string } = {}, signal?: AbortSignal) {
   const params = new URLSearchParams({ pageNumber: String(page), pageSize: '20' })
   for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value)

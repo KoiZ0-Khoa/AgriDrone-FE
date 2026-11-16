@@ -10,8 +10,8 @@ const api = await import(dataUrl(compile('../src/features/surveys/paymentPolicyA
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
-test('policy validation permits no deposit and rejects fractional VND or a 100 percent Combo', () => {
-  assert.deepEqual(api.depositPolicyBody('0', 0), { amountVnd: 0, expectedVersion: 0 })
+test('new-flow policy requires a positive deposit and rejects fractional VND or a 100 percent Combo', () => {
+  assert.throws(() => api.depositPolicyBody('0', 0))
   assert.deepEqual(api.depositPolicyBody('5000', 7), { amountVnd: 5000, expectedVersion: 7 })
   for (const value of ['', '-1', '1.1', '1,1', 'NaN', 'Infinity', '1e3', '9007199254740992']) assert.throws(() => api.depositPolicyBody(value, 1))
   assert.deepEqual(api.comboDiscountBody('99.99', 4), { discountPercentage: 99.99, expectedVersion: 4 })
@@ -44,7 +44,7 @@ test('Admin reads current policies and history with bearer authorization and can
 test('saving policies preserves the observed version and never retries a conflict', async () => {
   let calls = 0
   for (const [save, value, route, body] of [
-    [api.saveDepositPolicy, '0', 'survey-deposit', { amountVnd: 0, expectedVersion: 7 }],
+    [api.saveDepositPolicy, '5000', 'survey-deposit', { amountVnd: 5000, expectedVersion: 7 }],
     [api.saveComboDiscountPolicy, '20.25', 'survey-combo-discount', { discountPercentage: 20.25, expectedVersion: 7 }],
   ]) {
     globalThis.fetch = async (url, options) => {

@@ -17,8 +17,49 @@ const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 const base = 'http://test.local/api/tenant-owner/survey-orders'
 
+test('post-flight final accepts a past or absent appointment, including zero settlement, but still requires the paid deposit', () => {
+  const paidDeposit = { ...history, payments: [{ ...paymentItem, status: 'PAID' }] }
+  for (const appointment of [null, { ...paidServiceOrder.currentAppointment, startAt: '2026-01-01T01:00:00Z', endAt: '2026-01-01T02:00:00Z' }]) {
+    const order = { ...paidServiceOrder, depositAmount: 10000, currentAppointment: appointment }
+    assert.equal(flow.paymentRequiresAppointment(order, paidDeposit), false)
+    assert.equal(flow.canInitiateOwnerPayment(order, paidDeposit), true)
+    assert.equal(flow.canInitiateOwnerPayment(order, history), false)
+    assert.equal(flow.canInitiateOwnerPayment({ ...order, remainingAmount: 0 }, paidDeposit), true)
+    assert.deepEqual(flow.ownerPaymentBody(order, paidDeposit), { purpose: 'FINAL_BALANCE', expectedOrderVersion: order.orderVersion })
+    const pending = { ...paymentItem, purpose: 'FINAL_BALANCE', status: 'PROCESSING', amount: order.remainingAmount }
+    assert.equal(flow.canInitiateOwnerPayment(order, { ...paidDeposit, payments: [...paidDeposit.payments, pending] }), false)
+  }
+  for (const status of ['AWAITING_PRICING', 'READY_FOR_PAID_SERVICE', 'IN_PROGRESS', 'PENDING_REVIEW']) {
+    const order = { ...paidServiceOrder, depositAmount: 10000, status }
+    assert.equal(flow.paymentPurposeForOrder(order, paidDeposit), null)
+    assert.equal(flow.canInitiateOwnerPayment(order, paidDeposit), false)
+  }
+})
+
+test('Health schedules are view-only for Owner; Manager takes over old proposed appointments', () => {
+  for (const status of ['AWAITING_PRICING', 'AWAITING_PAID_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'READY_FOR_PAID_SERVICE']) {
+    for (const appointmentStatus of ['PROPOSED', 'CONFIRMED', 'RESCHEDULE_REQUESTED']) {
+      const order = { ...ownerOrder, status, currentAppointment: { ...ownerOrder.currentAppointment, purpose: 'PAID_SERVICE', status: appointmentStatus } }
+      assert.equal(flow.canConfirmOwnerAppointment(order), false)
+      assert.equal(flow.canRescheduleOwnerAppointment(order, history), false)
+    }
+  }
+  assert.equal(flow.canConfirmOwnerAppointment(ownerOrder), true)
+})
+
+test('Follow-up pays deposit after Manager confirms Health schedule, including an elapsed flight day', () => {
+  for (const endAt of ['2099-01-01T02:00:00Z', '2026-01-01T02:00:00Z']) {
+    const order = { ...confirmedOrder, currentAppointment: { ...confirmedOrder.currentAppointment, purpose: 'PAID_SERVICE', endAt } }
+    assert.equal(flow.paymentRequiresAppointment(order, history), false)
+    assert.equal(flow.canInitiateOwnerPayment(order, history), true)
+    assert.deepEqual(flow.ownerPaymentBody(order, history), { purpose: 'BASELINE_DEPOSIT', expectedOrderVersion: order.orderVersion })
+    for (const status of ['PROCESSING', 'PAID', 'ADJUSTMENT_REQUIRED']) assert.equal(flow.canInitiateOwnerPayment(order, { ...history, payments: [{ ...paymentItem, status }] }), false)
+  }
+  assert.equal(flow.canInitiateOwnerPayment({ ...confirmedOrder, currentAppointment: null }, history), false)
+})
+
 test('follow-up deposit is offered before an appointment and remains separate from the final balance', () => {
-  for (const status of ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_PRICING', 'AWAITING_PAID_APPOINTMENT', 'AWAITING_PAYMENT']) {
+  for (const status of ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_PAID_APPOINTMENT']) {
     const order = { ...ownerOrder, status, depositAmount: 5000, currentAppointment: null }
     assert.equal(flow.paymentPurposeForOrder(order, history), 'BASELINE_DEPOSIT')
     assert.equal(flow.payableAmount(order, history), 5000)
@@ -34,7 +75,7 @@ test('follow-up deposit is offered before an appointment and remains separate fr
   }
   assert.equal(flow.paymentPurposeForOrder({ ...ownerOrder, status: 'COMPLETED' }, history), null)
   assert.equal(flow.canInitiateOwnerPayment({ ...ownerOrder, status: 'AWAITING_BASELINE_DEPOSIT', currentAppointment: null }, history), false)
-  assert.equal(flow.canInitiateOwnerPayment({ ...paidServiceOrder, depositAmount: 5000, currentAppointment: null }, history), true)
+  assert.equal(flow.canInitiateOwnerPayment({ ...paidServiceOrder, depositAmount: 5000, currentAppointment: null }, history), false)
   const paid = { ...history, payments: [{ ...paymentItem, amount: 5000, status: 'PAID' }] }
   assert.equal(flow.paymentPurposeForOrder({ ...paidServiceOrder, depositAmount: 5000 }, paid), 'FINAL_BALANCE')
 })
@@ -50,7 +91,7 @@ test('an existing matching PAID final balance can synchronize the order without 
     assert.equal(flow.canSynchronizeOwnerPayment(order, { ...history, payments: [{ ...paidItem, ...changes }] }), false)
   }
   assert.equal(flow.canSynchronizeOwnerPayment(order, { ...paidHistory, surveyOrderId: 'another-order' }), false)
-  assert.equal(flow.canSynchronizeOwnerPayment({ ...order, currentAppointment: null }, paidHistory), false)
+  assert.equal(flow.canSynchronizeOwnerPayment({ ...order, currentAppointment: null }, paidHistory), true)
   assert.equal(flow.canSynchronizeOwnerPayment({ ...order, status: 'COMPLETED' }, paidHistory), false)
   assert.equal(flow.canSynchronizeOwnerPayment({ ...order, depositAmount: 5000 }, paidHistory), false)
   assert.equal(flow.canSynchronizeOwnerPayment(order, { ...history, payments: [paidItem, { ...paidItem, status: 'PROCESSING' }] }), false)
@@ -101,7 +142,8 @@ test('appointment conditions follow BE: proposed can confirm, expired cannot, re
   assert.equal(flow.canConfirmOwnerAppointment(ownerOrder, Date.parse(ownerOrder.currentAppointment.endAt)), false)
   for (const changes of [{ orderVersion: 0 }, { currentAppointment: null }, { status: 'COMPLETED' }, { currentAppointment: { ...ownerOrder.currentAppointment, appointmentVersion: undefined } }, { currentAppointment: { ...ownerOrder.currentAppointment, startAt: 'invalid' } }]) assert.equal(flow.canConfirmOwnerAppointment({ ...ownerOrder, ...changes }), false)
   assert.equal(flow.canRescheduleOwnerAppointment(confirmedOrder, history), true)
-  assert.equal(flow.canRescheduleOwnerAppointment(paidServiceOrder, history), true)
+  assert.equal(flow.canRescheduleOwnerAppointment(paidServiceOrder, history), false)
+  assert.equal(flow.canRescheduleOwnerAppointment({ ...paidServiceOrder, status: 'READY_FOR_PAID_SERVICE' }, history), false)
   assert.equal(flow.canRescheduleOwnerAppointment(paidServiceOrder, { ...history, payments: [{ ...paymentItem, status: 'PAID' }] }), false)
   assert.equal(flow.canRescheduleOwnerAppointment({ ...confirmedOrder, status: 'BASELINE_IN_PROGRESS' }, history), false)
   assert.equal(flow.canRescheduleOwnerAppointment(ownerOrder, undefined), false)
@@ -115,7 +157,7 @@ test('payment gating blocks duplicate/incomplete/expired contexts and keeps rema
   for (const status of ['PENDING', 'PROCESSING', 'PAID', 'ADJUSTMENT_REQUIRED']) assert.equal(flow.canInitiateOwnerPayment(confirmedOrder, { ...history, payments: [{ ...paymentItem, status }] }), false)
   assert.equal(flow.canInitiateOwnerPayment(confirmedOrder, { ...history, payments: [{ ...paymentItem, status: 'FAILED' }] }), true)
   assert.equal(flow.canInitiateOwnerPayment(confirmedOrder, history, Date.parse(confirmedOrder.currentAppointment.endAt)), false)
-  assert.equal(flow.canInitiateOwnerPayment({ ...confirmedOrder, currentAppointment: { ...confirmedOrder.currentAppointment, purpose: 'PAID_SERVICE' } }, history), false)
+  assert.equal(flow.canInitiateOwnerPayment({ ...confirmedOrder, currentAppointment: { ...confirmedOrder.currentAppointment, purpose: 'PAID_SERVICE' } }, history), true)
   assert.deepEqual(flow.ownerPaymentBody(paidServiceOrder, history), { purpose: 'FINAL_BALANCE', expectedOrderVersion: 4165 })
   assert.equal(flow.canInitiateOwnerPayment(paidServiceOrder, { ...history, payments: [{ ...paymentItem, status: 'PAID' }] }), true)
   const zero = { ...paidServiceOrder, remainingAmount: 0 }

@@ -54,7 +54,7 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     ]
     const configured = render(ServicesPage, 'SYSTEM_ADMIN', policies)
     assert.match(configured, /Chính sách thanh toán/)
-    assert.match(configured, /Không thu tiền cọc cho đơn mới/)
+    assert.match(configured, /Cần đặt cọc lớn hơn 0 để duyệt đơn mới/)
     assert.match(configured, /20,25%/)
     for (const label of ['Chỉnh tiền cọc', 'Chỉnh giảm giá', 'Lịch sử tiền cọc', 'Lịch sử giảm giá']) assert.match(configured, new RegExp(label))
     assert.doesNotMatch(configured, /private-policy-id|private-combo-id|expectedVersion/)
@@ -119,7 +119,7 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(mappedFarm, /Cập nhật ranh giới/)
     assert.match(mappedFarm, /Zone A/)
     assert.match(mappedFarm, /Bản đồ đã công bố: phiên bản 2/)
-    const order = { surveyOrderId: 'order', orderNumber: 'SO-TEST', tenantId: 'tenant', farmId: 'farm', farmCode: 'FARM', farmName: 'Farm One', surveyServiceName: 'Plant Health', status: 'AWAITING_BASELINE_APPOINTMENT', orderVersion: 51, requiresBaselineMapping: true, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null, createdAt: '2026-10-19T00:00:00Z', updatedAt: '2026-10-19T00:00:00Z' }
+    const order = { surveyOrderId: 'order', orderNumber: 'SO-TEST', tenantId: 'tenant', farmId: 'farm', farmCode: 'FARM', farmName: 'Farm One', surveyServiceName: 'Plant Health', status: 'AWAITING_BASELINE_APPOINTMENT', orderVersion: 51, requiresBaselineMapping: true, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null, currentAppointmentPurpose: null, createdAt: '2026-10-19T00:00:00Z', updatedAt: '2026-10-19T00:00:00Z' }
     const adminOrders = render(SystemOrdersPage, 'SYSTEM_ADMIN', [[['system-survey-orders', 1, { status: '', tenantId: '', farmId: '' }], { items: [order], totalCount: 1 }]])
     assert.match(adminOrders, /SO-TEST/)
     assert.match(adminOrders, /Farm One/)
@@ -128,9 +128,15 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     const orders = render(ManagerOrdersPage, 'SYSTEM_MANAGER', [[['manager-orders', 1, ''], { items: [order], totalCount: 1 }]])
     assert.match(orders, /SO-TEST/)
     assert.match(orders, /href="\/manager\/orders\/order"/)
-    const scope = { surveyOrderId: 'order', orderNumber: 'SO-TEST', tenantId: 'tenant', farmId: 'farm', orderStatus: order.status, orderVersion: 51, requiresBaselineMapping: true, currentApprovedBoundary: null, zones: [] }
+    const scope = { surveyOrderId: 'order', orderNumber: 'SO-TEST', tenantId: 'tenant', farmId: 'farm', orderStatus: order.status, orderVersion: 51, requiresBaselineMapping: true, currentApprovedBoundary: null, zones: [], serviceReviewedAt: null }
     const renderOrder = (nextOrder, nextScope, extra = []) => render(ManagerOrderDetailPage, 'SYSTEM_MANAGER', [[['manager-order-context', 'order'], nextOrder], [['manager-order-scope', 'order'], nextScope], ...extra], {}, '/manager/orders/order')
-    const pricingOrder = { ...order, status: 'AWAITING_PRICING' }, pricingScope = { ...scope, orderStatus: 'AWAITING_PRICING' }
+    const pricingOrder = { ...order, status: 'AWAITING_PRICING' }, pricingScope = { ...scope, orderStatus: 'AWAITING_PRICING', serviceReviewedAt: '2026-11-16T03:00:00Z' }
+    const beforeReview = renderOrder(pricingOrder, { ...pricingScope, serviceReviewedAt: null })
+    assert.match(beforeReview, /<button[^>]*><span>Lên lịch bay bệnh<\/span><\/button>/)
+    assert.doesNotMatch(beforeReview, /<button[^>]*><span>Xác nhận số trụ và giá<\/span><\/button>/)
+    const missingReviewState = renderOrder(pricingOrder, { ...pricingScope, serviceReviewedAt: undefined })
+    assert.match(missingReviewState, /API chưa trả thông tin duyệt kết quả/)
+    assert.doesNotMatch(missingReviewState, /<button[^>]*><span>Xác nhận số trụ và giá<\/span><\/button>/)
     assert.match(renderOrder(pricingOrder, pricingScope), /<button[^>]*>[\s\S]*?Xác nhận số trụ và giá[\s\S]*?<\/button>/)
     assert.doesNotMatch(renderOrder({ ...pricingOrder, orderVersion: 50 }, pricingScope), />Xác nhận số trụ và giá<\/span>/)
     assert.doesNotMatch(renderOrder(order, scope), />Xác nhận số trụ và giá<\/span>/)
@@ -138,10 +144,19 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(baseline, /Đề xuất lịch/)
     assert.doesNotMatch(baseline, />Xác minh ranh giới</)
     const paidOrder = { ...order, status: 'AWAITING_PAID_APPOINTMENT' }
-    const paidScope = { ...scope, orderStatus: paidOrder.status }
-    assert.match(renderOrder(paidOrder, paidScope), /<button[^>]*><span>Đề xuất lịch dịch vụ<\/span><\/button>/)
-    assert.doesNotMatch(renderOrder({ ...paidOrder, currentAppointmentId: 'paid-appointment', currentAppointmentVersion: 91, currentAppointmentStatus: 'PROPOSED' }, paidScope), /<button[^>]*><span>Đề xuất lịch dịch vụ<\/span><\/button>/)
-    const rescheduleOrder = { ...order, currentAppointmentId: 'old-appointment', currentAppointmentVersion: 73, currentAppointmentStatus: 'RESCHEDULE_REQUESTED' }
+    const paidScope = { ...scope, orderStatus: paidOrder.status, serviceReviewedAt: null }
+    assert.match(renderOrder(paidOrder, paidScope), /<button[^>]*><span>Lên lịch bay bệnh<\/span><\/button>/)
+    const healthAppointment = { ...paidOrder, currentAppointmentId: 'paid-appointment', currentAppointmentVersion: 91, currentAppointmentStatus: 'PROPOSED', currentAppointmentPurpose: 'PAID_SERVICE' }
+    const oldHealthProposal = renderOrder(healthAppointment, paidScope)
+    assert.match(oldHealthProposal, /<button[^>]*><span>Chốt lịch bay bệnh<\/span><\/button>/)
+    assert.doesNotMatch(oldHealthProposal, /Chờ Owner xác nhận/)
+    const readyHealth = renderOrder({ ...healthAppointment, status: 'READY_FOR_PAID_SERVICE', currentAppointmentStatus: 'CONFIRMED' }, { ...paidScope, orderStatus: 'READY_FOR_PAID_SERVICE' })
+    assert.match(readyHealth, /Lịch bay bệnh đã chốt/)
+    assert.doesNotMatch(readyHealth, /<button[^>]*><span>(Lên|Chốt) lịch bay bệnh<\/span><\/button>/)
+    const missingPurpose = renderOrder({ ...healthAppointment, currentAppointmentPurpose: undefined }, paidScope)
+    assert.match(missingPurpose, /Chưa xác định được mục đích lịch hẹn/)
+    assert.doesNotMatch(missingPurpose, /<button[^>]*><span>(Lên|Chốt) lịch bay bệnh<\/span><\/button>/)
+    const rescheduleOrder = { ...order, currentAppointmentId: 'old-appointment', currentAppointmentVersion: 73, currentAppointmentStatus: 'RESCHEDULE_REQUESTED', currentAppointmentPurpose: 'BASELINE_MAPPING' }
     const rescheduleList = render(ManagerOrdersPage, 'SYSTEM_MANAGER', [[['manager-orders', 1, ''], { items: [rescheduleOrder], totalCount: 1 }]])
     assert.match(rescheduleList, /Owner yêu cầu đổi lịch/)
     const rescheduleDashboard = render(ManagerFarmsPage, 'SYSTEM_MANAGER', [[['api-health'], true], [['manager-assigned-farms'], []], [['manager-orders', 1, ''], { items: [rescheduleOrder], totalCount: 1 }]])
