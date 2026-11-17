@@ -23,6 +23,9 @@ export function matchingOrderSnapshot(order: AssignedOrder, scope: OrderScope) {
 }
 
 export const serviceIsReviewed = (scope: OrderScope) => typeof scope.serviceReviewedAt === 'string' && Number.isFinite(Date.parse(scope.serviceReviewedAt))
+// After internal publication the Order leaves PENDING_REVIEW; the review page stays reachable read-only.
+export const canOpenHealthReview = (serviceCode: string, scope: OrderScope) => serviceCode === 'PLANT_HEALTH' &&
+  (['PENDING_REVIEW', 'COMPLETED'].includes(scope.orderStatus) || (['AWAITING_PRICING', 'AWAITING_PAYMENT'].includes(scope.orderStatus) && serviceIsReviewed(scope)))
 export function appointmentPurpose(scope: OrderScope): AppointmentBody['purpose'] | null {
   if (scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' && scope.requiresBaselineMapping) return 'BASELINE_MAPPING'
   if (scope.serviceReviewedAt === null && (scope.orderStatus === 'AWAITING_PAID_APPOINTMENT' || (scope.orderStatus === 'AWAITING_PRICING' && scope.requiresBaselineMapping))) return 'PAID_SERVICE'

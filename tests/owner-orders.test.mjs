@@ -151,7 +151,7 @@ test('appointment conditions follow BE: proposed can confirm, expired cannot, re
 
 test('payment gating blocks duplicate/incomplete/expired contexts and keeps remainingAmount=0 without falling back to totalAmount', () => {
   assert.equal(flow.canInitiateOwnerPayment(confirmedOrder, history), true)
-  assert.equal(flow.canInitiateOwnerPayment(ownerOrder, history), false)
+  assert.equal(flow.canInitiateOwnerPayment({ ...ownerOrder, status: 'BASELINE_READY' }, history), false)
   assert.equal(flow.canInitiateOwnerPayment(confirmedOrder, undefined), false)
   assert.equal(flow.canInitiateOwnerPayment(confirmedOrder, { ...history, surveyOrderId: appointmentId }), false)
   for (const status of ['PENDING', 'PROCESSING', 'PAID', 'ADJUSTMENT_REQUIRED']) assert.equal(flow.canInitiateOwnerPayment(confirmedOrder, { ...history, payments: [{ ...paymentItem, status }] }), false)
@@ -163,7 +163,24 @@ test('payment gating blocks duplicate/incomplete/expired contexts and keeps rema
   const zero = { ...paidServiceOrder, remainingAmount: 0 }
   assert.equal(flow.payableAmount(zero), 0)
   assert.equal(flow.canInitiateOwnerPayment(zero, history), true)
-  assert.throws(() => flow.ownerPaymentBody(ownerOrder, history))
+  assert.throws(() => flow.ownerPaymentBody({ ...ownerOrder, status: 'BASELINE_READY' }, history))
+})
+
+test('map deposit can be paid while the map schedule is still awaiting Owner confirmation, as BE allows', () => {
+  for (const currentAppointment of [null, ownerOrder.currentAppointment, { ...ownerOrder.currentAppointment, status: 'RESCHEDULE_REQUESTED' }]) {
+    const order = { ...ownerOrder, currentAppointment }
+    assert.equal(flow.paymentPurposeForOrder(order, history), 'BASELINE_DEPOSIT')
+    assert.equal(flow.paymentRequiresAppointment(order, history), false)
+    assert.equal(flow.payableAmount(order, history), order.depositAmount)
+    assert.equal(flow.canInitiateOwnerPayment(order, history), true)
+    assert.deepEqual(flow.ownerPaymentBody(order, history), { purpose: 'BASELINE_DEPOSIT', expectedOrderVersion: order.orderVersion })
+    for (const status of ['PENDING', 'PROCESSING', 'ADJUSTMENT_REQUIRED']) assert.equal(flow.canInitiateOwnerPayment(order, { ...history, payments: [{ ...paymentItem, status }] }), false)
+    const paid = { ...history, payments: [{ ...paymentItem, status: 'PAID' }] }
+    assert.equal(flow.paymentPurposeForOrder(order, paid), null)
+    assert.equal(flow.canInitiateOwnerPayment(order, paid), false)
+    assert.equal(flow.canInitiateOwnerPayment(order, undefined), false)
+    assert.equal(flow.paymentPurposeForOrder({ ...order, depositAmount: 0 }, history), null)
+  }
 })
 
 test('full mocked baseline flow reads proposed schedule, confirms, re-reads new version, creates one checkout and waits for BE PAID', async () => {
@@ -198,4 +215,28 @@ test('full mocked baseline flow reads proposed schedule, confirms, re-reads new 
   assert.equal((await readPaymentApi.getPaymentHistory('owner', orderId)).payments[0].status, 'PAID')
   assert.equal((await api.getOwnerOrder('owner', orderId)).status, 'BASELINE_READY')
   assert.equal(calls.filter(call => call.startsWith('POST ') && call.endsWith('/payments')).length, 1)
+})
+
+test('a deposit refunded after the invoice is repaid before the final balance, mirroring BE CanAcceptDepositPayment', () => {
+  const order = { ...paidServiceOrder, depositAmount: 10000, currentAppointment: null }
+  const refunded = { ...history, payments: [{ ...paymentItem, status: 'REFUNDED' }] }
+  assert.equal(flow.paymentPurposeForOrder(order, refunded), 'BASELINE_DEPOSIT')
+  assert.equal(flow.payableAmount(order, refunded), 10000)
+  assert.equal(flow.paymentRequiresAppointment(order, refunded), false)
+  assert.equal(flow.canInitiateOwnerPayment(order, refunded), true)
+  assert.equal(flow.canSynchronizeOwnerPayment(order, refunded), false)
+  assert.deepEqual(flow.ownerPaymentBody(order, refunded), { purpose: 'BASELINE_DEPOSIT', expectedOrderVersion: order.orderVersion })
+  for (const status of ['PENDING', 'PROCESSING', 'ADJUSTMENT_REQUIRED']) {
+    assert.equal(flow.canInitiateOwnerPayment(order, { ...refunded, payments: [...refunded.payments, { ...paymentItem, surveyPaymentId: 'retry', status }] }), false)
+  }
+  const repaid = { ...refunded, payments: [...refunded.payments, { ...paymentItem, surveyPaymentId: 'retry', status: 'PAID' }] }
+  assert.equal(flow.paymentPurposeForOrder(order, repaid), 'FINAL_BALANCE')
+  assert.equal(flow.canInitiateOwnerPayment(order, repaid), true)
+  // Never-paid or failed deposits are not a refund: the final balance stays blocked without reopening the deposit.
+  for (const payments of [[], [{ ...paymentItem, status: 'FAILED' }]]) {
+    assert.equal(flow.paymentPurposeForOrder(order, { ...history, payments }), 'FINAL_BALANCE')
+    assert.equal(flow.canInitiateOwnerPayment(order, { ...history, payments }), false)
+  }
+  assert.equal(flow.paymentPurposeForOrder(order, { ...refunded, surveyOrderId: 'another-order' }), 'FINAL_BALANCE')
+  assert.equal(flow.paymentPurposeForOrder({ ...order, status: 'COMPLETED' }, refunded), null)
 })

@@ -125,7 +125,9 @@ export function ManagerMissionDetailPage() {
   const scheduled = status === 'SCHEDULED'
   const inFlight = status === 'IN_FLIGHT'
   const flightFailed = status === 'FLIGHT_FAILED'
-  const preflightDone = Boolean(latest?.preflightConfirmedAt)
+  // `latest` only exists after an action in this session; after a reload fall back to the list snapshot.
+  const preflightDone = Boolean(latest?.preflightConfirmedAt ?? mission?.preflightConfirmedAt)
+  const preflightSuitable = latest ? latest.preflightSuitableForFlight : mission?.preflightSuitableForFlight
   const droneQuery = useQuery({ queryKey: ['mission-drone', farmId, mission?.droneId], queryFn: ({ signal }) => api.getFarmDroneDetails(token, farmId, mission!.droneId, signal), enabled: Boolean(mission) })
   const checklistQuery = useQuery({ queryKey: ['mission-checklist', farmId, missionId], queryFn: ({ signal }) => api.getActivePreflightChecklist(token, farmId, missionId, signal), enabled: scheduled && !preflightDone })
   const currentAnswers = checklistQuery.data ? { ...Object.fromEntries(checklistQuery.data.items.map(item => [item.key, false])), ...answers } : answers
@@ -169,6 +171,8 @@ export function ManagerMissionDetailPage() {
       return api.completeMissionPreflight(token, farmId, missionId, body, next.key)
     },
     onSuccess: async data => { await refreshAfter(data.mission); void message.success(data.reusedOperation ? 'Checklist đã được ghi nhận từ trước.' : 'Đã hoàn tất checklist preflight.') },
+    // Checklist was already completed (e.g. stale page): reload the mission so the form gives way to "Bắt đầu bay".
+    onError: error => { if ((error as { code?: string }).code === 'MissionPreflight.AlreadyCompleted') void missionQuery.refetch() },
   })
   const startMutation = useMutation({
     mutationFn: () => { if (version === undefined) throw new Error('Chưa tải được phiên bản nhiệm vụ.'); return api.startMission(token, farmId, missionId, version) },
@@ -379,8 +383,8 @@ export function ManagerMissionDetailPage() {
     <Steps className="mission-steps" size="small" current={missionStepIndex(status ?? mission.status, preflightDone)} items={(isPlantHealth ? ['Preflight', 'Bay', 'Upload & Telemetry', 'Nhận diện bệnh', 'Chuyển kết quả kiểm duyệt'] : missionStepTitles).map(title => ({ title }))} />
     {!draft && !scheduled && !inFlight && !flightFailed && !postFlight && !orthophotoEligible && !canResetUpload ? <Alert className="workflow-notice" type="info" showIcon message={`Nhiệm vụ đang ở trạng thái "${missionStatusLabel(status ?? mission.status)}", không ở bước có thao tác trong phạm vi đã triển khai.`} /> : null}
     {flightFailed ? <Alert className="workflow-notice" type="warning" showIcon message="Chuyến bay trước đã lỗi." description="Chỉ lên lịch lại được nếu quyết định khắc phục khi báo lỗi là &quot;Cần lên lịch lại&quot;." /> : null}
-    {!draft ? <StepSection title="Checklist trước khi bay" status={scheduled && !preflightDone ? 'active' : 'done'} summary={preflightDone ? `Phù hợp để bay: ${latest?.preflightSuitableForFlight ? 'Có' : 'Không'}.` : undefined}>
-      {preflightDone ? <Alert type="success" showIcon message="Đã hoàn tất checklist preflight." description={`Phù hợp để bay: ${latest?.preflightSuitableForFlight ? 'Có' : 'Không'}.`} />
+    {!draft ? <StepSection title="Checklist trước khi bay" status={scheduled && !preflightDone ? 'active' : 'done'} summary={preflightDone ? `Phù hợp để bay: ${preflightSuitable ? 'Có' : 'Không'}.` : undefined}>
+      {preflightDone ? <Alert type="success" showIcon message="Đã hoàn tất checklist preflight." description={`Phù hợp để bay: ${preflightSuitable ? 'Có' : 'Không'}.`} />
         : checklistQuery.isPending ? <CommonState type="loading" />
         : checklistQuery.isError ? <CommonState type="error" description={missionError(checklistQuery.error)} retry={() => checklistQuery.refetch()} />
         : checklistQuery.data ? <>

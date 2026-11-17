@@ -16,6 +16,8 @@ export type MissionListItem = {
   missionType: string | null; status: string; processingStatus: string
   scheduledAt: string | null; scheduledEndAt: string | null; startedAt: string | null; endedAt: string | null
   version: number; createdAt: string
+  // Older API builds omit these; treat missing as "unknown" and rely on the in-session snapshot.
+  preflightConfirmedAt?: string | null; preflightSuitableForFlight?: boolean | null
 }
 export type MissionDetail = {
   id: string; tenantId: string; farmId: string; zoneId: string | null; droneId: string; pilotUserId: string | null
