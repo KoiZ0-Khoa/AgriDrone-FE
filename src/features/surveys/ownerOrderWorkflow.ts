@@ -11,10 +11,14 @@ export const ownerOrderStatusQuery: Record<string, string> = Object.fromEntries(
 export const ownerGuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) && value !== '00000000-0000-0000-0000-000000000000'
 export const validOwnerVersion = (value: number) => Number.isInteger(value) && value > 0 && value <= 4_294_967_295
 export const ownerOrderFingerprint = (order: OwnerSurveyOrder) => JSON.stringify(order)
-const depositEligibleStatuses = ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_PAID_APPOINTMENT']
+// Mirrors BE SurveyOrder.CanAcceptDepositPayment: the deposit may be paid before the map schedule is confirmed.
+const depositEligibleStatuses = ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_BASELINE_APPOINTMENT', 'AWAITING_PAID_APPOINTMENT']
 const hasPaidDeposit = (order: OwnerSurveyOrder, history: PaymentHistory) => history.payments.some(item => item.purpose === 'BASELINE_DEPOSIT' && paymentIsPaid(item.status) && item.amount === order.depositAmount && item.currency === order.currency)
+// BE reopens the deposit when it was refunded after the invoice was finalized; it must be repaid before the final balance.
+export const depositRefundedAfterInvoice = (order: OwnerSurveyOrder, history?: PaymentHistory) => order.status === 'AWAITING_PAYMENT' && order.depositAmount > 0 &&
+  historyMatchesOrder(order, history) && !hasPaidDeposit(order, history!) && history!.payments.some(item => item.purpose === 'BASELINE_DEPOSIT' && item.status === 'REFUNDED')
 export function paymentPurposeForOrder(order: OwnerSurveyOrder, history?: PaymentHistory): PaymentPurpose | null {
-  if (order.status === 'AWAITING_BASELINE_DEPOSIT') return 'BASELINE_DEPOSIT'
+  if (order.status === 'AWAITING_BASELINE_DEPOSIT' || depositRefundedAfterInvoice(order, history)) return 'BASELINE_DEPOSIT'
   if (depositEligibleStatuses.includes(order.status) && order.depositAmount > 0 && historyMatchesOrder(order, history) &&
     !hasPaidDeposit(order, history!)) return 'BASELINE_DEPOSIT'
   return order.status === 'AWAITING_PAYMENT' ? 'FINAL_BALANCE' : null

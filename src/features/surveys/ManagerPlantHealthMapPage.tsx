@@ -1,21 +1,23 @@
 import 'leaflet/dist/leaflet.css'
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Drawer, Empty, Image, Space, Tag } from 'antd'
-import type { ImageOverlay as LeafletImageOverlay } from 'leaflet'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, Button, Drawer, Empty, Image, Space, Table, Tag } from 'antd'
+import type { ImageOverlay as LeafletImageOverlay, Map as LeafletMap } from 'leaflet'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { CircleMarker, GeoJSON as GeoJsonLayer, ImageOverlay, MapContainer } from 'react-leaflet'
+import { CircleMarker, GeoJSON as GeoJsonLayer, ImageOverlay, MapContainer, Polyline, Tooltip } from 'react-leaflet'
 import { CommonState } from '../../components/CommonState'
 import { MapBaseLayers } from '../../components/MapBaseLayers'
 import { useAuth } from '../auth/AuthContext'
 import { getFarmContext } from './farmOperationsApi'
 import * as api from './plantHealthMapApi'
 import type { FarmHealthPlant } from './plantHealthMapTypes'
-import { diseaseZoneStatusLabels, healthStatusColors, healthStatusLabels, plantHealthMapError } from './plantHealthMapWorkflow'
+import { diseaseZoneStatusLabels, flaggedMarkers, healthStatusColors, healthStatusLabels, plantHealthMapError, plantHealthReviewError, type FlaggedMarker } from './plantHealthMapWorkflow'
+import { getFlaggedObservations } from './plantHealthReviewApi'
 import type { OrthophotoBounds } from '../missions/missionTypes'
 
 const zoneColor = '#b42318'
+const flaggedColor = '#7c3aed'
 
 // Cắt ImageOverlay theo đúng hình polygon ranh giới vườn (boundaryGeoJson) thay vì để nguyên khung
 // chữ nhật bao quanh ảnh — tránh lộ viền trắng/đất trống không thuộc vườn. Dùng clip-path theo %
@@ -63,6 +65,13 @@ export function ManagerPlantHealthMapPage() {
     queryFn: ({ signal }) => api.getFarmPlantHealthMap(token, farmId, farmQuery.data!.tenantId, signal),
     enabled: Boolean(farmQuery.data),
   })
+  // A3 — chỉ xem. Lỗi ở đây không chặn bản đồ.
+  const flaggedQuery = useQuery({ queryKey: ['farm-flagged-observations', farmId], queryFn: ({ signal }) => getFlaggedObservations(token, farmId, signal), enabled: Boolean(mapQuery.data?.baseMap), retry: false })
+  const flagged = useMemo(() => flaggedMarkers(flaggedQuery.data?.items ?? [], mapQuery.data?.plants ?? []), [flaggedQuery.data, mapQuery.data])
+  const mapRef = useRef<LeafletMap | null>(null)
+  function focus(marker: FlaggedMarker) {
+    if (marker.lat !== null && marker.lon !== null) mapRef.current?.flyTo([marker.lat, marker.lon], Math.max(mapRef.current.getZoom(), 20))
+  }
 
   const baseMap = mapQuery.data?.baseMap
   const boundaryGeoJson = mapQuery.data?.boundaryGeoJson ?? null
@@ -80,7 +89,7 @@ export function ManagerPlantHealthMapPage() {
   return <>
     {back}
     <section className="resource-page-heading"><div><span className="page-kicker">BẢN ĐỒ SỨC KHỎE CÂY</span><h1>{farm.name}</h1><p>Tổng hợp tình trạng cây trồng từ các chuyến bay quét bệnh.</p></div>
-      <Button icon={<ReloadOutlined />} loading={mapQuery.isFetching} onClick={() => { void mapQuery.refetch() }}>Tải lại</Button>
+      <Button icon={<ReloadOutlined />} loading={mapQuery.isFetching || flaggedQuery.isFetching} onClick={() => { void mapQuery.refetch(); if (mapQuery.data?.baseMap) void flaggedQuery.refetch() }}>Tải lại</Button>
     </section>
 
     {mapQuery.isPending ? <CommonState type="loading" title="Đang tải bản đồ sức khỏe cây" />
@@ -102,8 +111,10 @@ export function ManagerPlantHealthMapPage() {
 
         <section className="resource-panel workflow-section">
           <div className="resource-panel-heading"><div><strong>Bản đồ</strong><span>Click vào 1 cây để xem chi tiết vết bệnh/trái.</span></div></div>
+          <Alert className="workflow-notice" type="info" showIcon title="Màu trụ là kết quả AI, chưa qua kiểm duyệt"
+            description="Quyết định Bác bỏ / Không phải bệnh / Sửa ở trang Kiểm duyệt kết quả của đơn khảo sát chưa được phản ánh lên màu trụ trên bản đồ này. Vùng bệnh thì có cập nhật theo kết quả kiểm duyệt." />
           <div style={{ height: 560, marginTop: 12 }}>
-            <MapContainer bounds={[[mapQuery.data.baseMap.bounds.minLat, mapQuery.data.baseMap.bounds.minLon], [mapQuery.data.baseMap.bounds.maxLat, mapQuery.data.baseMap.bounds.maxLon]]} maxBounds={paddedBounds(mapQuery.data.baseMap.bounds)} maxBoundsViscosity={1} maxZoom={22} style={{ height: '100%', width: '100%' }}>
+            <MapContainer ref={mapRef} bounds={[[mapQuery.data.baseMap.bounds.minLat, mapQuery.data.baseMap.bounds.minLon], [mapQuery.data.baseMap.bounds.maxLat, mapQuery.data.baseMap.bounds.maxLon]]} maxBounds={paddedBounds(mapQuery.data.baseMap.bounds)} maxBoundsViscosity={1} maxZoom={22} style={{ height: '100%', width: '100%' }}>
               <MapBaseLayers />
               <ImageOverlay ref={imageOverlayRef} url={mapQuery.data.baseMap.previewUrl} bounds={[[mapQuery.data.baseMap.bounds.minLat, mapQuery.data.baseMap.bounds.minLon], [mapQuery.data.baseMap.bounds.maxLat, mapQuery.data.baseMap.bounds.maxLon]]} />
               {mapQuery.data.zones.filter(zone => zone.status !== 'REJECTED').map(zone => {
@@ -114,6 +125,12 @@ export function ManagerPlantHealthMapPage() {
               {mapQuery.data.plants.map(plant => <CircleMarker key={plant.id} center={[plant.lat, plant.lon]} radius={6}
                 pathOptions={{ color: healthStatusColors[plant.healthStatus], fillColor: healthStatusColors[plant.healthStatus], fillOpacity: 0.85 }}
                 eventHandlers={{ click: () => setSelectedPlant(plant) }} />)}
+              {flagged.map(marker => marker.lat === null || marker.lon === null ? null : <Fragment key={marker.id}>
+                {marker.suggested ? <Polyline positions={[[marker.lat, marker.lon], [marker.suggested.lat, marker.suggested.lon]]} pathOptions={{ color: flaggedColor, weight: 1.5, dashArray: '4 4' }} /> : null}
+                <CircleMarker center={[marker.lat, marker.lon]} radius={8} pathOptions={{ color: flaggedColor, weight: 2, dashArray: '3 3', fillColor: flaggedColor, fillOpacity: 0.15 }}>
+                  <Tooltip>{marker.className ?? 'Vết lệch'} · lệch {marker.distance?.toFixed(1) ?? '—'} m{marker.suggested ? ` · gần trụ ${marker.suggested.plantCode}` : ''}</Tooltip>
+                </CircleMarker>
+              </Fragment>)}
             </MapContainer>
           </div>
           <Space style={{ marginTop: 8 }} size="middle">
@@ -121,13 +138,30 @@ export function ManagerPlantHealthMapPage() {
             <span className="form-hint" style={{ color: healthStatusColors.HEALTHY_FRUIT }}>● Có trái khỏe</span>
             <span className="form-hint" style={{ color: '#b42318' }}>● Phát hiện bệnh</span>
             <span className="form-hint">▭ Vùng cảnh báo ổ dịch</span>
+            {flagged.length > 0 ? <span className="form-hint" style={{ color: flaggedColor }}>◌ Vết lệch tọa độ</span> : null}
           </Space>
         </section>
+
+        {flaggedQuery.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách vết lệch tọa độ" description={plantHealthReviewError(flaggedQuery.error)} />
+          : flagged.length > 0 ? <section className="resource-panel workflow-section">
+            <div className="resource-panel-heading"><div><strong>Vết lệch tọa độ ({flagged.length})</strong><span>AI phát hiện nhưng lệch quá 2,5 m so với trụ gần nhất nên chưa gắn được vào trụ nào.</span></div></div>
+            <p className="form-hint">Chỉ để xem. Xử lý trong trang Kiểm duyệt kết quả của đơn khảo sát: chọn phát hiện chưa gắn trụ → "Sửa" để gắn trụ, hoặc "Bác bỏ".</p>
+            <Table<FlaggedMarker> rowKey="id" size="small" dataSource={flagged} pagination={flagged.length > 10 ? { pageSize: 10 } : false} scroll={{ x: 700 }}
+              onRow={marker => ({ onClick: () => focus(marker), style: { cursor: marker.lat !== null ? 'pointer' : undefined } })}
+              columns={[
+                { title: 'Ảnh', width: 72, render: (_, marker) => marker.cropImageUrl ? <Image src={marker.cropImageUrl} width={56} alt={marker.imageName ?? 'Ảnh vết'} onClick={event => event.stopPropagation()} /> : '—' },
+                { title: 'Loại', render: (_, marker) => marker.className ?? '—' },
+                { title: 'Độ tin cậy', render: (_, marker) => marker.confidence === null ? '—' : `${Math.round(marker.confidence * 100)}%` },
+                { title: 'Lệch', render: (_, marker) => marker.distance === null ? '—' : `${marker.distance.toFixed(1)} m` },
+                { title: 'Trụ gần nhất', render: (_, marker) => marker.suggested?.plantCode ?? '—' },
+                { title: 'Vị trí', render: (_, marker) => marker.lat === null || marker.lon === null ? <Tag>Không có tọa độ</Tag> : <span className="form-hint">{marker.lat.toFixed(6)}, {marker.lon.toFixed(6)}</span> },
+              ]} />
+          </section> : null}
 
         <section className="resource-panel workflow-section">
           <div className="resource-panel-heading"><div><strong>Vùng cảnh báo ổ dịch</strong><span>{mapQuery.data.zones.length} vùng</span></div></div>
           {mapQuery.data.zones.length === 0 ? <Empty description="Chưa phát hiện ổ dịch nào." />
-            : <Space direction="vertical" style={{ width: '100%' }}>
+            : <Space orientation="vertical" style={{ width: '100%' }}>
               {mapQuery.data.zones.map(zone => <Alert key={zone.id} type={zone.status === 'REJECTED' ? 'info' : 'warning'} showIcon
                 message={<>{zone.diseaseNameVi || zone.diseaseName} · {zone.totalTrees} cây <Tag>{diseaseZoneStatusLabels[zone.status] ?? zone.status}</Tag></>}
                 description={zone.alertType} />)}
@@ -140,7 +174,7 @@ export function ManagerPlantHealthMapPage() {
         <Tag color={selectedPlant.healthStatus === 'DISEASE' ? 'error' : selectedPlant.healthStatus === 'HEALTHY_FRUIT' ? 'blue' : 'success'}>{healthStatusLabels[selectedPlant.healthStatus]}</Tag>
         <p className="form-hint" style={{ marginTop: 12 }}>{selectedPlant.lat.toFixed(6)}, {selectedPlant.lon.toFixed(6)}</p>
         {selectedPlant.observations.length === 0 ? <Empty description="Chưa có vết ghi nhận nào." />
-          : <Space direction="vertical" style={{ width: '100%', marginTop: 12 }}>
+          : <Space orientation="vertical" style={{ width: '100%', marginTop: 12 }}>
             {selectedPlant.observations.map(observation => <div key={observation.id} className="resource-panel" style={{ padding: 12 }}>
               <strong>{observation.classNameVi || observation.className}</strong>
               <p className="form-hint">Độ tin cậy {(observation.confidence * 100).toFixed(0)}% · lệch {observation.gpsDistanceM.toFixed(1)} m</p>

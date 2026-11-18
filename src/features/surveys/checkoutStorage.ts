@@ -28,7 +28,7 @@ export function restoredCheckoutMatches(payment: PaymentSession, order: OwnerSur
   if (!item) return false
   if (item.purpose === 'FINAL_BALANCE') return order.status === 'AWAITING_PAYMENT' && payment.amount === (order.remainingAmount ?? order.totalAmount) && payment.currency === order.currency
   if (item.purpose === 'BASELINE_DEPOSIT' && payment.appointmentId === null && payment.amount === order.depositAmount &&
-    ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_BASELINE_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'AWAITING_PAID_APPOINTMENT'].includes(order.status)) return true
+    ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_BASELINE_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'AWAITING_PAID_APPOINTMENT', 'AWAITING_PAYMENT'].includes(order.status)) return true
   return !!order.currentAppointment && payment.appointmentId === order.currentAppointment.appointmentId
 }
 export function clearSavedCheckouts() {

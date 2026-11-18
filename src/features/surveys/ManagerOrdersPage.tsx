@@ -8,7 +8,7 @@ import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { getAssignedOrder, getAssignedOrders, getOrderScope } from './orderApi'
 import type { Appointment, AssignedOrder, ConfirmedPricing } from './orderTypes'
-import { appointmentPurpose, appointmentStatusLabels, baselineStageNotices, matchingOrderSnapshot, orderStatusLabels, canProposeAppointment, serviceIsReviewed } from './orderWorkflow'
+import { appointmentPurpose, appointmentStatusLabels, baselineStageNotices, matchingOrderSnapshot, orderStatusLabels, canOpenHealthReview, canProposeAppointment, serviceIsReviewed } from './orderWorkflow'
 import { appointmentScheduleLabel, dateTime, priceLabel, workflowError } from './workflow'
 import { AppointmentModal, BoundaryVerificationModal } from './OrderActionModals'
 import { BoundaryCapturePanel } from './BoundaryCapturePanel'
@@ -95,6 +95,7 @@ export function ManagerOrderDetailPage() {
         <strong>Nhiệm vụ bay: </strong>
         <Space wrap split="·">{missionsQuery.data.map(mission => <Link key={mission.id} className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(mission.id)}`}>{readableCode(mission.missionCode)} ({missionStatusLabel(mission.status)}) →</Link>)}</Space>
       </div> : null}
+      {canOpenHealthReview(order.surveyServiceCode, scope) ? <p><Link className="workflow-detail-link" to={`/manager/orders/${encodeURIComponent(orderId)}/health-review`}>{scope.orderStatus === 'PENDING_REVIEW' ? 'Kiểm duyệt kết quả sức khỏe cây →' : 'Xem kết quả kiểm duyệt sức khỏe cây →'}</Link></p> : null}
       {scope.requiresBaselineMapping ? <>{stage || scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' ? <p className="form-hint">Chốt lịch khảo sát bản đồ trước. Owner xác nhận lịch và thanh toán cọc trước khi thực hiện. Sau khi có ảnh trực giao, đối chiếu bốn góc ranh giới trước khi duyệt bản đồ nền.</p> : null}<Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/base-map-drafts?surveyOrderId=${encodeURIComponent(order.surveyOrderId)}`}>Duyệt bản đồ nền →</Link></> : null}
       {consistent && healthAppointment && order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="info" title="Lịch bay bệnh cũ chưa được Manager chốt" description="Thống nhất thời gian với Owner rồi lưu lại bằng nút Chốt lịch bay bệnh. Owner không cần xác nhận lịch dịch vụ." /> : null}
       {consistent && healthAppointment && order.currentAppointmentStatus === 'CONFIRMED' && ['AWAITING_BASELINE_DEPOSIT', 'READY_FOR_PAID_SERVICE'].includes(scope.orderStatus) ? <p className="form-hint">Lịch bay bệnh đã chốt. Owner không cần xác nhận; nhiệm vụ chỉ được thực hiện khi đủ cọc và điều kiện vận hành.</p> : null}

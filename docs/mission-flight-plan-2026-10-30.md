@@ -317,6 +317,8 @@ Chạy lại toàn bộ theo đúng thứ tự trên **một SurveyOrder thật*
 
 ---
 
+> **13/11/2026:** Nhiệm vụ 18–20 được chia nhỏ và theo dõi tại [`plant-health-review-phase2-2026-11-13.md`](./plant-health-review-phase2-2026-11-13.md) (task A1–A8). Cập nhật tiến độ ở tài liệu đó, không cập nhật ở đây.
+
 ## 18. System Manager — Duyệt vết bệnh/trái trên cây (UC-28)
 **Trạng thái:** [ ]
 

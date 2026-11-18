@@ -262,3 +262,15 @@ test('guidance draft creation and lifecycle retain references and server concurr
     await assert.rejects(health.changeGuidanceState('admin', 'g/1', state, 31), error => error.status === 409 && error.code === 'SourcedGuidance.VersionConflict')
   }
 })
+
+test('health review stays reachable read-only after internal publication, but not for unreviewed or other-service orders', () => {
+  const reviewed = { serviceReviewedAt: '2026-11-16T03:00:00Z' }
+  for (const orderStatus of ['PENDING_REVIEW', 'COMPLETED']) assert.equal(workflow.canOpenHealthReview('PLANT_HEALTH', { orderStatus, serviceReviewedAt: null }), true)
+  for (const orderStatus of ['AWAITING_PRICING', 'AWAITING_PAYMENT']) {
+    assert.equal(workflow.canOpenHealthReview('PLANT_HEALTH', { orderStatus, ...reviewed }), true)
+    assert.equal(workflow.canOpenHealthReview('PLANT_HEALTH', { orderStatus, serviceReviewedAt: null }), false)
+    assert.equal(workflow.canOpenHealthReview('PLANT_HEALTH', { orderStatus, serviceReviewedAt: undefined }), false)
+    assert.equal(workflow.canOpenHealthReview('BASELINE_MAPPING', { orderStatus, ...reviewed }), false)
+  }
+  for (const orderStatus of ['AWAITING_PAID_APPOINTMENT', 'READY_FOR_PAID_SERVICE', 'IN_PROGRESS']) assert.equal(workflow.canOpenHealthReview('PLANT_HEALTH', { orderStatus, ...reviewed }), false)
+})
