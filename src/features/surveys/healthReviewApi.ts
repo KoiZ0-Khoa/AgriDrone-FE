@@ -1,6 +1,7 @@
-import { apiRequest } from '../../api/client'
+import { ApiError, apiRequest } from '../../api/client'
 import type {
-  BoundaryReviewRequest, FindingBatchRequest, FindingReviewItemInput, GuidanceReviewRequest, HealthGuidanceOption, HealthReviewOutcome,
+  BoundaryReviewRequest, FindingBatchRequest, FindingReviewItemInput, GuidanceReviewRequest, HealthApproval, HealthApproveRequest, HealthGuidanceOption,
+  HealthPublication, HealthPublishRequest, HealthPublishResult, HealthReviewOutcome,
   HealthReviewPage, HealthReviewQuery, HealthReviewQueue, HealthReviewSummary, ZoneReviewRequest,
 } from './healthReviewTypes'
 
@@ -112,6 +113,30 @@ export async function reviewZoneGuidance(token: string, orderId: string, zoneId:
   }
   return checkOutcome(await apiRequest<HealthReviewOutcome>(`${root(orderId)}/disease-zones/${encodeURIComponent(zoneId)}/guidance-review`, { method: 'POST', token, body }), request.operationId)
 }
+
+// Giai đoạn 3. GET approval trả 404 khi chưa phê duyệt → null (không coi là lỗi).
+export async function getHealthApproval(token: string, orderId: string, signal?: AbortSignal) {
+  try { return await apiRequest<HealthApproval>(`${root(orderId)}/health-results/approval`, { token, signal }) }
+  catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error }
+}
+export async function approveHealthResult(token: string, orderId: string, request: HealthApproveRequest) {
+  if (!Number.isSafeInteger(request.expectedReviewRevision) || request.expectedReviewRevision < 0) throw new Error('Lượt review không hợp lệ. Tải lại trước khi phê duyệt.')
+  const body = { operationId: request.operationId, batchId: request.batchId, expectedResultVersion: request.expectedResultVersion, expectedReviewRevision: request.expectedReviewRevision, reason: validateReason(request.reason) }
+  const result = await apiRequest<HealthApproval>(`${root(orderId)}/health-results/approve`, { method: 'POST', token, body })
+  if (!sameId(result.operationId, request.operationId) || !sameId(result.batchId, request.batchId)) throw new Error('Phản hồi phê duyệt không khớp yêu cầu đã gửi.')
+  return result
+}
+export async function publishHealthResult(token: string, orderId: string, request: HealthPublishRequest) {
+  // BE yêu cầu đúng fingerprint 64 ký tự của bản phê duyệt — chặn sớm thay vì gửi rồi nhận 400.
+  if (request.approvalFingerprint.length !== 64) throw new Error('Thiếu mã xác thực bản phê duyệt. Tải lại trước khi phát hành.')
+  const body = { operationId: request.operationId, batchId: request.batchId, expectedResultVersion: request.expectedResultVersion, expectedReviewRevision: request.expectedReviewRevision, approvalFingerprint: request.approvalFingerprint }
+  const result = await apiRequest<HealthPublishResult>(`${root(orderId)}/health-results/publish`, { method: 'POST', token, body })
+  if (!sameId(result.operationId, request.operationId) || !sameId(result.batchId, request.batchId)) throw new Error('Phản hồi phát hành không khớp yêu cầu đã gửi.')
+  return result
+}
+// BE chỉ trả khi đơn đã COMPLETED (đơn thanh toán sau bay ở AWAITING_PRICING nhận 404).
+export const getHealthPublication = (token: string, orderId: string, signal?: AbortSignal) =>
+  apiRequest<HealthPublication>(`${root(orderId)}/health-results/publication`, { token, signal })
 
 function checkOutcome(outcome: HealthReviewOutcome, operationId: string) {
   if (!sameId(outcome.operationId, operationId)) throw new Error('Phản hồi review không khớp mã thao tác đã gửi.')

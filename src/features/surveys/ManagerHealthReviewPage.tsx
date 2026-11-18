@@ -8,9 +8,10 @@ import { useAuth } from '../auth/AuthContext'
 import { HealthBoundaryExceptionsSection } from './HealthBoundaryExceptionsSection'
 import { HealthFindingsTable } from './HealthFindingsTable'
 import { HealthZonesSection } from './HealthZonesSection'
-import { getHealthReviewSummary } from './healthReviewApi'
+import { HealthReleasePanel } from './HealthReleasePanel'
+import { getHealthApproval, getHealthReviewSummary } from './healthReviewApi'
 import type { HealthReviewSummary } from './healthReviewTypes'
-import { healthReviewError } from './healthReviewWorkflow'
+import { healthReviewError, reviewEditable } from './healthReviewWorkflow'
 import { getAssignedOrder } from './orderApi'
 import { orderStatusLabels } from './orderWorkflow'
 import { dateTime, workflowError } from './workflow'
@@ -36,10 +37,15 @@ export function ManagerHealthReviewPage() {
     queryKey: ['health-review-summary', orderId], queryFn: ({ signal }) => getHealthReviewSummary(token, orderId, signal),
     enabled: context.data?.surveyServiceCode === 'PLANT_HEALTH', retry: false,
   })
+  // Giai đoạn 3: null = chưa phê duyệt (BE trả 404).
+  const approval = useQuery({
+    queryKey: ['health-approval', orderId], queryFn: ({ signal }) => getHealthApproval(token, orderId, signal),
+    enabled: summary.isSuccess, retry: false,
+  })
   const back = <Link className="back-link" to={`/manager/orders/${encodeURIComponent(orderId)}`}><ArrowLeftOutlined /> Đơn khảo sát</Link>
   async function refresh() {
-    await Promise.all([client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['health-review-summary', orderId] }), client.invalidateQueries({ queryKey: ['health-findings', orderId] }),
-      client.invalidateQueries({ queryKey: ['health-findings-all', orderId] }), client.invalidateQueries({ queryKey: ['health-boundary-exceptions', orderId] }), client.invalidateQueries({ queryKey: ['health-disease-zones', orderId] })])
+    await Promise.all(['manager-order-context', 'health-review-summary', 'health-findings', 'health-findings-all', 'health-boundary-exceptions', 'health-disease-zones', 'health-approval', 'health-publication']
+      .map(key => client.invalidateQueries({ queryKey: [key, orderId] })))
   }
 
   if (context.isPending) return <>{back}<CommonState type="loading" /></>
@@ -51,6 +57,8 @@ export function ManagerHealthReviewPage() {
   const notFound = summary.error instanceof ApiError && summary.error.status === 404
   const data = summary.data
   const blockers = data ? reviewBlockers(data) : []
+  // Chưa biết đã phê duyệt hay chưa thì khóa review cho chắc (BE trả ResultLocked nếu đã phê duyệt).
+  const canReview = approval.isSuccess && reviewEditable(order.status, approval.data)
 
   return <>
     {back}
@@ -78,12 +86,19 @@ export function ManagerHealthReviewPage() {
         </dl>
         {blockers.length > 0 ? <Alert className="workflow-notice" type="warning" showIcon title="Còn việc cần xử lý trước khi phê duyệt"
           description={<ul>{blockers.map(item => <li key={item.key}>{item.label}: <strong>{item.count}</strong></li>)}</ul>} />
-          : data.readyForApproval ? <Alert className="workflow-notice" type="success" showIcon title="Đã xử lý hết các mục chặn" description="Bước Phê duyệt và Phát hành kết quả thuộc Giai đoạn 3, chưa có trên giao diện." />
+          : data.readyForApproval ? <Alert className="workflow-notice" type="success" showIcon title="Đã xử lý hết các mục chặn" description="Phê duyệt kết quả ở phần Phê duyệt & phát hành bên dưới." />
+          : approval.data ? <Alert className="workflow-notice" type="info" showIcon title="Kết quả đã được phê duyệt" description="Các quyết định review đã bị khóa." />
           : <Alert className="workflow-notice" type="info" showIcon title="Chưa sẵn sàng phê duyệt" description="Không còn mục chặn được đếm, nhưng kết quả chưa đủ điều kiện (ví dụ danh mục nhãn bệnh chưa khớp, hoặc đơn không ở trạng thái chờ duyệt)." />}
         {data.undecidedZones > 0 || data.invalidGuidance > 0 ? <p className="form-hint">Review vùng bệnh và chọn hướng dẫn xử lý theo đơn chưa có trên giao diện.</p> : null}
       </section> : null}
-    {data ? <HealthFindingsTable token={token} orderId={orderId} farmId={order.farmId} tenantId={order.tenantId} canReview={order.status === 'PENDING_REVIEW'} /> : null}
-    {data ? <HealthBoundaryExceptionsSection token={token} orderId={orderId} canReview={order.status === 'PENDING_REVIEW'} /> : null}
-    {data ? <HealthZonesSection token={token} orderId={orderId} farmId={order.farmId} tenantId={order.tenantId} canReview={order.status === 'PENDING_REVIEW'} /> : null}
+    {data ? approval.isPending ? <CommonState type="loading" title="Đang tải trạng thái phê duyệt" />
+      : approval.isError ? <CommonState type="error" description={healthReviewError(approval.error)} retry={() => approval.refetch()} />
+      : <HealthReleasePanel token={token} orderId={orderId} orderStatus={order.status} summary={data} approval={approval.data} refresh={refresh} /> : null}
+    {/* Đợi biết đã phê duyệt hay chưa: bảng phát hiện chọn bộ lọc mặc định theo canReview, tránh tải danh sách 2 lần. */}
+    {data && !approval.isPending ? <>
+      <HealthFindingsTable token={token} orderId={orderId} farmId={order.farmId} tenantId={order.tenantId} canReview={canReview} />
+      <HealthBoundaryExceptionsSection token={token} orderId={orderId} canReview={canReview} />
+      <HealthZonesSection token={token} orderId={orderId} farmId={order.farmId} tenantId={order.tenantId} canReview={canReview} />
+    </> : null}
   </>
 }

@@ -17,6 +17,14 @@ const errorMessages: Record<string, string> = {
   'PlantHealthReview.BatchChanged': 'Lô dữ liệu nhận diện vừa được thay mới. Tải lại trước khi review.',
   'PlantHealthReview.DependencyChanged': 'Review của phát hiện liên quan đã thay đổi. Tải lại rồi chọn lại.',
   'PlantHealthReview.GuidanceNotApplicable': 'Hướng dẫn xử lý không còn áp dụng cho loại bệnh đã duyệt.',
+  // Giai đoạn 3 (PlantHealthReviewService.Approval/Publication/Comparison.cs).
+  'PlantHealthReview.ApprovalBlocked': 'Còn mục chưa xử lý hoặc vị trí/bằng chứng chưa hợp lệ nên chưa phê duyệt được. Tải lại để xem mục còn chặn.',
+  'PlantHealthReview.ProvenanceIncomplete': 'Thiếu thông tin nguồn gốc (ảnh đầu vào, người duyệt, lý do hoặc bằng chứng) nên không thể phê duyệt/phát hành.',
+  'PlantHealthReview.SourceContextChanged': 'Dữ liệu chuyến bay, bản đồ hoặc lô nhận diện gốc đã thay đổi so với lúc review. Tải lại để kiểm tra.',
+  'PlantHealthReview.ApprovalSnapshotChanged': 'Bản phê duyệt không còn khớp dữ liệu hiện tại. Tải lại trước khi phát hành.',
+  'PlantHealthReview.PublicationBlocked': 'Một quyết định đã duyệt không còn hiệu lực (ví dụ hướng dẫn xử lý hết hạn) nên chưa phát hành được.',
+  'PlantHealthReview.InvalidPublication': 'Nội dung phát hành không hợp lệ. Liên hệ quản trị viên kèm mã tra cứu.',
+  'PlantHealthReview.PublicationSnapshotChanged': 'Bản phát hành đã lưu không khớp mã xác thực. Liên hệ quản trị viên kèm mã tra cứu.',
 }
 export function healthReviewError(error: unknown) {
   if (error instanceof ApiError) {
@@ -56,6 +64,16 @@ function point(value: unknown): [number | null, number | null] {
   return coordinates && coordinates.length === 2 ? [num(coordinates[0]), num(coordinates[1])] : [null, null]
 }
 const mediaIds = (value: unknown) => Array.isArray(value) ? value.flatMap(item => isRecord(item) && str(item.MediaAssetId) ? [item.MediaAssetId as string] : []) : []
+// Ảnh bằng chứng theo vai trò BE gắn lúc gửi kết quả (MissionPlantHealthPublisher.EvidenceMedia).
+export type FindingImages = { source: string | null; annotated: string | null; crop: string | null }
+export function findingImages(evidenceMedia: unknown): FindingImages {
+  const byRole = (role: string) => Array.isArray(evidenceMedia)
+    ? evidenceMedia.find(item => isRecord(item) && item.Role === role && str(item.MediaAssetId))?.MediaAssetId as string | undefined ?? null : null
+  return { source: byRole('source_image'), annotated: byRole('annotated_image'), crop: byRole('crop_image') }
+}
+export const hasFindingImages = (images: FindingImages) => Boolean(images.source || images.annotated || images.crop)
+// Mission bay bệnh của đơn: missionCode = ORD-{orderId:N}-HEALTH (findMissionsBySurveyOrder trả mọi mission của đơn).
+export const healthMissionOf = <T extends { missionCode: string }>(missions: T[]) => missions.find(mission => mission.missionCode.endsWith('-HEALTH')) ?? null
 
 export function readFindingOriginal(original: unknown): FindingOriginal {
   const value = isRecord(original) ? original : {}
@@ -92,6 +110,7 @@ export type FindingRow = {
   originalPlantId: string | null; originalLat: number | null; originalLon: number | null
   decision: string; decisionLabel: string; reviewReason: string | null; reviewedAt: string | null
   blockingReasons: string[]
+  images: FindingImages
 }
 export function findingRow(item: HealthReviewItem, plantCodes: ReadonlyMap<string, string>, classNames: ReadonlyMap<string, string>): FindingRow {
   const original = readFindingOriginal(item.original)
@@ -111,6 +130,7 @@ export function findingRow(item: HealthReviewItem, plantCodes: ReadonlyMap<strin
     decision, decisionLabel: findingDecisionLabels[decision] ?? decision,
     reviewReason: item.review?.reason ?? null, reviewedAt: item.review?.reviewedAt ?? null,
     blockingReasons: item.blockingReasons.map(reason => blockingReasonLabels[reason] ?? reason),
+    images: findingImages(isRecord(item.original) ? item.original.EvidenceMedia : null),
   }
 }
 
@@ -122,7 +142,13 @@ export const bulkDecisionCopy: Record<BulkFindingDecision, { title: string; butt
   Approve: { title: 'Xác nhận đúng là bệnh', button: 'Xác nhận bệnh', hint: 'Giữ nguyên loại bệnh AI đề xuất. Chỉ áp dụng cho phát hiện AI đã gắn với một trụ cây.' },
 }
 // Approve giữ nguyên trụ AI gắn ban đầu; phát hiện chưa gắn trụ phải dùng "Sửa" (B5) để chọn trụ.
-export const unapprovableRows = (rows: FindingRow[]) => rows.filter(row => !row.originalPlantId)
+// Dòng chưa xử lý xong: chưa review, hoặc đã review nhưng còn mục chặn (cần review lại). Dùng cho "chọn tất cả".
+export const openRows = <T extends { decision: string; resolutionState: string }>(rows: T[]) =>
+  rows.filter(row => row.decision === 'Pending' || row.resolutionState !== 'RESOLVED')
+// Các dòng sẽ bị đổi quyết định (đã có quyết định khác với quyết định sắp gửi) — hộp thoại phải cảnh báo rõ.
+export const decisionChanges = <T extends { decision: string }>(rows: T[], next: string) =>
+  rows.filter(row => row.decision !== 'Pending' && row.decision !== next)
+export const unapprovableRows =(rows: FindingRow[]) => rows.filter(row => !row.originalPlantId)
 
 // Dựng body review-batch từ đúng các item của response danh sách mới nhất (batchId/resultVersion/version lấy từ đó).
 export function buildFindingBatch(page: { batchId: string; resultVersion: number }, items: HealthReviewItem[], decision: BulkFindingDecision, reason: string, operationId: string) {
@@ -134,6 +160,31 @@ export function buildFindingBatch(page: { batchId: string; resultVersion: number
 
 // Lỗi mà gửi lại cũng vô ích — chỉ nên đóng hộp thoại và tải lại danh sách.
 export const isStaleReviewError = (error: unknown) => isReviewVersionConflict(error) || (error instanceof ApiError && error.code === 'PlantHealthReview.ResultLocked')
+// Giai đoạn 3: thêm các lỗi "dữ liệu đã đổi" của phê duyệt/phát hành.
+export const isStaleReleaseError = (error: unknown) => isStaleReviewError(error) || (error instanceof ApiError &&
+  ['PlantHealthReview.ApprovalBlocked', 'PlantHealthReview.ApprovalSnapshotChanged', 'PlantHealthReview.SourceContextChanged', 'PlantHealthReview.OperationConflict'].includes(error.code ?? ''))
+
+// Giai đoạn 3 — trạng thái panel phê duyệt & phát hành.
+export type ReleaseStage = 'blocked' | 'ready' | 'approved' | 'published'
+export function releaseStage(orderStatus: string, summary: { readyForApproval: boolean }, approval: { currentStatus: string } | null): ReleaseStage {
+  if (approval?.currentStatus === 'PUBLISHED' || (approval && orderStatus !== 'PENDING_REVIEW')) return 'published'
+  if (approval) return 'approved'
+  return orderStatus === 'PENDING_REVIEW' && summary.readyForApproval ? 'ready' : 'blocked'
+}
+// Review chỉ còn sửa được khi đơn chờ duyệt và kết quả chưa được phê duyệt (sau phê duyệt BE trả ResultLocked).
+export const reviewEditable = (orderStatus: string, approval: unknown) => orderStatus === 'PENDING_REVIEW' && !approval
+export const conclusionLabels: Record<string, string> = {
+  NO_ACCEPTED_SUSPECTED_FINDINGS: 'Không có phát hiện nghi bệnh nào được xác nhận',
+  HAS_REVIEWED_SUSPECTED_FINDINGS: 'Có phát hiện nghi bệnh đã được xác nhận',
+}
+export const expectedConclusion = (acceptedFindings: number) => acceptedFindings === 0 ? 'NO_ACCEPTED_SUSPECTED_FINDINGS' : 'HAS_REVIEWED_SUSPECTED_FINDINGS'
+// Bước tiếp theo sau phát hành, theo trạng thái đơn BE trả về (đơn thanh toán sau bay → AWAITING_PRICING, còn lại → COMPLETED).
+export function nextStepAfterPublish(orderStatus: string) {
+  if (orderStatus === 'COMPLETED') return 'Đơn đã hoàn tất. Chủ nông trại đã được thông báo và xem được kết quả.'
+  if (orderStatus === 'AWAITING_PRICING') return 'Bước tiếp theo: chốt số trụ và giá ở trang đơn khảo sát. Chủ nông trại chỉ xem được kết quả sau khi thanh toán phần còn lại.'
+  if (orderStatus === 'AWAITING_PAYMENT') return 'Đã chốt giá, đang chờ chủ nông trại thanh toán phần còn lại. Kết quả mở cho chủ nông trại sau khi thanh toán.'
+  return null
+}
 
 // B5 — "Sửa" (Correct) một phát hiện. Correct cũng là xác nhận đúng là bệnh, kèm thông tin đã sửa.
 export type CorrectionForm = { classCode: string; plantId: string | null; lat: number | null; lon: number | null }
@@ -182,8 +233,16 @@ export function boundaryOptions(finding: HealthReviewItem | null): { allowed: Bo
   if (finding.blockingReasons.length > 0) return { allowed: ['NeedsEvidence'], hint: 'Phát hiện liên quan còn mục chặn — xử lý xong phát hiện đó trước khi chấp nhận vị trí.' }
   return { allowed: ['AcceptCorrectedPosition', 'NeedsEvidence'], hint: null }
 }
+// Xử lý hàng loạt: chỉ cho quyết định mà MỌI ngoại lệ đã chọn đều hợp lệ (bỏ NeedsEvidence vì nó không giải quyết được gì).
+export type BulkBoundaryDecision = 'ExcludeEvidence' | 'AcceptCorrectedPosition'
+export function bulkBoundaryDecision(findings: (HealthReviewItem | null)[], decision: BulkBoundaryDecision): { ok: boolean; blocked: number } {
+  const blocked = findings.filter(finding => !boundaryOptions(finding).allowed.includes(decision)).length
+  return { ok: findings.length > 0 && blocked === 0, blocked }
+}
+// Ngoại lệ chưa xử lý xong (chưa có quyết định hoặc còn mục chặn) — dùng cho "chọn tất cả".
+export const openBoundaryItems = <T extends { item: HealthReviewItem }>(rows: T[]) => rows.filter(row => !row.item.review || row.item.blockingReasons.length > 0)
 export const boundaryDecisionHints: Record<BoundaryDecision, string> = {
-  ExcludeEvidence: 'Phát hiện đã bị bác bỏ — loại bằng chứng này khỏi kết quả. Ngoại lệ được tính là đã xử lý.',
+  ExcludeEvidence: 'Phát hiện liên quan đã bị Bác bỏ hoặc đánh Không phải bệnh — loại bằng chứng này khỏi kết quả. Ngoại lệ được tính là đã xử lý.',
   AcceptCorrectedPosition: 'Giữ phát hiện đã xác nhận, chấp nhận vị trí hiện tại của nó. BE kiểm tra vị trí phải nằm trong ranh giới lúc bay; nếu đang ở ngoài, hãy "Sửa" vị trí phát hiện trước.',
   NeedsEvidence: 'Chưa đủ thông tin để quyết định. Ngoại lệ VẪN chặn phê duyệt cho tới khi được xử lý.',
 }

@@ -294,3 +294,44 @@ test('version helpers map list items to expected versions (null before first rev
   assert.deepEqual(workflow.boundaryVersions({ id: 'e', sourceVersion: null, sourceRowVersion: 9, review: null }), { expectedExceptionVersion: 9, expectedReviewVersion: null })
   assert.throws(() => workflow.findingVersions({ ...unreviewed, sourceVersion: null }), /sourceVersion/)
 })
+
+test('openRows keeps unreviewed and still-blocked findings for "select all"; decisionChanges lists rows whose decision will change', () => {
+  const rows = [
+    { id: 'a', decision: 'Pending', resolutionState: 'NEEDS_REVIEW' },
+    { id: 'b', decision: 'NonDisease', resolutionState: 'RESOLVED' },
+    { id: 'c', decision: 'Reject', resolutionState: 'NEEDS_REVIEW' },
+    { id: 'd', decision: 'Pending', resolutionState: 'PENDING_REVIEW' },
+  ]
+  assert.deepEqual(workflow.openRows(rows).map(row => row.id), ['a', 'c', 'd'])
+  assert.deepEqual(workflow.decisionChanges(rows, 'NonDisease').map(row => row.id), ['c'])
+  assert.deepEqual(workflow.decisionChanges(rows, 'Reject').map(row => row.id), ['b'])
+})
+
+test('bulk boundary decisions are allowed only when every selected exception accepts them; openBoundaryItems keeps undecided/blocked ones', () => {
+  const finding = (decision, blockingReasons = []) => ({ id: 'f', review: decision ? { reviewId: 'r', decision } : null, blockingReasons, original: {} })
+  const nonDisease = finding('NonDisease'), rejected = finding('Reject'), approved = finding('Approve'), pending = finding(null)
+  assert.deepEqual(workflow.bulkBoundaryDecision([nonDisease, rejected], 'ExcludeEvidence'), { ok: true, blocked: 0 })
+  assert.deepEqual(workflow.bulkBoundaryDecision([nonDisease, approved], 'ExcludeEvidence'), { ok: false, blocked: 1 })
+  assert.deepEqual(workflow.bulkBoundaryDecision([approved], 'AcceptCorrectedPosition'), { ok: true, blocked: 0 })
+  assert.deepEqual(workflow.bulkBoundaryDecision([pending, null], 'ExcludeEvidence'), { ok: false, blocked: 2 })
+  assert.equal(workflow.bulkBoundaryDecision([], 'ExcludeEvidence').ok, false)
+  const rows = [
+    { item: { id: 'e1', review: null, blockingReasons: ['UnresolvedBoundaryException'] } },
+    { item: { id: 'e2', review: { decision: 'ExcludeEvidence' }, blockingReasons: [] } },
+    { item: { id: 'e3', review: { decision: 'NeedsEvidence' }, blockingReasons: ['UnresolvedBoundaryException'] } },
+  ]
+  assert.deepEqual(workflow.openBoundaryItems(rows).map(row => row.item.id), ['e1', 'e3'])
+})
+
+test('findingImages reads evidence media by role; findingRow exposes them; healthMissionOf picks the -HEALTH mission', () => {
+  const evidence = [{ MediaAssetId: 'src-1', Role: 'source_image' }, { MediaAssetId: 'ann-1', Role: 'annotated_image' }, { MediaAssetId: 'crop-1', Role: 'crop_image' }]
+  assert.deepEqual(workflow.findingImages(evidence), { source: 'src-1', annotated: 'ann-1', crop: 'crop-1' })
+  assert.deepEqual(workflow.findingImages([{ MediaAssetId: 'src-1', Role: 'source_image' }]), { source: 'src-1', annotated: null, crop: null })
+  assert.deepEqual(workflow.findingImages(null), { source: null, annotated: null, crop: null })
+  assert.equal(workflow.hasFindingImages({ source: null, annotated: null, crop: null }), false)
+  const row = workflow.findingRow({ id: 'f1', sourceVersion: 1, sourceRowVersion: 1, observedAt: '2026-10-27T03:10:00Z', resolutionState: 'NEEDS_REVIEW',
+    original: { FindingId: 'f1', EvidenceMedia: evidence }, review: null, blockingReasons: [] }, new Map(), new Map())
+  assert.equal(row.images.annotated, 'ann-1')
+  assert.equal(workflow.healthMissionOf([{ id: 'm1', missionCode: 'ORD-abc-BASE' }, { id: 'm2', missionCode: 'ORD-abc-HEALTH' }]).id, 'm2')
+  assert.equal(workflow.healthMissionOf([{ id: 'm1', missionCode: 'ORD-abc-BASE' }]), null)
+})

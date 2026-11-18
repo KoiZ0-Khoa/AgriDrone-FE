@@ -102,6 +102,31 @@ export type HealthGuidanceOption = {
   id: string; code: string; versionNumber: number; suspectedClassCode: string
   sourceTitle: string; sourceReference: string; guidanceText: string; effectiveFrom: string; effectiveTo: string | null
 }
+// Giai đoạn 3 — phê duyệt & phát hành (ApprovePlantHealthSurveyResultContracts.cs, PublishPlantHealthSurveyResultContracts.cs).
+export type HealthResultStatus = 'PENDING_REVIEW' | 'APPROVED' | 'PUBLISHED'
+export type HealthApproval = {
+  operationId: string; resultId: string; batchId: string; resultVersion: number; approvedReviewRevision: number
+  status: string; resultNature: string; teamLabelLimitation: string; conclusion: string
+  acceptedFindingCount: number; reviewedBy: string; reviewedAt: string; approvalFingerprint: string
+  isReplay: boolean; currentStatus: HealthResultStatus
+}
+export type HealthApproveRequest = { operationId: string; batchId: string; expectedResultVersion: number; expectedReviewRevision: number; reason: string }
+export type HealthPublishRequest = { operationId: string; batchId: string; expectedResultVersion: number; expectedReviewRevision: number; approvalFingerprint: string }
+export type HealthPublishResult = {
+  operationId: string; publicationId: string; resultId: string; batchId: string; publicationVersion: number
+  status: string; orderStatus: string; resultNature: string; teamLabelLimitation: string; conclusion: string
+  publishedFindingCount: number; publishedZoneCount: number; advancedPlantIds: string[]
+  publishedBy: string; publishedAt: string; publicationFingerprint: string; isReplay: boolean
+}
+// GET publication (PlantHealthPreliminaryResultPublishedV1) — chỉ đọc các trường FE hiển thị.
+export type HealthPublication = {
+  publication: {
+    publicationId: string; publicationVersion: number; conclusion: string; resultNature: string; teamLabelLimitation: string
+    approvedAt: string; publishedAt: string; findings: unknown[]; diseaseZones: unknown[]
+  }
+  fingerprint: string
+}
+
 export type GuidanceReviewRequest = {
   operationId: string; batchId: string; expectedResultVersion: number
   expectedZoneVersion: number; expectedReviewVersion: number | null

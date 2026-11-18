@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { MAX_REVIEW_REASON_LENGTH, reviewHealthFindings } from './healthReviewApi'
 import type { HealthReviewItem, HealthReviewOutcome } from './healthReviewTypes'
-import { buildFindingBatch, bulkDecisionCopy, healthReviewError, isStaleReviewError, type BulkFindingDecision, type FindingRow } from './healthReviewWorkflow'
+import { buildFindingBatch, bulkDecisionCopy, decisionChanges, findingDecisionLabels, healthReviewError, isStaleReviewError, type BulkFindingDecision, type FindingRow } from './healthReviewWorkflow'
 import { operationFor } from './workflow'
 
 type Props = {
@@ -15,6 +15,7 @@ type Props = {
 
 export function FindingReviewModal({ token, orderId, decision, page, items, rows, close, done }: Props) {
   const copy = bulkDecisionCopy[decision]
+  const changes = decisionChanges(rows, decision)
   const [reason, setReason] = useState('')
   const submitting = useRef(false)
   // Giữ nguyên operationId khi gửi lại đúng nội dung cũ (BE trả replay, không ghi trùng); đổi nội dung thì sinh mã mới.
@@ -42,8 +43,11 @@ export function FindingReviewModal({ token, orderId, decision, page, items, rows
     cancelButtonProps={{ disabled: mutation.isPending }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }} keyboard={!mutation.isPending}
     onOk={submit} onCancel={() => { if (!mutation.isPending) close(stale) }}>
     <p>{copy.hint}</p>
+    {changes.length > 0 ? <Alert className="workflow-notice" type="warning" showIcon title={`${changes.length} phát hiện sẽ bị đổi quyết định`}
+      description={`Các dòng này đã có quyết định khác. Gửi sẽ thay bằng "${findingDecisionLabels[decision]}".`} /> : null}
     <ul className="form-hint" style={{ maxHeight: 140, overflowY: 'auto', paddingLeft: 18 }}>
-      {rows.map(row => <li key={row.id}>{row.className} · {row.plantLabel}{row.decision !== 'Pending' ? ` · hiện tại: ${row.decisionLabel}` : ''}</li>)}
+      {rows.map(row => <li key={row.id}>{row.className} · {row.plantLabel}
+        {row.decision === 'Pending' ? '' : row.decision === decision ? ` · giữ nguyên: ${row.decisionLabel}` : <> · đổi <strong>{row.decisionLabel} → {findingDecisionLabels[decision]}</strong></>}</li>)}
     </ul>
     <Form layout="vertical" disabled={blocked} onFinish={submit}>
       <Form.Item label="Lý do" required extra={`Áp dụng chung cho cả ${items.length} phát hiện. ${reason.length}/${MAX_REVIEW_REASON_LENGTH} ký tự.`}>

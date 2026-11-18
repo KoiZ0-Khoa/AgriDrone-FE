@@ -2,11 +2,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Pagination, Select, Space, Table, Tag, Tooltip } from 'antd'
 import { useMemo, useState } from 'react'
 import { CommonState } from '../../components/CommonState'
+import { PictureOutlined } from '@ant-design/icons'
+import { findMissionsBySurveyOrder } from '../missions/missionApi'
 import { CorrectFindingModal } from './CorrectFindingModal'
+import { FindingImagesModal } from './FindingImagesModal'
 import { FindingReviewModal } from './FindingReviewModal'
 import { getHealthReviewQueue } from './healthReviewApi'
 import type { FindingDecision, HealthReviewItem, HealthReviewOutcome, ResolutionState } from './healthReviewTypes'
-import { bulkDecisionCopy, findingDecisionLabels, findingRow, healthReviewError, resolutionStateLabels, unapprovableRows, type BulkFindingDecision, type FindingRow } from './healthReviewWorkflow'
+import { bulkDecisionCopy, findingDecisionLabels, findingRow, hasFindingImages, healthMissionOf, healthReviewError, openRows, resolutionStateLabels, unapprovableRows, type BulkFindingDecision, type FindingRow } from './healthReviewWorkflow'
 import { getPlantHealth } from './plantHealthApi'
 import { getFarmPlantHealthMap } from './plantHealthMapApi'
 import { dateTime } from './workflow'
@@ -23,7 +26,9 @@ export function HealthFindingsTable({ token, orderId, farmId, tenantId, canRevie
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [resolutionState, setResolutionState] = useState<ResolutionState | ''>('')
-  const [decision, setDecision] = useState<FindingDecision | 'Pending' | ''>('')
+  // null = người dùng chưa chọn: mặc định chỉ hiện phát hiện "Chưa review" khi còn review được, để review xong là dòng biến khỏi danh sách.
+  const [decisionFilter, setDecision] = useState<FindingDecision | 'Pending' | '' | null>(null)
+  const decision = decisionFilter ?? (canReview ? 'Pending' : '')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [correcting, setCorrecting] = useState<{ item: HealthReviewItem; row: FindingRow; page: { batchId: string; resultVersion: number } } | null>(null)
   const [review, setReview] = useState<{ decision: BulkFindingDecision; items: HealthReviewItem[]; rows: FindingRow[]; page: { batchId: string; resultVersion: number } } | null>(null)
@@ -41,12 +46,28 @@ export function HealthFindingsTable({ token, orderId, farmId, tenantId, canRevie
   // React Query giữ data cũ khi lần tải sau lỗi — không hiển thị số đếm/cảnh báo của lần trước cạnh thông báo lỗi.
   const pageData = findings.isError ? undefined : findings.data
   const rows = useMemo(() => (findings.data?.items ?? []).map(item => findingRow(item, plantCodes, classNames)), [findings.data, plantCodes, classNames])
+  // Ảnh bằng chứng là media của Mission bay bệnh → cần missionId để xin link xem. Chỉ tìm khi có phát hiện có ảnh.
+  const anyImages = rows.some(row => hasFindingImages(row.images))
+  const healthMission = useQuery({
+    queryKey: ['order-health-mission', orderId, farmId],
+    queryFn: async ({ signal }) => healthMissionOf(await findMissionsBySurveyOrder(token, farmId, orderId, signal)),
+    enabled: anyImages, retry: false, staleTime: 5 * 60_000,
+  })
+  const [viewing, setViewing] = useState<FindingRow | null>(null)
 
   const writable = canReview && Boolean(pageData?.isCurrentBatch) && !findings.isFetching
   // Chỉ giữ lựa chọn còn nằm trong trang đang hiển thị.
   const selectedRows = rows.filter(row => selectedIds.includes(row.id))
   const cannotApprove = unapprovableRows(selectedRows)
   function resetSelection() { setSelectedIds([]) }
+  // "Chọn tất cả" chỉ lấy dòng chưa xử lý xong; dòng đã xử lý vẫn tick từng dòng được để đổi quyết định.
+  const openIds = openRows(rows).map(row => row.id)
+  function selectAll(selected: boolean) {
+    const allOpenSelected = openIds.length > 0 && openIds.every(id => selectedIds.includes(id))
+    if (!selected || allOpenSelected) { resetSelection(); return }
+    if (openIds.length === 0) { void message.info('Trang này không còn phát hiện chưa xử lý. Tick từng dòng nếu muốn đổi quyết định.'); return }
+    setSelectedIds(openIds)
+  }
   function open(nextDecision: BulkFindingDecision) {
     if (!pageData || selectedRows.length === 0) return
     const ids = new Set(selectedRows.map(row => row.id))
@@ -94,19 +115,27 @@ export function HealthFindingsTable({ token, orderId, farmId, tenantId, canRevie
   </Space></div> : null
 
   return <section className="resource-panel workflow-section">
-    <div className="resource-panel-heading"><div><strong>Phát hiện cần duyệt</strong><span>{pageData ? `${pageData.totalCount} phát hiện${resolutionState || decision ? ' khớp bộ lọc' : ''}` : 'Kết quả AI nhận diện theo từng ảnh'}</span></div></div>
+    <div className="resource-panel-heading"><div><strong>Phát hiện cần duyệt</strong><span>{pageData ? decision === 'Pending' && !resolutionState ? `${pageData.totalCount} phát hiện chưa review` : `${pageData.totalCount} phát hiện${resolutionState || decision ? ' khớp bộ lọc' : ''}` : 'Kết quả AI nhận diện theo từng ảnh'}</span></div></div>
     {filters}
     {pageData && !pageData.isCurrentBatch ? <Alert className="workflow-notice" type="warning" showIcon title="Đây không phải lô dữ liệu đang hiệu lực" description="Kết quả nhận diện đã được thay bằng lô mới. Tải lại trang để xem lô hiện tại; không review trên lô cũ." /> : null}
     {actions}
     {findings.isError ? <CommonState type="error" description={healthReviewError(findings.error)} retry={() => findings.refetch()} /> : <>
       <Table<FindingRow> rowKey="id" size="small" loading={findings.isFetching} dataSource={rows} pagination={false} scroll={{ x: 1100 }}
-        rowSelection={canReview ? { selectedRowKeys: selectedRows.map(row => row.id), onChange: keys => setSelectedIds(keys.map(String)), getCheckboxProps: () => ({ disabled: !writable }) } : undefined}
-        locale={{ emptyText: resolutionState || decision ? 'Không có phát hiện khớp bộ lọc.' : 'Không có phát hiện nào trong kết quả này.' }}
+        rowSelection={canReview ? {
+          selectedRowKeys: selectedRows.map(row => row.id), getCheckboxProps: () => ({ disabled: !writable }),
+          onSelect: (row, selected) => setSelectedIds(previous => selected ? [...previous.filter(id => id !== row.id), row.id] : previous.filter(id => id !== row.id)),
+          onSelectAll: selectAll,
+        } : undefined}
+        locale={{ emptyText: decision === 'Pending' && !resolutionState ? 'Đã review hết phát hiện. Chọn "Mọi quyết định" để xem lại hoặc đổi quyết định.'
+          : resolutionState || decision ? 'Không có phát hiện khớp bộ lọc.' : 'Không có phát hiện nào trong kết quả này.' }}
         columns={[
           { title: 'Loại nghi ngờ', render: (_, row) => <>
             <strong>{row.className}</strong>
             {row.reviewedClass && row.originalClass && row.reviewedClass.toUpperCase() !== row.originalClass.toUpperCase() ? <div className="form-hint">AI: {row.originalClass}</div> : null}
           </> },
+          { title: 'Ảnh', width: 90, render: (_, row) => hasFindingImages(row.images)
+            ? <Button size="small" icon={<PictureOutlined />} onClick={() => setViewing(row)}>Xem</Button>
+            : <Tooltip title="Phát hiện này không có ảnh bằng chứng (dữ liệu nhận diện trước khi nối ảnh)."><span className="form-hint">—</span></Tooltip> },
           { title: 'Độ tin cậy', width: 100, render: (_, row) => row.confidence === null ? '—' : `${Math.round(row.confidence * 100)}%` },
           { title: 'Trụ cây', render: (_, row) => row.plantId ? row.plantLabel : <Tag color="warning">{row.plantLabel}</Tag> },
           { title: 'Vị trí', render: (_, row) => row.lat === null || row.lon === null ? '—' : <span className="form-hint">{row.lat.toFixed(6)}, {row.lon.toFixed(6)}</span> },
@@ -120,6 +149,9 @@ export function HealthFindingsTable({ token, orderId, farmId, tenantId, canRevie
       <Pagination style={{ marginTop: 12 }} current={page} pageSize={pageSize} total={findings.data?.totalCount ?? 0} showSizeChanger pageSizeOptions={[20, 50, 100]}
         onChange={(nextPage, nextSize) => { resetSelection(); setPage(nextSize !== pageSize ? 1 : nextPage); setPageSize(nextSize) }} />
     </>}
+    {viewing ? <FindingImagesModal token={token} farmId={farmId} missionId={healthMission.data?.id ?? null}
+      missionError={healthMission.error ?? (healthMission.isSuccess && !healthMission.data ? new Error('Đơn chưa có nhiệm vụ bay bệnh.') : null)}
+      row={viewing} close={() => setViewing(null)} /> : null}
     {review ? <FindingReviewModal token={token} orderId={orderId} decision={review.decision} page={review.page} items={review.items} rows={review.rows} close={closeDialog} done={finish} /> : null}
     {correcting ? <CorrectFindingModal token={token} orderId={orderId} page={correcting.page} item={correcting.item} row={correcting.row}
       labels={diseaseLabels} plants={map.data?.plants ?? []} close={closeDialog} done={finish} /> : null}
