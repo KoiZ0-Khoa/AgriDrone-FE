@@ -1,0 +1,23 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - nvm use 22
+        - |
+          case "${VITE_API_BASE_URL:-}" in
+            https://?*) ;;
+            *) echo 'Set VITE_API_BASE_URL to the HTTPS backend URL in Amplify.' >&2; exit 1 ;;
+          esac
+        - npm ci --include=dev --cache .npm --prefer-offline
+    build:
+      commands:
+        - npm test
+        - npm run build
+  artifacts:
+    baseDirectory: dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - .npm/**/*
