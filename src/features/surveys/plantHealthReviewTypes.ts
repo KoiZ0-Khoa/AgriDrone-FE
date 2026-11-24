@@ -21,6 +21,8 @@ export type FlaggedObservation = {
   detectedLat: number | null; detectedLon: number | null
   gpsDistanceMeters: number | null; detectionConfidence: number | null
   matchingParametersJson: string | null; suggestedPlantId: string | null
+  // Link ảnh BE ký mới mỗi lần đọc (hiệu lực 1 giờ). Không có khi vết cũ chưa đăng ký media ảnh.
+  cropImageUrl?: string | null; annotatedImageUrl?: string | null
 }
 export type FlaggedObservationsResult = { farmId: string; count: number; items: FlaggedObservation[] }
 
@@ -43,7 +45,7 @@ export type UpdateZoneMembershipsBody = { addPlantIds: string[]; removePlantIds:
 export type UpdateZoneMembershipsResult = { zoneId: string; totalEnclosedTrees: number; addedCount: number; removedCount: number }
 
 // Các khóa snake_case thật trong cột matching_parameters (jsonb) — BE GetFarmPlantHealthMapQueryHandler đọc cùng các khóa này.
+// Cố ý KHÔNG đọc crop_image_url / annotated_image_url: đó là link ký sẵn 7 ngày, hết hạn là chết.
 export type FlaggedMatchingParameters = {
-  className: string | null; imageName: string | null
-  cropImageUrl: string | null; annotatedImageUrl: string | null; detectionId: string | null
+  className: string | null; imageName: string | null; detectionId: string | null
 }
