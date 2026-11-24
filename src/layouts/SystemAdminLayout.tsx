@@ -5,6 +5,7 @@ import {
   DashboardOutlined,
   DownOutlined,
   FileTextOutlined,
+  FundOutlined,
   LogoutOutlined,
   MedicineBoxOutlined,
   MenuOutlined,
@@ -25,6 +26,7 @@ const navigation = [
   { to: '/system', end: true, label: 'Tổng quan hệ thống', icon: <DashboardOutlined aria-hidden="true" /> },
   { to: '/system/survey-requests', label: 'Yêu cầu khảo sát', icon: <BankOutlined aria-hidden="true" /> },
   { to: '/system/survey-orders', label: 'Đơn khảo sát', icon: <FileTextOutlined aria-hidden="true" /> },
+  { to: '/system/revenue', label: 'Doanh thu', icon: <FundOutlined aria-hidden="true" /> },
   { to: '/system/managers', label: 'System Manager', icon: <TeamOutlined aria-hidden="true" /> },
   { to: '/system/drones', label: 'Drone', icon: <RocketOutlined aria-hidden="true" /> },
   { to: '/system/preflight-checklist', label: 'Checklist Preflight', icon: <CheckSquareOutlined aria-hidden="true" /> },
@@ -39,6 +41,7 @@ const navigation = [
 function pageTitle(pathname: string) {
   if (pathname.startsWith('/system/survey-requests')) return 'Yêu cầu khảo sát'
   if (pathname.startsWith('/system/survey-orders')) return 'Đơn khảo sát'
+  if (pathname === '/system/revenue') return 'Báo cáo doanh thu'
   if (pathname === '/system/managers') return 'System Manager'
   if (pathname === '/system/drones') return 'Drone hệ thống'
   if (pathname === '/system/preflight-checklist') return 'Checklist Preflight'

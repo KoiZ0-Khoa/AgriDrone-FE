@@ -56,6 +56,7 @@ const ServicesPage = lazy(() => import('../features/surveys/ServicesPage').then(
 const RequestsPage = lazy(() => import('../features/surveys/RequestsPage').then(m => ({ default: m.RequestsPage })))
 const RequestDetailPage = lazy(() => import('../features/surveys/RequestsPage').then(m => ({ default: m.RequestDetailPage })))
 const SystemOrdersPage = lazy(() => import('../features/surveys/SystemOrdersPage').then(m => ({ default: m.SystemOrdersPage })))
+const RevenueDashboardPage = lazy(() => import('../features/reports/RevenueDashboardPage').then(m => ({ default: m.RevenueDashboardPage })))
 const SurveyIntakePage = lazy(() => import('../features/surveys/SurveyIntakePage').then(m => ({ default: m.SurveyIntakePage })))
 const SystemManagerLayout = lazy(() => import('../layouts/SystemManagerLayout').then(m => ({ default: m.SystemManagerLayout })))
 const ManagerFarmsPage = lazy(() => import('../features/surveys/ManagerFarmsPage').then(m => ({ default: m.ManagerFarmsPage })))
@@ -153,6 +154,7 @@ export function App() {
                         <Route path="/system/survey-requests" element={<RequestsPage />} />
                         <Route path="/system/survey-requests/:requestId" element={<RequestDetailPage />} />
                         <Route path="/system/survey-orders" element={<SystemOrdersPage />} />
+                        <Route path="/system/revenue" element={<RevenueDashboardPage />} />
                         <Route path="/system/survey-orders/:orderId/authorizations" element={<Navigate to="/system/survey-orders" replace />} />
                       </Route>
                     </Route>

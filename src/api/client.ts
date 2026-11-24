@@ -34,11 +34,16 @@ type ApiRequestOptions = Omit<RequestInit, 'body'> & { body?: unknown; token?: s
 
 async function throwIfError(response: Response): Promise<never> {
   let problem: ProblemDetails | undefined
+  let text = ''
   try {
-    const payload: unknown = await response.json()
+    text = await response.text()
+    const payload: unknown = JSON.parse(text)
     problem = typeof payload === 'string' ? { detail: payload } : payload as ProblemDetails
   } catch {
-    problem = undefined
+    // ASP.NET trả BadRequest("...") dạng text/plain khi request không gửi Accept: application/json (vd. tải file).
+    // Chỉ nhận chuỗi ngắn text/plain để không hiện nguyên trang HTML lỗi của proxy.
+    const plain = text.trim()
+    problem = response.headers.get('Content-Type')?.includes('text/plain') && plain && plain.length <= 300 ? { detail: plain } : undefined
   }
 
   const firstValidationMessage = problem?.errors
@@ -73,9 +78,10 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 }
 
 // For endpoints that return a raw file stream (e.g. Results.File(...)) instead of JSON.
-export async function apiRequestFile(path: string, options: { token?: string; fallbackFileName: string }): Promise<{ blob: Blob; fileName: string }> {
+export async function apiRequestFile(path: string, options: { token?: string; fallbackFileName: string; signal?: AbortSignal }): Promise<{ blob: Blob; fileName: string }> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: { ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}) },
+    signal: options.signal,
   })
   if (!response.ok) return throwIfError(response)
   const disposition = response.headers.get('Content-Disposition')
