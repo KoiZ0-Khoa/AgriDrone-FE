@@ -68,7 +68,7 @@ export function flaggedMarkers(items: FlaggedObservation[], plants: { id: string
     const plant = item.suggestedPlantId ? byId.get(item.suggestedPlantId.toLowerCase()) ?? null : null
     return {
       id: item.observationId, lat: item.detectedLat, lon: item.detectedLon, distance: item.gpsDistanceMeters, confidence: item.detectionConfidence,
-      className: params?.className ?? null, cropImageUrl: params?.cropImageUrl ?? null, imageName: params?.imageName ?? null,
+      className: params?.className ?? null, cropImageUrl: item.cropImageUrl ?? null, imageName: params?.imageName ?? null,
       suggested: plant ? { id: plant.id, plantCode: plant.plantCode, lat: plant.lat, lon: plant.lon } : null,
     }
   })
@@ -84,7 +84,6 @@ export function parseMatchingParameters(json: string | null | undefined): Flagge
   const value = root as Record<string, unknown>
   return {
     className: stringOrNull(value.class_name), imageName: stringOrNull(value.image_name),
-    cropImageUrl: stringOrNull(value.crop_image_url), annotatedImageUrl: stringOrNull(value.annotated_image_url),
     detectionId: stringOrNull(value.detection_id),
   }
 }

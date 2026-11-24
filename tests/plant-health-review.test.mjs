@@ -114,22 +114,22 @@ test('plantHealthReviewError translates BE codes and falls back for access error
   assert.equal(workflow.plantHealthReviewError(new ApiError(500, 'Lỗi lạ', 'Other.Code')), 'Lỗi lạ')
 })
 
-test('parseMatchingParameters reads snake_case keys and tolerates bad JSON', () => {
+test('parseMatchingParameters reads snake_case keys, ignores stored 7-day image links and tolerates bad JSON', () => {
   assert.deepEqual(workflow.parseMatchingParameters('{"class_name":"Disease_Sun_Burn","crop_image_url":"http://x/c.jpg"}'),
-    { className: 'Disease_Sun_Burn', imageName: null, cropImageUrl: 'http://x/c.jpg', annotatedImageUrl: null, detectionId: null })
+    { className: 'Disease_Sun_Burn', imageName: null, detectionId: null })
   assert.equal(workflow.parseMatchingParameters('{not json'), null)
   assert.equal(workflow.parseMatchingParameters('[1,2]'), null)
   assert.equal(workflow.parseMatchingParameters(null), null)
 })
 
-test('flaggedMarkers reads matching parameters and links the suggested plant when it is on the map', () => {
+test('flaggedMarkers uses the freshly signed BE image link, never the one stored in matching parameters', () => {
   const plants = [{ id: 'PLANT-1', plantCode: 'P-001-004', lat: 10.46, lon: 106.49 }]
   const [linked, orphan, broken] = workflow.flaggedMarkers([
-    { observationId: 'o1', missionId: 'm', detectedLat: 10.4601, detectedLon: 106.4901, gpsDistanceMeters: 3.42, detectionConfidence: 0.91, matchingParametersJson: '{"class_name":"Disease_Sun_Burn","crop_image_url":"http://x/c.jpg"}', suggestedPlantId: 'plant-1' },
-    { observationId: 'o2', missionId: 'm', detectedLat: null, detectedLon: null, gpsDistanceMeters: null, detectionConfidence: null, matchingParametersJson: null, suggestedPlantId: 'gone' },
+    { observationId: 'o1', missionId: 'm', detectedLat: 10.4601, detectedLon: 106.4901, gpsDistanceMeters: 3.42, detectionConfidence: 0.91, matchingParametersJson: '{"class_name":"Disease_Sun_Burn","crop_image_url":"http://x/c.jpg"}', suggestedPlantId: 'plant-1', cropImageUrl: 'http://minio/fresh.jpg' },
+    { observationId: 'o2', missionId: 'm', detectedLat: null, detectedLon: null, gpsDistanceMeters: null, detectionConfidence: null, matchingParametersJson: '{"crop_image_url":"http://x/old.jpg"}', suggestedPlantId: 'gone' },
     { observationId: 'o3', missionId: 'm', detectedLat: 10.46, detectedLon: 106.49, gpsDistanceMeters: 4, detectionConfidence: 0.5, matchingParametersJson: '{oops', suggestedPlantId: null },
   ], plants)
-  assert.equal(linked.className, 'Disease_Sun_Burn'); assert.equal(linked.cropImageUrl, 'http://x/c.jpg'); assert.equal(linked.suggested.plantCode, 'P-001-004')
-  assert.equal(orphan.suggested, null); assert.equal(orphan.lat, null)
+  assert.equal(linked.className, 'Disease_Sun_Burn'); assert.equal(linked.cropImageUrl, 'http://minio/fresh.jpg'); assert.equal(linked.suggested.plantCode, 'P-001-004')
+  assert.equal(orphan.suggested, null); assert.equal(orphan.lat, null); assert.equal(orphan.cropImageUrl, null)
   assert.equal(broken.className, null); assert.equal(broken.distance, 4)
 })

@@ -53,6 +53,9 @@ function paddedBounds(bounds: OrthophotoBounds): [[number, number], [number, num
   return [[bounds.minLat - latPad, bounds.minLon - lonPad], [bounds.maxLat + latPad, bounds.maxLon + lonPad]]
 }
 
+// BE ký link ảnh vết bệnh mỗi lần đọc, hiệu lực 1 giờ — tải lại trước khi hết hạn để ảnh không vỡ khi để trang mở lâu.
+const imageLinkRefreshMs = 45 * 60_000
+
 export function ManagerPlantHealthMapPage() {
   const { farmId = '' } = useParams()
   const token = useAuth().session!.accessToken
@@ -63,10 +66,10 @@ export function ManagerPlantHealthMapPage() {
   const mapQuery = useQuery({
     queryKey: ['farm-plant-health-map', farmId, farmQuery.data?.tenantId],
     queryFn: ({ signal }) => api.getFarmPlantHealthMap(token, farmId, farmQuery.data!.tenantId, signal),
-    enabled: Boolean(farmQuery.data),
+    enabled: Boolean(farmQuery.data), refetchInterval: imageLinkRefreshMs,
   })
   // A3 — chỉ xem. Lỗi ở đây không chặn bản đồ.
-  const flaggedQuery = useQuery({ queryKey: ['farm-flagged-observations', farmId], queryFn: ({ signal }) => getFlaggedObservations(token, farmId, signal), enabled: Boolean(mapQuery.data?.baseMap), retry: false })
+  const flaggedQuery = useQuery({ queryKey: ['farm-flagged-observations', farmId], queryFn: ({ signal }) => getFlaggedObservations(token, farmId, signal), enabled: Boolean(mapQuery.data?.baseMap), retry: false, refetchInterval: imageLinkRefreshMs })
   const flagged = useMemo(() => flaggedMarkers(flaggedQuery.data?.items ?? [], mapQuery.data?.plants ?? []), [flaggedQuery.data, mapQuery.data])
   const mapRef = useRef<LeafletMap | null>(null)
   function focus(marker: FlaggedMarker) {
