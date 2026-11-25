@@ -11,8 +11,7 @@ const workflow = await import(dataUrl(compile('../src/features/missions/missionW
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
-const sampleTree = { treeId: 'TREE-001', row: 1, col: 1, latitude: 10.123456, longitude: 105.812345, confidence: 0.98, status: 'DETECTED', source: 'DRONE_DETECTION' }
-const samplePayload = { surveyOrderId: 'order-1', candidates: [sampleTree], rowSpacingM: 3, plantSpacingM: 2.5, gridBearingDeg: 0 }
+const samplePayload = { surveyOrderId: 'order-1', processingJobId: 'job-1' }
 
 test('publishMissionPlantGps POSTs to the mission-scoped publish route with the Idempotency-Key header and payload wrapper', async () => {
   let captured

@@ -42,10 +42,12 @@ export type PlantGpsTree = { treeId: string; row: number; col: number; latitude:
 export type PlantGpsResult = { missionId: string; savedCount: number; trees: PlantGpsTree[] }
 // Tối thiểu 3 điểm khác nhau; không cần tự khép vòng, BE tự đóng. Chỉ gửi kèm khi muốn set/đổi ranh giới farm trong cùng request.
 export type MissionPlantGpsBoundaryPoint = { longitude: number; latitude: number }
-export type ReplacePlantGpsResult = { missionId: string; savedCount: number; boundaryPointCount: number; boundaryId: string | null; boundaryVersionNumber: number | null; boundaryStatus: string | null }
-
-// Candidates must exactly match the rows just saved via ReplacePlantGpsResult above (same shape) — verified against MissionPlantGpsPublisher.
-export type PlantGpsPublishPayload = { surveyOrderId: string; candidates: PlantGpsTree[]; rowSpacingM: number; plantSpacingM: number; gridBearingDeg: number }
+export type MappingProcessingMetadata = {
+  modelVersionId: string; sourceVersion: number; gridBearingDeg: number; rowSpacingM: number
+  plantSpacingM: number; algorithmVersion: string; startedAt: string
+}
+export type ReplacePlantGpsResult = { missionId: string; savedCount: number; processingJobId: string; boundaryPointCount: number; boundaryId: string | null; boundaryVersionNumber: number | null; boundaryStatus: string | null }
+export type PlantGpsPublishPayload = { surveyOrderId: string; processingJobId: string }
 export type PlantGpsPublishResult = { missionId: string; messageId: string; status: string }
 
 // Literal strings, not enum JSON — verified against UploadMissionMediaItemResponse (api/missions/{missionId}/farms/{farmId}/media).
@@ -112,3 +114,4 @@ export type DetectMissionTreesResult = {
   suggestedRowSpacing: number | null; suggestedColSpacing: number | null; maxRow: number; maxCol: number; csvDownloadUrl: string | null
   activeTrees: DetectedTree[]; missingTrees: DetectedTree[]
 }
+export type MissionTreeDetection = DetectMissionTreesResult & Pick<MappingProcessingMetadata, 'startedAt' | 'sourceVersion'>

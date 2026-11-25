@@ -2,7 +2,7 @@ import { apiRequest, apiRequestFile } from '../../api/client'
 import type { AvailableDronesForOrder } from './missionTypes'
 import type { Drone } from '../drones/types'
 import type { Page } from '../surveys/types'
-import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPlantGpsBoundaryPoint, MissionPurpose, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, ReplacePlantGpsResult, ResetMissionUploadResult, SliceTilesResult, UploadReadiness } from './missionTypes'
+import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MappingProcessingMetadata, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPlantGpsBoundaryPoint, MissionPurpose, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, ReplacePlantGpsResult, ResetMissionUploadResult, SliceTilesResult, UploadReadiness } from './missionTypes'
 
 const farmPath = (farmId: string) => `/api/system-manager/farms/${encodeURIComponent(farmId)}`
 const missionPath = (farmId: string, missionId: string) => `${farmPath(farmId)}/missions/${encodeURIComponent(missionId)}`
@@ -68,8 +68,10 @@ export const getMissionPlantGps = (token: string, farmId: string, missionId: str
   apiRequest<PlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, { token, signal })
 // boundary: chỉ gửi kèm khi muốn set/đổi ranh giới farm trong cùng request (xem MissionPlantGpsBoundaryPoint) — BE tự so
 // với ranh giới đã duyệt hiện tại của farm (operationalContext.Version lấy ngay tại thời điểm xử lý, FE không cần tự quản version).
-export const replaceMissionPlantGps = (token: string, farmId: string, missionId: string, trees: PlantGpsTree[], boundary?: MissionPlantGpsBoundaryPoint[]) =>
-  apiRequest<ReplacePlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, { method: 'POST', token, body: boundary && boundary.length > 0 ? { trees, boundary } : { trees } })
+export const replaceMissionPlantGps = (token: string, farmId: string, missionId: string, trees: PlantGpsTree[], processing: MappingProcessingMetadata & { clientOperationId: string }, boundary?: MissionPlantGpsBoundaryPoint[]) =>
+  apiRequest<ReplacePlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, {
+    method: 'POST', token, body: { trees, processing, ...(boundary?.length ? { boundary } : {}) },
+  })
 export const publishMissionPlantGps = (token: string, farmId: string, missionId: string, payload: PlantGpsPublishPayload, key: string) =>
   apiRequest<PlantGpsPublishResult>(`${missionPath(farmId, missionId)}/plant-gps/publish`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body: { payload } })
 
