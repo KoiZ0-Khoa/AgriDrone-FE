@@ -63,7 +63,7 @@ test('replaceMissionPlantGps sends boundary alongside trees when provided (sets/
   const calls = []
   globalThis.fetch = async (url, options) => {
     calls.push(JSON.parse(options.body))
-    return Response.json({ missionId: 'mission-1', savedCount: 1, boundaryPointCount: 4, boundaryId: 'boundary-1', boundaryVersionNumber: 1, boundaryStatus: 'Approved' })
+    return Response.json({ missionId: 'mission-1', savedCount: 1, processingJobId: 'job-1', boundaryPointCount: 4, boundaryId: 'boundary-1', boundaryVersionNumber: 1, boundaryStatus: 'Approved' })
   }
   const boundary = [{ longitude: 106.49, latitude: 10.46 }, { longitude: 106.50, latitude: 10.46 }, { longitude: 106.50, latitude: 10.47 }]
   const saved = await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree], processing, boundary)

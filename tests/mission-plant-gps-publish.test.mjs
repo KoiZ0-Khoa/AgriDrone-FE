@@ -63,6 +63,7 @@ test('publishPlantGpsError translates the known Conflict/Invalid literal message
   assert.match(workflow.publishPlantGpsError(new ApiError(409, 'No saved plant GPS rows were found for this mission.')), /lưu nháp/)
   assert.match(workflow.publishPlantGpsError(new ApiError(409, 'Payload candidates must match every saved CSV tree_id exactly once.')), /không khớp/)
   assert.match(workflow.publishPlantGpsError(new ApiError(400, 'Each candidate must include valid row, col, coordinates, confidence, status, and source.')), /không hợp lệ/)
+  assert.match(workflow.publishPlantGpsError(new ApiError(409, "Mission purpose 'Other' is not eligible for mapping candidate publication.")), /Mục đích/)
 })
 
 test('publishPlantGpsError falls back to missionError (status-based, then raw message) for anything not in the known list', async () => {

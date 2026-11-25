@@ -56,6 +56,25 @@ export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bound
     onSuccess: data => { setResult(data); onDetected(data); setPickingAnchor(false) },
   })
 
+  // Chuẩn hóa Hàng & Cột (học theo nút renumberAllRowsAndColumns của map_picker.py): gửi danh sách cây hiện tại (kể cả đã sửa tay)
+  // lên BE tính lại hàng/cột + cây khuyết, không quét YOLO lại. Cây neo (nếu đã chọn) luôn thành Hàng 1 - Cột 1.
+  const recalculateMutation = useMutation({
+    mutationFn: (current: MissionTreeDetection) => api.recalculateMissionTreeGrid(token, farmId, missionId, {
+      activeTrees: current.activeTrees, rowSpacing, colSpacing,
+      anchorLat: anchor?.lat, anchorLon: anchor?.lon,
+      polygonGeoJson: boundaryPolygon ?? undefined,
+    }),
+    onSuccess: (data, current) => {
+      // BE trả totalTilesScanned=0 / modelName="recalculated" — giữ thông tin lần quét YOLO gốc để thống kê không bị reset.
+      applyEdit({ ...data, modelName: current.modelName, totalTilesScanned: current.totalTilesScanned, totalRawDetections: current.totalRawDetections,
+        suggestedRowSpacing: data.suggestedRowSpacing ?? current.suggestedRowSpacing, suggestedColSpacing: data.suggestedColSpacing ?? current.suggestedColSpacing,
+        startedAt: current.startedAt, sourceVersion: current.sourceVersion })
+      setPickingAnchor(false); setManualAddMode(false)
+      message.success(`Đã chuẩn hóa Hàng & Cột: ${data.activeTrees.length} cây · ${data.missingTrees.length} nghi khuyết · ${data.maxRow} hàng × ${data.maxCol} cột`)
+    },
+  })
+  const busy = detectMutation.isPending || recalculateMutation.isPending
+
   function pickTreeAsAnchor(tree: DetectedTree) {
     if (!pickingAnchor) return
     setAnchor({ lat: tree.lat, lon: tree.lon })
@@ -104,9 +123,9 @@ export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bound
 
   return <>
     <Form layout="inline">
-      <Form.Item label="Độ nhạy AI"><InputNumber min={0} max={1} step={0.05} value={confidenceThreshold} disabled={detectMutation.isPending} onChange={value => setConfidenceThreshold(value ?? 0.25)} /></Form.Item>
-      <Form.Item label="Khoảng cách hàng (m)"><InputNumber min={0.1} step={0.1} value={rowSpacing} disabled={detectMutation.isPending} onChange={value => setRowSpacing(value ?? 2.8)} /></Form.Item>
-      <Form.Item label="Khoảng cách cột (m)"><InputNumber min={0.1} step={0.1} value={colSpacing} disabled={detectMutation.isPending} onChange={value => setColSpacing(value ?? 2.5)} /></Form.Item>
+      <Form.Item label="Độ nhạy AI"><InputNumber min={0} max={1} step={0.05} value={confidenceThreshold} disabled={busy} onChange={value => setConfidenceThreshold(value ?? 0.25)} /></Form.Item>
+      <Form.Item label="Khoảng cách hàng (m)"><InputNumber min={0.1} step={0.1} value={rowSpacing} disabled={busy} onChange={value => setRowSpacing(value ?? 2.8)} /></Form.Item>
+      <Form.Item label="Khoảng cách cột (m)"><InputNumber min={0.1} step={0.1} value={colSpacing} disabled={busy} onChange={value => setColSpacing(value ?? 2.5)} /></Form.Item>
     </Form>
     {result?.suggestedRowSpacing != null && result.suggestedColSpacing != null ? <Button size="small" onClick={() => { setRowSpacing(result.suggestedRowSpacing!); setColSpacing(result.suggestedColSpacing!) }}>Dùng gợi ý ({result.suggestedRowSpacing.toFixed(2)} × {result.suggestedColSpacing.toFixed(2)})</Button> : null}
     <div style={{ margin: '8px 0' }}>
@@ -117,6 +136,10 @@ export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bound
     <Space style={{ marginBottom: 8 }}>
       <Button size="small" type={manualAddMode ? 'primary' : 'default'} disabled={!result} onClick={() => { setManualAddMode(value => !value); setPickingAnchor(false) }}>
         {manualAddMode ? '🎯 Đang chấm trụ (click bản đồ để thêm)' : '➕ Chấm thêm trụ bằng tay'}
+      </Button>
+      <Button size="small" icon={<span aria-hidden>⚡</span>} loading={recalculateMutation.isPending} disabled={!result || result.activeTrees.length === 0 || detectMutation.isPending}
+        title="Tính lại hàng/cột và cây khuyết từ danh sách cây hiện tại (không chạy YOLO lại)" onClick={() => result && recalculateMutation.mutate(result)}>
+        Chuẩn hóa Hàng & Cột
       </Button>
     </Space>
     <div style={{ height: 480, marginBottom: 12 }}>
@@ -148,7 +171,8 @@ export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bound
       </MapContainer>
     </div>
     {detectMutation.error ? <Alert type="error" showIcon message={missionError(detectMutation.error)} /> : null}
-    <Button type="primary" loading={detectMutation.isPending} onClick={() => detectMutation.mutate()}>Chạy YOLO</Button>
+    {recalculateMutation.error ? <Alert type="error" showIcon style={{ marginBottom: 8 }} message={missionError(recalculateMutation.error)} /> : null}
+    <Button type="primary" loading={detectMutation.isPending} disabled={recalculateMutation.isPending} onClick={() => detectMutation.mutate()}>Chạy YOLO</Button>
     {result ? <>
       <Alert style={{ marginTop: 12 }} type="success" showIcon message={`Quét ${result.totalTilesScanned} tile · ${result.totalUniqueTrees} cây phát hiện · ${result.totalMissingTrees} cây thiếu (nội suy).`} description={`Model: ${result.modelName}`} />
       <Space wrap style={{ marginTop: 8 }}>

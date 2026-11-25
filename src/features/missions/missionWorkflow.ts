@@ -201,22 +201,30 @@ export function isNotFound(error: unknown) {
   return error instanceof ApiError && error.status === 404
 }
 
-// PublishPlantGps' Conflict/Invalid responses carry no errorCode (see MissionPlantGpsPublisher) — match the known literal
-// English messages instead so the user still sees a Vietnamese explanation for the most likely cases.
+// ReplacePlantGps / PublishPlantGps Conflict/Invalid responses carry no errorCode (see MissionPlantGpsStore and
+// MissionPlantGpsPublisher) — match the known literal English messages instead so the user still sees a Vietnamese explanation.
 const publishPlantGpsMessagesByText: Record<string, string> = {
   'Payload survey order does not match a baseline mapping mission.': 'Chỉ đưa GPS cây vào hệ thống chính thức cho nhiệm vụ Khảo sát bản đồ nền (Baseline Mapping).',
   'Payload survey order does not match the mission context.': 'Đơn khảo sát không khớp với nhiệm vụ bay này.',
   'Mission must be associated with a valid CaptureAttempt before publishing mapping candidates.': 'Nhiệm vụ chưa liên kết với lần thu thập dữ liệu hợp lệ. Mở nhiệm vụ đã được chuẩn bị từ đơn khảo sát để publish.',
   'Mission must be associated with a valid FarmBoundaryVersion before publishing mapping candidates.': 'Nhiệm vụ chưa liên kết với phiên bản ranh giới nông trại hợp lệ.',
   'The active mapping model version was not found.': 'Không tìm thấy phiên bản model nhận diện cây đang hoạt động. Kiểm tra lại ID phiên bản model.',
-  'No saved plant GPS rows were found for this mission.': 'Chưa có GPS cây nào được lưu nháp cho nhiệm vụ này.',
   'Payload candidates must match every saved CSV tree_id exactly once.': 'Danh sách cây vừa gửi không khớp với dữ liệu đã lưu nháp (thiếu/dư/trùng mã cây). Hãy nhận diện lại rồi thử lại.',
   'Payload candidate fields must match the saved plant GPS rows.': 'Dữ liệu cây vừa gửi không khớp với dữ liệu đã lưu nháp. Hãy nhận diện lại rồi thử lại.',
   'Each candidate must include valid row, col, coordinates, confidence, status, and source.': 'Có cây với dữ liệu không hợp lệ (hàng/cột/tọa độ/độ tin cậy/trạng thái/nguồn).',
+  'No saved plant GPS rows were found for this mission.': 'Chưa có GPS cây nào được lưu nháp cho nhiệm vụ này.',
+  'Saved mapping output contains missing or duplicate tree_id values.': 'Dữ liệu đã lưu nháp có cây thiếu mã hoặc trùng mã. Hãy nhận diện lại rồi thử lại.',
+  'Saved mapping output contains invalid row, column, coordinates, confidence, status, or source values.': 'Có cây với dữ liệu không hợp lệ (hàng/cột/tọa độ/độ tin cậy/trạng thái/nguồn).',
+  'A completed AI mapping processing job was not found for this mission. Complete mapping AI processing before publishing mapping candidates.': 'Không tìm thấy lần xử lý bản đồ đã hoàn tất cho nhiệm vụ này. Hãy lưu nháp lại rồi publish.',
+  'The mapping processing job references a missing AI model version.': 'Lần xử lý bản đồ tham chiếu tới model không còn tồn tại.',
+  'The mapping processing job does not contain a complete immutable mapping snapshot.': 'Dữ liệu cây đã thay đổi sau lần lưu nháp gần nhất. Hãy lưu nháp lại rồi publish.',
   'Idempotency-Key has already been used for another event.': 'Mã gửi (Idempotency-Key) đã được dùng cho một yêu cầu khác. Hãy thử lại để tạo mã mới.',
 }
 export function publishPlantGpsError(error: unknown) {
-  if (error instanceof ApiError && error.message && publishPlantGpsMessagesByText[error.message]) return publishPlantGpsMessagesByText[error.message]
+  if (error instanceof ApiError && error.message) {
+    if (publishPlantGpsMessagesByText[error.message]) return publishPlantGpsMessagesByText[error.message]
+    if (/^Mission purpose '.*' is not eligible for mapping candidate publication\.$/.test(error.message)) return 'Mục đích của nhiệm vụ này không cho phép publish bản đồ.'
+  }
   return missionError(error)
 }
 
