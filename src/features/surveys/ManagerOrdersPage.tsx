@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
+import { ManagerQualityRefundPanel } from './ManagerQualityRefundPanel'
 import { getAssignedOrder, getAssignedOrders, getOrderScope } from './orderApi'
 import type { Appointment, AssignedOrder, ConfirmedPricing } from './orderTypes'
 import { appointmentPurpose, appointmentStatusLabels, baselineStageNotices, matchingOrderSnapshot, orderStatusLabels, canOpenHealthReview, canProposeAppointment, serviceIsReviewed } from './orderWorkflow'
@@ -44,7 +45,8 @@ export function ManagerOrdersPage() {
 
 export function ManagerOrderDetailPage() {
   const { message } = App.useApp()
-  const token = useAuth().session!.accessToken
+  const session = useAuth().session!
+  const token = session.accessToken
   const { orderId = '' } = useParams()
   const client = useQueryClient()
   const [action, setAction] = useState<'appointment' | 'boundary' | 'corners' | 'prepare-mission' | 'pricing' | null>(null)
@@ -105,6 +107,7 @@ export function ManagerOrderDetailPage() {
     {stage ? <Alert className="workflow-notice" type={stage.type} showIcon title={stage.title} description={stage.description} /> : null}
     {pricing?.surveyOrderId === orderId ? <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Đã xác nhận số trụ và giá</strong><span>{dateTime(pricing.confirmedAt)}</span></div></div><dl className="detail-list"><SurveyInvoiceLines invoice={pricing} />{pricing.confirmedMappingPoleCount == null ? <><div><dt>Số trụ chính thức</dt><dd>{pricing.confirmedSurveyPoleCount.toLocaleString('vi-VN')} trụ</dd></div><div><dt>Đơn giá</dt><dd>{priceLabel(pricing.pricePerPole, pricing.currency)}</dd></div></> : null}<div><dt>Tổng tiền dịch vụ</dt><dd>{money(pricing.finalPrice, pricing.currency)}</dd></div></dl><p className="form-hint">Owner thanh toán khoản còn lại để hoàn tất đơn và mở kết quả khảo sát.</p></section> : null}
     {consistent && order.boundaryCaptureSessionId ? <BoundaryCapturePanel key={orderId} token={token} orderId={orderId} farmId={order.farmId} sessionId={order.boundaryCaptureSessionId} /> : null}
+    {consistent && scope.orderStatus === 'COMPLETED' && order.surveyServiceCode === 'PLANT_HEALTH' ? <ManagerQualityRefundPanel key={orderId} token={token} actor={session.email} orderId={orderId} /> : null}
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Phạm vi khu vực</strong><span>Các khu vực được trả về trong phạm vi đơn khảo sát</span></div></div><Table rowKey="zoneId" dataSource={scope.zones} pagination={false} scroll={{ x: 500 }} locale={{ emptyText: 'Chưa có khu vực trong phạm vi đơn.' }} columns={[{ title: 'Mã', dataIndex: 'code' }, { title: 'Khu vực', dataIndex: 'name' }, { title: 'Trạng thái', render: (_, zone) => zone.status === 'ACTIVE' ? 'Đang hoạt động' : zone.status }]} /></section>
     {action === 'appointment' ? <AppointmentModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setAppointment(result); setAction(null); await refresh() }} /> : null}
     {action === 'boundary' ? <BoundaryVerificationModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}

@@ -177,6 +177,73 @@ test('Owner intake selects new-farm or existing-farm route with tenant bearer au
   }
 })
 
+test('Intake offers MAP and COMBO only for a bookable V3 catalogue and uses the legacy catalogue when V3 is closed', async () => {
+  const calls = []
+  const controller = new AbortController()
+  const sharedDeposit = { amount: 100000, currency: 'VND' }
+  const service = { description: 'Mapping', pricePerPole: 1000, currency: 'VND', preliminaryLimitations: [] }
+  const services = [
+    { ...service, surveyServiceId: 'v3-map', code: 'MAP' },
+    { ...service, surveyServiceId: 'v3-combo', code: 'COMBO' },
+    { ...service, surveyServiceId: 'other', code: 'OTHER' },
+  ]
+  let status = 200
+  let isBookable = true
+  globalThis.fetch = async (url, options) => {
+    const path = new URL(url).pathname
+    calls.push(path)
+    assert.equal(options.signal, controller.signal)
+    if (path.startsWith('/api/v3/')) return Response.json({ isBookable, sharedDeposit, services }, { status })
+    return Response.json([{ surveyServiceId: 'legacy', indicativePrice: { amountPerPole: 2000, currency: 'VND' } }])
+  }
+  const v3 = await api.getSurveyIntakeCatalogue(controller.signal)
+  assert.equal(v3.version, 'v3')
+  assert.deepEqual(v3.sharedDeposit, sharedDeposit)
+  assert.deepEqual(v3.services.map(service => service.surveyServiceId), ['v3-map', 'v3-combo'])
+  assert.deepEqual(calls, ['/api/v3/catalog/survey-services'])
+
+  isBookable = false
+  calls.length = 0
+  assert.equal((await api.getSurveyIntakeCatalogue(controller.signal)).services[0].pricePerPole, 2000)
+  assert.deepEqual(calls, ['/api/v3/catalog/survey-services', '/api/public/survey-services'])
+
+  status = 404
+  assert.equal((await api.getSurveyIntakeCatalogue(controller.signal)).version, 'legacy')
+  status = 500
+  await assert.rejects(api.getSurveyIntakeCatalogue(controller.signal), { status: 500 })
+})
+
+test('V3 booking uses the catalogue service ID and sends the correct Owner or public credentials', async () => {
+  const common = { surveyServiceId: 'v3-map', estimatedPoleCount: 20, preferredStartAt: null, preferredEndAt: null, notes: null }
+  const newFarm = { ...common, farmName: 'Farm', farmAddress: 'Address', approximateAreaHa: 1, longitude: 108, latitude: 10 }
+  const publicBody = { ...newFarm, tenantCode: 'ANPHU', tenantName: 'An Phu', applicantName: 'Customer', applicantEmail: 'customer@example.test', applicantPhone: '0901234567' }
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'http://test.local/api/v3/public/survey-requests')
+    assert.equal(options.credentials, 'include')
+    assert.equal(options.headers.Authorization, undefined)
+    assert.equal(options.headers['Idempotency-Key'], 'public-key')
+    assert.deepEqual(JSON.parse(options.body), publicBody)
+    return Response.json({ requestNumber: 'SR-1', trackingToken: 'trk_test' }, { status: 201 })
+  }
+  assert.equal((await api.submitPublicRequestV3(publicBody, 'public-key')).trackingToken, 'trk_test')
+  for (const body of [{ ...newFarm, farmId: null }, { ...common, farmId: 'existing-farm' }]) {
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, 'http://test.local/api/v3/tenant-owner/survey-requests')
+      assert.equal(options.headers.Authorization, 'Bearer owner')
+      assert.equal(options.headers['Idempotency-Key'], 'owner-key')
+      assert.deepEqual(JSON.parse(options.body), body)
+      return Response.json({ requestNumber: 'SR-2' }, { status: 201 })
+    }
+    assert.equal((await api.submitOwnerRequestV3('owner', body, 'owner-key')).requestNumber, 'SR-2')
+  }
+})
+
+test('Refund pole validation explains an out-of-order plant without treating it as a version conflict', async () => {
+  const { ApiError } = await import(client)
+  const error = new ApiError(400, 'Invalid pole', 'QualityRefund.PoleOutsideReleasedResult')
+  assert.match(workflow.workflowError(error), /Kiểm tra lại mã trụ và gửi lại/)
+})
+
 test('intake rejects invalid coordinates, pole count and incomplete/reversed time windows', () => {
   const body = { longitude: 108, latitude: 10, approximateAreaHa: 1, estimatedPoleCount: null, preferredStartAt: null, preferredEndAt: null }
   assert.doesNotThrow(() => workflow.validateIntake(body))

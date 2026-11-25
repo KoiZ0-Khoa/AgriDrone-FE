@@ -10,6 +10,19 @@ export type SurveyService = {
   status: 'ACTIVE' | 'EXPERIMENTAL' | 'RETIRED'; version: number; currentPrice: ServicePrice | null
 }
 export type PublicService = Pick<SurveyService, 'surveyServiceId' | 'code' | 'name' | 'description' | 'serviceType'> & { isExperimental: boolean; indicativePrice: Omit<ServicePrice, 'priceVersionId'> }
+export type SurveyIntakeCatalogue = {
+  version: 'legacy' | 'v3'
+  services: {
+    surveyServiceId: string; name: string; description: string
+    pricePerPole: number; currency: string; isExperimental?: boolean; preliminaryLimitations?: string[]
+  }[]
+  sharedDeposit?: { amount: number; currency: string }
+}
+export type SurveyCatalogueV3 = {
+  isBookable: boolean
+  sharedDeposit: NonNullable<SurveyIntakeCatalogue['sharedDeposit']>
+  services: { surveyServiceId: string; code: string; name: string; description: string; pricePerPole: number; currency: string; preliminaryLimitations: string[] }[]
+}
 export type PriceHistory = { priceVersionId: string; pricePerPole: number | null; legacyPricePerHa: number | null; currency: string; effectiveFrom: string; effectiveTo: string | null; isLegacyPerHectarePrice: boolean; mappingPricePerPole: number | null; plantHealthPricePerPole: number | null }
 export type RequestKind = 'NEW_CUSTOMER' | 'EXISTING_TENANT_NEW_FARM' | 'EXISTING_FARM_SURVEY'
 export type RequestStatus = 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN'
@@ -31,6 +44,10 @@ export type ReviewChecklist = Record<ReviewCode, boolean> & { notes: string | nu
 export type ReviewDecision = { expectedVersion: number; reason: string; checklist: ReviewChecklist }
 export type Approval = { surveyRequestId: string; requestNumber: string; surveyOrderId: string; orderNumber: string; orderStatus: string; tenantId: string; farmId: string; requiresBaselineMapping: boolean }
 export type RequestReceipt = { id: string; requestNumber: string; tenantCode: string | null; tenantName: string | null; kind: RequestKind; status: RequestStatus; createdAt: string }
+export type SurveyIntakeReceipt = Pick<RequestReceipt, 'requestNumber'> & {
+  trackingToken?: string
+  indicativeQuote?: { currency: string; depositAmount: number; indicativeTotalAmount: number | null }
+}
 export type ExistingFarmIntake = { surveyServiceId: string; estimatedPoleCount: number | null; preferredStartAt: string | null; preferredEndAt: string | null; notes: string | null }
 export type NewFarmIntake = ExistingFarmIntake & { farmName: string; farmAddress: string; approximateAreaHa: number; longitude: number; latitude: number }
 export type PublicIntake = NewFarmIntake & { tenantCode: string; tenantName: string; applicantName: string; applicantEmail: string; applicantPhone: string }

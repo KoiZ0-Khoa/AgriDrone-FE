@@ -44,7 +44,7 @@ export function RevenueDashboardPage() {
   useEffect(() => { setDraft(applied) }, [applied])
 
   const report = useQuery({
-    queryKey: ['revenue-report', applied.year, applied.month, applied.service ?? 'ALL'],
+    queryKey: ['revenue-report', session!.email, applied.year, applied.month, applied.service ?? 'ALL'],
     queryFn: ({ signal }) => api.getRevenueReport(token, applied, signal),
     retry: (count, error) => !(error instanceof ApiError && [400, 401, 403, 404].includes(error.status)) && count < 2,
   })
@@ -53,7 +53,7 @@ export function RevenueDashboardPage() {
   const exportLock = useRef(false)
   const exporting = useMutation({
     onSettled: () => { exportLock.current = false },
-    mutationFn: async (filters: RevenueFilters) => {
+    mutationFn: async (filters: RevenueFilters & { snapshotId?: string | null }) => {
       const file = await api.exportRevenueReport(token, filters)
       if (file.blob.type && !/spreadsheetml|octet-stream/i.test(file.blob.type)) throw new Error('Máy chủ không trả về tệp Excel hợp lệ.')
       return file
@@ -88,7 +88,12 @@ export function RevenueDashboardPage() {
         <Select aria-label="Dịch vụ" value={draft.service ?? ''} onChange={(value: string) => setDraft(prev => ({ ...prev, service: (value || null) as RevenueServiceFilter | null }))}
           options={[{ value: '', label: 'Tất cả dịch vụ' }, { value: 'MAP', label: revenueServiceLabels.MAP }, { value: 'COMBO', label: revenueServiceLabels.COMBO }]} />
         <Button type="primary" icon={<SearchOutlined />} onClick={apply} loading={report.isFetching && !dirty}>Xem báo cáo</Button>
-        <Button icon={<DownloadOutlined />} loading={exporting.isPending} disabled={exporting.isPending} onClick={() => { if (exportLock.current) return; exportLock.current = true; exporting.mutate(applied) }}>
+        <Button icon={<DownloadOutlined />} loading={exporting.isPending} disabled={exporting.isPending || report.isFetching || !report.data}
+          onClick={() => {
+            if (exportLock.current || !report.data || report.isFetching) return
+            exportLock.current = true
+            exporting.mutate({ ...applied, snapshotId: report.data.snapshotId })
+          }}>
           {exporting.isPending ? 'Đang xuất…' : 'Xuất Excel'}
         </Button>
       </div>
@@ -132,7 +137,7 @@ function ReportBody({ report }: { report: MonthlyFinancialReport }) {
   const reasons = incompleteReasons(report)
   const empty = report.lines.length === 0
   const flows: Metric[] = [
-    { label: 'Doanh thu thuần', value: report.netServiceRevenue, hint: 'Giá trị công bố trừ hoàn giá trị dịch vụ' },
+    { label: 'Doanh thu thuần', value: report.netRevenue ?? report.netServiceRevenue, hint: report.netRevenue == null ? 'Giá trị công bố trừ hoàn giá trị dịch vụ' : 'Giá trị công bố trừ các khoản hoàn đã hoàn tất' },
     { label: 'Dòng tiền thuần', value: report.netCash, hint: 'Tiền thực thu trừ tiền đã hoàn' },
     { label: 'Giá trị dịch vụ công bố', value: report.publishedServiceValue, hint: 'Sale gốc ghi nhận một lần mỗi đơn' },
     { label: 'Hoàn giá trị dịch vụ', value: report.serviceRefunds, hint: 'Khoản hoàn thuộc doanh thu dịch vụ' },
@@ -152,6 +157,15 @@ function ReportBody({ report }: { report: MonthlyFinancialReport }) {
     { label: 'Đơn chưa chốt giá', value: report.unpricedOrders, hint: 'Không ước tính thành dư nợ', money: false },
     { label: 'Đơn cần đối soát', value: report.reconciliationOrders, hint: 'Lịch sử hoặc phân loại chưa đầy đủ', money: false },
   ]
+  const refunds: Metric[] = [
+    { label: 'Tổng hoàn đã hoàn tất', value: report.completedRefunds ?? 0, hint: 'Tổng các khoản đã hoàn theo nhóm bên dưới' },
+    { label: 'Hoàn tiền thừa', value: report.overpaymentRefunds ?? 0, hint: 'Hoàn phần khách đã trả vượt số tiền phải thu' },
+    { label: 'Hoàn do hủy đơn', value: report.cancellationRefunds ?? 0, hint: 'Hoàn phát sinh khi hủy đơn' },
+    { label: 'Hoàn do không thể bàn giao', value: report.serviceFailureRefunds ?? 0, hint: 'Hoàn do dịch vụ không hoàn thành' },
+    { label: 'Hoàn do khiếu nại', value: report.complaintRefunds ?? 0, hint: 'Hoàn theo hồ sơ khiếu nại đã xử lý' },
+    { label: 'Hoàn chưa phân loại', value: report.unclassifiedRefunds ?? 0, hint: 'Khoản hoàn chưa xác định được nhóm' },
+    { label: 'Đảo giao dịch', value: report.fundingReversals ?? 0, hint: 'Khoản tiền bị đảo trong kỳ' },
+  ]
 
   return <>
     {!report.historicalBalancesComplete ? <Alert className="revenue-alert" type="warning" showIcon title={INCOMPLETE_BANNER}
@@ -162,6 +176,7 @@ function ReportBody({ report }: { report: MonthlyFinancialReport }) {
       <dl>
         <div><dt>Kỳ báo cáo</dt><dd>{vnDateTime(report.startUtc)} – {vnDateTime(report.endUtc)} (không gồm mốc cuối)</dd></div>
         <div><dt>Lập lúc</dt><dd>{vnDateTime(report.generatedAt)}</dd></div>
+        {report.asOfUtc ? <div><dt>Số liệu tính đến</dt><dd>{vnDateTime(report.asOfUtc)}</dd></div> : null}
         <div><dt>Phiên bản công thức</dt><dd>{report.formulaVersion}</dd></div>
         <div><dt>Lưu lịch sử từ</dt><dd>{vnDateTime(report.historyAvailableFrom)}</dd></div>
         <div className="revenue-fingerprint"><dt>Fingerprint</dt><dd><Typography.Text copyable={{ text: report.reportFingerprint }} code ellipsis>{report.reportFingerprint}</Typography.Text></dd></div>
@@ -176,6 +191,10 @@ function ReportBody({ report }: { report: MonthlyFinancialReport }) {
         <h2>Biến động trong kỳ</h2>
         <div className="revenue-metrics">{flows.map(metric => <MetricCard key={metric.label} metric={metric} kind="flow" />)}</div>
       </section>
+      {report.completedRefunds != null ? <section className="revenue-section" aria-label="Chi tiết hoàn tiền">
+        <h2>Chi tiết hoàn tiền</h2>
+        <div className="revenue-metrics">{refunds.map(metric => <MetricCard key={metric.label} metric={metric} kind="flow" />)}</div>
+      </section> : null}
       <section className="revenue-section" aria-label="Số dư tại mốc báo cáo">
         <h2>Số dư tại mốc báo cáo</h2>
         <div className="revenue-metrics">{balances.map(metric => <MetricCard key={metric.label} metric={metric} kind="balance" />)}</div>
@@ -192,14 +211,18 @@ function ReportBody({ report }: { report: MonthlyFinancialReport }) {
 
 const moneyColumn = (title: string, key: keyof FinancialReportLine): ColumnsType<FinancialReportLine>[number] => ({
   title, key, align: 'right', width: 150,
-  sorter: (a, b) => (a[key] as number) - (b[key] as number),
-  render: (_, line) => { const value = line[key] as number; return <span className={value < 0 ? 'is-negative' : value === 0 ? 'is-zero' : undefined}>{revenueMoney(value)}</span> },
+  sorter: (a, b) => Number(a[key] ?? 0) - Number(b[key] ?? 0),
+  render: (_, line) => {
+    const value = line[key]
+    return typeof value === 'number' ? <span className={value < 0 ? 'is-negative' : value === 0 ? 'is-zero' : undefined}>{revenueMoney(value)}</span> : '—'
+  },
 })
 
 function ReportLines({ lines }: { lines: FinancialReportLine[] }) {
   const [search, setSearch] = useState('')
   const [onlyReconcile, setOnlyReconcile] = useState(false)
   const visible = lines.filter(line => lineMatchesSearch(line, search) && (!onlyReconcile || line.needsReconciliation))
+  const hasRefundBreakdown = lines.some(line => line.completedRefunds != null)
   const columns: ColumnsType<FinancialReportLine> = [
     { title: 'Đơn hàng', key: 'order', fixed: 'left', width: 200, sorter: (a, b) => a.orderNumber.localeCompare(b.orderNumber),
       render: (_, line) => <div className="revenue-order"><strong>{line.orderNumber}</strong>{line.needsReconciliation ? <Tag color="orange">Cần đối soát</Tag> : null}</div> },
@@ -210,6 +233,11 @@ function ReportLines({ lines }: { lines: FinancialReportLine[] }) {
     moneyColumn('Hoàn giá trị DV', 'serviceRefunds'),
     moneyColumn('Tiền thực thu', 'cashReceipts'),
     moneyColumn('Tiền đã hoàn', 'cashRefunds'),
+    ...(hasRefundBreakdown ? [
+      moneyColumn('Hoàn đã hoàn tất', 'completedRefunds'),
+      moneyColumn('Đảo giao dịch', 'fundingReversals'),
+      moneyColumn('Doanh thu thuần', 'netRevenue'),
+    ] : []),
     moneyColumn('Cọc giữ lại do hủy', 'cancellationRetention'),
     moneyColumn('Dư nợ', 'outstandingBalance'),
     moneyColumn('Cọc đang giữ', 'depositsHeld'),
@@ -228,7 +256,7 @@ function ReportLines({ lines }: { lines: FinancialReportLine[] }) {
       <Checkbox checked={onlyReconcile} onChange={event => setOnlyReconcile(event.target.checked)}>Chỉ đơn cần đối soát</Checkbox>
       <span className="revenue-count">{revenueCount(visible.length)}/{revenueCount(lines.length)} dòng</span>
     </div>
-    <Table<FinancialReportLine> rowKey="orderId" dataSource={visible} columns={columns} size="middle" scroll={{ x: 2050 }}
+    <Table<FinancialReportLine> rowKey="orderId" dataSource={visible} columns={columns} size="middle" scroll={{ x: hasRefundBreakdown ? 2500 : 2050 }}
       rowClassName={line => line.needsReconciliation ? 'revenue-row-reconcile' : ''}
       pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
       locale={{ emptyText: 'Không có dòng phù hợp với điều kiện tìm kiếm.' }} />

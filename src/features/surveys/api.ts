@@ -1,5 +1,6 @@
-import { apiRequest } from '../../api/client'
+import { ApiError, apiRequest } from '../../api/client'
 import type { Approval, AssignedFarm, ExistingFarmIntake, FarmManagerAssignment, Manager, NewFarmIntake, Page, PriceHistory, PublicIntake, PublicService, RequestDetail, RequestReceipt, ReviewDecision, SurveyRequest, SurveyService } from './types'
+import type { SurveyCatalogueV3, SurveyIntakeCatalogue, SurveyIntakeReceipt } from './types'
 
 const id = encodeURIComponent
 const adminServices = '/api/system-admin/survey-services'
@@ -16,6 +17,28 @@ export const changeManagerState = (token: string, profileId: string, state: 'act
 export const changeManagerAvailability = (token: string, profileId: string, body: { availability: Manager['availability']; reason: string; expectedVersion: number }) => apiRequest<Manager>(`/api/system/managers/${id(profileId)}/availability`, { method: 'PUT', token, body })
 export const getServices = (token: string, signal?: AbortSignal) => apiRequest<SurveyService[]>(adminServices, { token, signal })
 export const getPublicServices = (signal?: AbortSignal) => apiRequest<PublicService[]>('/api/public/survey-services', { signal })
+export async function getSurveyIntakeCatalogue(signal?: AbortSignal): Promise<SurveyIntakeCatalogue> {
+  let v3: SurveyCatalogueV3 | undefined
+  try {
+    v3 = await apiRequest<SurveyCatalogueV3>('/api/v3/catalog/survey-services', { signal, cache: 'no-store' })
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) throw error
+  }
+  if (v3?.isBookable) {
+    return {
+      version: 'v3',
+      sharedDeposit: v3.sharedDeposit,
+      services: v3.services
+        .filter(service => service.code === 'MAP' || service.code === 'COMBO')
+        .map(service => ({ ...service, name: service.code === 'MAP' ? 'Chỉ bay bản đồ' : 'Combo bản đồ + khảo sát sức khỏe cây' })),
+    }
+  }
+  const services = await getPublicServices(signal)
+  return {
+    version: 'legacy',
+    services: services.map(service => ({ ...service, pricePerPole: service.indicativePrice.amountPerPole, currency: service.indicativePrice.currency })),
+  }
+}
 export const getPriceHistory = (token: string, serviceId: string, signal?: AbortSignal) => apiRequest<PriceHistory[]>(`${adminServices}/${id(serviceId)}/prices`, { token, signal })
 export const updateService = (token: string, serviceId: string, body: { name: string; description: string; expectedVersion: number }) => apiRequest(`${adminServices}/${id(serviceId)}`, { method: 'PUT', token, body })
 export const changeServiceState = (token: string, serviceId: string, state: 'activate' | 'experimental' | 'retire', body: { reason: string; expectedVersion: number }) => apiRequest(`${adminServices}/${id(serviceId)}/${state}`, { method: 'POST', token, body })
@@ -38,6 +61,10 @@ export const approveRequest = (token: string, requestId: string, body: ReviewDec
 export const submitPublicRequest = (body: PublicIntake, key: string) => apiRequest<RequestReceipt>('/api/public/survey-requests', { method: 'POST', credentials: 'include', headers: { 'Idempotency-Key': key }, body })
 export const submitNewFarmRequest = (token: string, body: NewFarmIntake, key: string) => apiRequest<RequestReceipt>('/api/tenant-owner/survey-requests/new-farm', { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
 export const submitExistingFarmRequest = (token: string, farmId: string, body: ExistingFarmIntake, key: string) => apiRequest<RequestReceipt>(`/api/tenant-owner/farms/${id(farmId)}/survey-requests`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
+export const submitPublicRequestV3 = (body: PublicIntake, key: string) =>
+  apiRequest<SurveyIntakeReceipt>('/api/v3/public/survey-requests', { method: 'POST', credentials: 'include', headers: { 'Idempotency-Key': key }, body })
+export const submitOwnerRequestV3 = (token: string, body: (ExistingFarmIntake & { farmId: string }) | (NewFarmIntake & { farmId: null }), key: string) =>
+  apiRequest<SurveyIntakeReceipt>('/api/v3/tenant-owner/survey-requests', { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
 export const getAssignedFarms = (token: string, signal?: AbortSignal) => apiRequest<AssignedFarm[]>('/api/system-manager/farms', { token, signal })
 // A missing assignment version only permits an initial assignment; BE rejects replacements.
 export const assignFarmManager = (token: string, farmId: string, body: { systemManagerProfileId: string; reason: string }) => apiRequest<FarmManagerAssignment>(`/api/system/farms/${id(farmId)}/primary-manager`, { method: 'PUT', token, body: { ...body, expectedCurrentAssignmentVersion: null } })

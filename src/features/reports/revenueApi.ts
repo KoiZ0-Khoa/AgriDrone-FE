@@ -17,6 +17,8 @@ export function getRevenueReport(token: string, filters: RevenueFilters, signal?
 export const revenueFileName = (filters: Pick<RevenueFilters, 'year' | 'month'>) =>
   `revenue-${String(filters.year).padStart(4, '0')}-${String(filters.month).padStart(2, '0')}.xlsx`
 
-export function exportRevenueReport(token: string, filters: RevenueFilters, signal?: AbortSignal) {
-  return apiRequestFile(`${revenue}/export?${revenueQuery(filters)}`, { token, signal, fallbackFileName: revenueFileName(filters) })
+export function exportRevenueReport(token: string, filters: RevenueFilters & { snapshotId?: string | null }, signal?: AbortSignal) {
+  const params = new URLSearchParams(revenueQuery(filters))
+  if (filters.snapshotId) params.set('snapshotId', filters.snapshotId)
+  return apiRequestFile(`${revenue}/export?${params}`, { token, signal, fallbackFileName: revenueFileName(filters) })
 }

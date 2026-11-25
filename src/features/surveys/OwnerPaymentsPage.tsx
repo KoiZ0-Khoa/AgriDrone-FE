@@ -7,6 +7,7 @@ import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { OwnerAppointmentDialog, type OwnerAppointmentAction } from './OwnerAppointmentDialog'
+import { OwnerQualityRefundPanel } from './OwnerQualityRefundPanel'
 import { getOwnerOrder, getOwnerOrders } from './ownerOrderApi'
 import type { OwnerSurveyOrder } from './ownerOrderTypes'
 import { canConfirmOwnerAppointment, canRescheduleOwnerAppointment, ownerGuid, ownerOrderStatusQuery, validOwnerVersion } from './ownerOrderWorkflow'
@@ -94,6 +95,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
       </> : <p>Chờ Manager lên lịch. Lịch bản đồ nền cần bạn xác nhận; lịch bay bệnh do Manager chốt sau khi thống nhất thời gian.</p>}
     </section>
     <div className="workflow-section"><SurveyPaymentPanel order={order} history={history} refreshOrder={refreshOrder} disabled={busy || !!action} /></div>
+    {order.status === 'COMPLETED' && order.serviceType === 'PLANT_HEALTH' ? <OwnerQualityRefundPanel key={order.surveyOrderId} token={token} tenantId={tenantId} order={order} /> : null}
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Chi phí khảo sát</strong><span>Hóa đơn được chốt sau khi Manager duyệt kết quả</span></div><CreditCardOutlined aria-hidden="true" /></div><dl className="detail-list">{showDeposit ? <div><dt>Cọc khảo sát</dt><dd>{money(order.depositAmount, order.currency)}</dd></div> : null}<SurveyInvoiceLines invoice={order} /><div><dt>Tổng tiền dịch vụ</dt><dd className={order.totalAmount === null ? 'is-pending' : undefined}>{money(order.totalAmount, order.currency)}</dd></div><div><dt>Số tiền còn lại</dt><dd className={order.remainingAmount === null ? 'is-pending' : undefined}>{money(order.remainingAmount, order.currency)}</dd></div></dl></section>
     {action ? <OwnerAppointmentDialog token={token} tenantId={tenantId} action={action} current={order} history={history.isError ? undefined : history.data} disabled={query.isFetching || query.isError || history.isFetching} close={() => { setAction(null); void refresh() }} done={async () => {
       setNotice(action.kind === 'confirm' ? 'Đã xác nhận lịch. Trả cọc nếu còn thiếu; khoản còn lại được chốt sau khi duyệt kết quả.' : 'Đã gửi yêu cầu đổi lịch. Chờ Manager đề xuất lại.')
