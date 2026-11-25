@@ -1,4 +1,5 @@
 import { apiRequest, apiRequestFile } from '../../api/client'
+import type { AvailableDronesForOrder } from './missionTypes'
 import type { Drone } from '../drones/types'
 import type { Page } from '../surveys/types'
 import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPlantGpsBoundaryPoint, MissionPurpose, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, ReplacePlantGpsResult, ResetMissionUploadResult, SliceTilesResult, UploadReadiness } from './missionTypes'
@@ -11,7 +12,10 @@ export function getAvailableDrones(token: string, farmId: string, startAt: strin
   if (purpose) params.set('purpose', purpose)
   return apiRequest<AvailableDrone[]>(`${farmPath(farmId)}/drones/available?${params}`, { token, signal })
 }
-export const prepareMissionSet = (token: string, surveyOrderId: string, body: { droneId: string; baselineDate?: string; serviceDate?: string }, key: string) =>
+export const getAvailableDronesForOrder = (token: string, surveyOrderId: string, signal?: AbortSignal) =>
+  apiRequest<AvailableDronesForOrder>(`/api/system-manager/survey-orders/${encodeURIComponent(surveyOrderId)}/drones/available`, { token, signal, cache: 'no-store' })
+
+export const prepareMissionSet = (token: string, surveyOrderId: string, body: { droneId: string }, key: string) =>
   apiRequest<PrepareMissionSetResult>(`/api/system-manager/survey-orders/${encodeURIComponent(surveyOrderId)}/missions/prepare`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
 
 export const getFarmDroneDetails = (token: string, farmId: string, droneId: string, signal?: AbortSignal) =>

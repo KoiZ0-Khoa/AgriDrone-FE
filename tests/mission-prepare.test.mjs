@@ -41,17 +41,30 @@ test('available drones query omits purpose when not provided', async () => {
   await api.getAvailableDrones('manager', 'farm-1', 'start', 'end')
 })
 
-test('prepare mission set sends the Idempotency-Key header and the caller-provided body as-is', async () => {
+test('prepare mission gets the committed appointment and drones by order, with no client date', async () => {
+  const controller = new AbortController()
+  const availability = { surveyOrderId: 'order-1', farmId: 'farm-1', purpose: 'BaselineMapping', startAt: '2026-10-24T17:00:00Z', endAt: '2026-10-25T17:00:00Z', drones: [{ id: 'drone-1' }] }
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'http://test.local/api/system-manager/survey-orders/order-1/drones/available')
+    assert.equal(options.headers.Authorization, 'Bearer manager')
+    assert.equal(options.signal, controller.signal)
+    assert.equal(options.cache, 'no-store')
+    return Response.json(availability)
+  }
+  assert.deepEqual(await api.getAvailableDronesForOrder('manager', 'order-1', controller.signal), availability)
+})
+
+test('prepare mission set sends the Idempotency-Key header and selected drone only', async () => {
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url)
     assert.equal(parsed.pathname, '/api/system-manager/survey-orders/order-1/missions/prepare')
     assert.equal(options.method, 'POST')
     assert.equal(options.headers.Authorization, 'Bearer manager')
     assert.equal(options.headers['Idempotency-Key'], 'key-1')
-    assert.deepEqual(JSON.parse(options.body), { droneId: 'drone-1', baselineDate: '2026-10-25' })
+    assert.deepEqual(JSON.parse(options.body), { droneId: 'drone-1' })
     return Response.json({ surveyOrderId: 'order-1', farmId: 'farm-1', reusedExistingSet: false, missions: [{ missionId: 'mission-1', purpose: 'BaselineMapping', status: 'Scheduled', scheduledAt: null, scheduledEndAt: null, version: 1 }] })
   }
-  const result = await api.prepareMissionSet('manager', 'order-1', { droneId: 'drone-1', baselineDate: '2026-10-25' }, 'key-1')
+  const result = await api.prepareMissionSet('manager', 'order-1', { droneId: 'drone-1' }, 'key-1')
   assert.equal(result.reusedExistingSet, false)
   assert.equal(result.missions[0].status, 'Scheduled')
 })

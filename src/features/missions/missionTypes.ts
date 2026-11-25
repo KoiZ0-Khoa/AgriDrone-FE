@@ -7,6 +7,9 @@ export type AvailableDrone = {
   registrationNumber: string | null; registrationExpiryDate: string | null
   weightKg: number | null; status: string; nextMaintenanceAt: string | null
 }
+export type AvailableDronesForOrder = {
+  surveyOrderId: string; farmId: string; purpose: MissionPurpose; startAt: string; endAt: string; drones: AvailableDrone[]
+}
 export type PreparedMission = { missionId: string; purpose: string; status: string; scheduledAt: string | null; scheduledEndAt: string | null; version: number }
 export type PrepareMissionSetResult = { surveyOrderId: string; farmId: string; reusedExistingSet: boolean; missions: PreparedMission[] }
 
