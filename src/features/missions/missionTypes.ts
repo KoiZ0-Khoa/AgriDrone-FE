@@ -7,6 +7,9 @@ export type AvailableDrone = {
   registrationNumber: string | null; registrationExpiryDate: string | null
   weightKg: number | null; status: string; nextMaintenanceAt: string | null
 }
+export type AvailableDronesForOrder = {
+  surveyOrderId: string; farmId: string; purpose: MissionPurpose; startAt: string; endAt: string; drones: AvailableDrone[]
+}
 export type PreparedMission = { missionId: string; purpose: string; status: string; scheduledAt: string | null; scheduledEndAt: string | null; version: number }
 export type PrepareMissionSetResult = { surveyOrderId: string; farmId: string; reusedExistingSet: boolean; missions: PreparedMission[] }
 
@@ -39,11 +42,9 @@ export type PlantGpsTree = { treeId: string; row: number; col: number; latitude:
 export type PlantGpsResult = { missionId: string; savedCount: number; trees: PlantGpsTree[] }
 // Tối thiểu 3 điểm khác nhau; không cần tự khép vòng, BE tự đóng. Chỉ gửi kèm khi muốn set/đổi ranh giới farm trong cùng request.
 export type MissionPlantGpsBoundaryPoint = { longitude: number; latitude: number }
-// Mirrors MappingProcessingCompletionRequest (ReplaceMissionPlantGpsRequest.Processing). BE stores it as an immutable
-// AI mapping processing run and returns its id as processingJobId. startedAt must be UTC (ISO "...Z").
-export type MappingProcessingCompletion = {
-  clientOperationId: string; modelVersionId: string; sourceVersion: number
-  gridBearingDeg: number; rowSpacingM: number; plantSpacingM: number; algorithmVersion: string; startedAt: string
+export type MappingProcessingMetadata = {
+  modelVersionId: string; sourceVersion: number; gridBearingDeg: number; rowSpacingM: number
+  plantSpacingM: number; algorithmVersion: string; startedAt: string
 }
 export type ReplacePlantGpsResult = { missionId: string; savedCount: number; processingJobId: string; boundaryPointCount: number; boundaryId: string | null; boundaryVersionNumber: number | null; boundaryStatus: string | null }
 
@@ -116,3 +117,4 @@ export type DetectMissionTreesResult = {
   suggestedRowSpacing: number | null; suggestedColSpacing: number | null; maxRow: number; maxCol: number; csvDownloadUrl: string | null
   activeTrees: DetectedTree[]; missingTrees: DetectedTree[]
 }
+export type MissionTreeDetection = DetectMissionTreesResult & Pick<MappingProcessingMetadata, 'startedAt' | 'sourceVersion'>

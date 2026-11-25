@@ -4,7 +4,18 @@ export type RevenueLineService = 'MAP' | 'COMBO' | 'UNKNOWN'
 
 export type RevenueFilters = { year: number; month: number; service: RevenueServiceFilter | null }
 
-export interface FinancialReportLine {
+interface RefundBreakdown {
+  completedRefunds?: number
+  overpaymentRefunds?: number
+  cancellationRefunds?: number
+  serviceFailureRefunds?: number
+  complaintRefunds?: number
+  unclassifiedRefunds?: number
+  fundingReversals?: number
+  netRevenue?: number
+}
+
+export interface FinancialReportLine extends RefundBreakdown {
   orderId: string
   orderNumber: string
   service: RevenueLineService
@@ -23,7 +34,7 @@ export interface FinancialReportLine {
   needsReconciliation: boolean
 }
 
-export interface MonthlyFinancialReport {
+export interface MonthlyFinancialReport extends RefundBreakdown {
   year: number
   month: number
   service: RevenueServiceFilter | null
@@ -31,6 +42,8 @@ export interface MonthlyFinancialReport {
   startUtc: string
   endUtc: string // cận cuối không bao gồm
   generatedAt: string
+  asOfUtc?: string
+  snapshotId?: string | null
   historyAvailableFrom: string
   historicalBalancesComplete: boolean
   lines: FinancialReportLine[]

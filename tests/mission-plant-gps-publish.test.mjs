@@ -11,7 +11,6 @@ const workflow = await import(dataUrl(compile('../src/features/missions/missionW
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
-const sampleTree = { treeId: 'TREE-001', row: 1, col: 1, latitude: 10.123456, longitude: 105.812345, confidence: 0.98, status: 'DETECTED', source: 'DRONE_DETECTION' }
 const samplePayload = { surveyOrderId: 'order-1', processingJobId: 'job-1' }
 
 test('publishMissionPlantGps POSTs to the mission-scoped publish route with the Idempotency-Key header and payload wrapper', async () => {
@@ -30,21 +29,21 @@ test('publishMissionPlantGps POSTs to the mission-scoped publish route with the 
 
 test('a Conflict response (plain string array, no errorCode) still surfaces the first message via ApiError', async () => {
   const { ApiError } = await import(clientUrl)
-  globalThis.fetch = async () => Response.json({ errors: ['Payload survey order does not match the mission context.'] }, { status: 409 })
+  globalThis.fetch = async () => Response.json({ errors: ['Payload survey order does not match a baseline mapping mission.'] }, { status: 409 })
   await assert.rejects(() => api.publishMissionPlantGps('manager', 'farm-1', 'mission-1', samplePayload, 'key-1'), error => {
     assert.ok(error instanceof ApiError)
     assert.equal(error.status, 409)
     assert.equal(error.code, undefined)
-    assert.equal(error.message, 'Payload survey order does not match the mission context.')
+    assert.equal(error.message, 'Payload survey order does not match a baseline mapping mission.')
     return true
   })
 })
 
 test('a ValidationProblem response (standard errors dictionary, no errorCode) surfaces the first field message', async () => {
-  globalThis.fetch = async () => Response.json({ title: 'One or more validation errors occurred.', errors: { payload: ['surveyOrderId and processingJobId are required.'] } }, { status: 400 })
+  globalThis.fetch = async () => Response.json({ title: 'One or more validation errors occurred.', errors: { payload: ['Each candidate must include valid row, col, coordinates, confidence, status, and source.'] } }, { status: 400 })
   await assert.rejects(() => api.publishMissionPlantGps('manager', 'farm-1', 'mission-1', samplePayload, 'key-1'), error => {
     assert.equal(error.status, 400)
-    assert.equal(error.message, 'surveyOrderId and processingJobId are required.')
+    assert.equal(error.message, 'Each candidate must include valid row, col, coordinates, confidence, status, and source.')
     return true
   })
 })
@@ -60,12 +59,10 @@ test('a bare NotFound (empty body) falls back to the generic "unable to process"
 
 test('publishPlantGpsError translates the known Conflict/Invalid literal messages to Vietnamese', async () => {
   const { ApiError } = await import(clientUrl)
-  assert.match(workflow.publishPlantGpsError(new ApiError(409, 'Payload survey order does not match the mission context.')), /không khớp/)
+  assert.match(workflow.publishPlantGpsError(new ApiError(409, 'Payload survey order does not match a baseline mapping mission.')), /Khảo sát bản đồ nền/)
   assert.match(workflow.publishPlantGpsError(new ApiError(409, 'No saved plant GPS rows were found for this mission.')), /lưu nháp/)
-  assert.match(workflow.publishPlantGpsError(new ApiError(409, 'Mission must be associated with a valid CaptureAttempt before publishing mapping candidates.')), /CaptureAttempt/)
-  assert.match(workflow.publishPlantGpsError(new ApiError(409, 'Mission must be associated with a valid FarmBoundaryVersion before publishing mapping candidates.')), /ranh giới/)
-  assert.match(workflow.publishPlantGpsError(new ApiError(409, 'The mapping processing job does not contain a complete immutable mapping snapshot.')), /lưu nháp lại/)
-  assert.match(workflow.publishPlantGpsError(new ApiError(409, 'The active mapping model version was not found.')), /VITE_MAPPING_MODEL_VERSION_ID/)
+  assert.match(workflow.publishPlantGpsError(new ApiError(409, 'Payload candidates must match every saved CSV tree_id exactly once.')), /không khớp/)
+  assert.match(workflow.publishPlantGpsError(new ApiError(400, 'Each candidate must include valid row, col, coordinates, confidence, status, and source.')), /không hợp lệ/)
   assert.match(workflow.publishPlantGpsError(new ApiError(409, "Mission purpose 'Other' is not eligible for mapping candidate publication.")), /Mục đích/)
 })
 
@@ -92,19 +89,4 @@ test('isBaselineMappingMissionCode reads the BASE suffix as a fallback for missi
   assert.equal(workflow.isBaselineMappingMissionCode('ORD-a1b2c3d4e5f67890abcdef1234567890-HEALTH'), false)
   assert.equal(workflow.isBaselineMappingMissionCode('ORD-a1b2c3d4e5f67890abcdef1234567890-READY'), false)
   assert.equal(workflow.isBaselineMappingMissionCode('TEST-MISSION-01'), false)
-})
-
-test('buildMappingProcessing normalizes the grid bearing into [0, 360), pins sourceVersion 1 and emits a UTC startedAt', () => {
-  const processing = workflow.buildMappingProcessing({ clientOperationId: 'op-1', modelVersionId: 'model-1', gridBearingDeg: -10, rowSpacingM: 3, plantSpacingM: 2.5, algorithmVersion: ' yolo:v8 ', startedAt: new Date('2026-11-25T03:00:00+07:00') })
-  assert.deepEqual(processing, { clientOperationId: 'op-1', modelVersionId: 'model-1', sourceVersion: 1, gridBearingDeg: 350, rowSpacingM: 3, plantSpacingM: 2.5, algorithmVersion: 'yolo:v8', startedAt: '2026-11-24T20:00:00.000Z' })
-  assert.equal(workflow.normalizeGridBearingDeg(360), 0)
-  assert.equal(workflow.normalizeGridBearingDeg(725), 5)
-})
-
-test('parseMappingModelVersionId accepts only a non-empty GUID', () => {
-  assert.equal(workflow.parseMappingModelVersionId(' 0195f3a2-1111-7abc-8def-0123456789ab '), '0195f3a2-1111-7abc-8def-0123456789ab')
-  assert.equal(workflow.parseMappingModelVersionId('00000000-0000-0000-0000-000000000000'), null)
-  assert.equal(workflow.parseMappingModelVersionId(''), null)
-  assert.equal(workflow.parseMappingModelVersionId(undefined), null)
-  assert.equal(workflow.parseMappingModelVersionId('not-a-guid'), null)
 })

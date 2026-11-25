@@ -40,6 +40,7 @@ const navigation = [
 
 function pageTitle(pathname: string) {
   if (pathname.startsWith('/system/survey-requests')) return 'Yêu cầu khảo sát'
+  if (pathname.startsWith('/system/survey-orders/quality-refunds')) return 'Hoàn tiền khảo sát'
   if (pathname.startsWith('/system/survey-orders')) return 'Đơn khảo sát'
   if (pathname === '/system/revenue') return 'Báo cáo doanh thu'
   if (pathname === '/system/managers') return 'System Manager'

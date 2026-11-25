@@ -84,6 +84,7 @@ export function revenueError(error: unknown, action: 'view' | 'export' = 'view')
       ? 'Không thể xuất báo cáo: tài khoản không có quyền System Admin hoặc phiên làm việc thiếu thông tin xác thực. Hãy đăng nhập lại rồi thử lại.'
       : 'Bạn không có quyền xem báo cáo doanh thu.'
     if (error.status === 404) return 'Máy chủ chưa có API báo cáo doanh thu. Kiểm tra phiên bản backend đã triển khai.'
+    if (error.status === 409 && action === 'export') return 'Bản báo cáo đang xem đã hết hiệu lực. Nhấn Tải lại trước khi xuất Excel.'
     if (error.status === 500 && !error.code) return 'Máy chủ chưa lập được báo cáo. Vui lòng thử lại sau.'
   }
   return workflowError(error)

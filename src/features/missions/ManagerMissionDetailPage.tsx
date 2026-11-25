@@ -11,15 +11,12 @@ import { useAuth } from '../auth/AuthContext'
 import { getFarmContext } from '../surveys/farmOperationsApi'
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
-import type { DetectMissionTreesResult, GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, SliceTilesResult, TelemetrySegment } from './missionTypes'
-import { dateTime, fileSizeLabel, isBaselineMappingMissionCode, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, buildMappingProcessing, normalizeGridBearingDeg, parseMappingModelVersionId, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel } from './missionWorkflow'
+import type { GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, MissionTreeDetection, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, SliceTilesResult, TelemetrySegment } from './missionTypes'
+import { dateTime, fileSizeLabel, isBaselineMappingMissionCode, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
 import { BoundaryTilingPanel } from './BoundaryTilingPanel'
 import { PlantGpsPasteModal } from './PlantGpsPasteModal'
 import { RescheduleMissionModal } from './RescheduleMissionModal'
 import { StepSection } from './StepSection'
-
-// BE (MissionPlantGpsStore) yêu cầu id một AiModelVersion PLANT_DETECTION đang active cho mỗi lần lưu nháp GPS cây.
-const mappingModelVersionId = parseMappingModelVersionId(import.meta.env.VITE_MAPPING_MODEL_VERSION_ID)
 import { YoloDetectionPanel } from './YoloDetectionPanel'
 import { PlantHealthProcessingPanel } from './PlantHealthProcessingPanel'
 
@@ -112,15 +109,12 @@ export function ManagerMissionDetailPage() {
   const [engine, setEngine] = useState<'metashape' | 'odm'>('metashape')
   const [sliceResult, setSliceResult] = useState<SliceTilesResult | null>(null)
   const [boundaryPolygon, setBoundaryPolygon] = useState<GeoJsonPolygon | null>(null)
-  const [yoloResult, setYoloResult] = useState<DetectMissionTreesResult | null>(null)
-  // Thời điểm có kết quả nhận diện (YOLO hoặc sửa tay) — dùng làm startedAt của lần xử lý bản đồ; lấy sớm hơn lúc bấm publish
-  // để BE (yêu cầu startedAt <= giờ máy chủ) không từ chối khi đồng hồ máy người dùng hơi nhanh.
-  const [yoloResultAt, setYoloResultAt] = useState<Date | null>(null)
+  const [yoloResult, setYoloResult] = useState<MissionTreeDetection | null>(null)
   const [rowSpacingM, setRowSpacingM] = useState(3)
   const [plantSpacingM, setPlantSpacingM] = useState(2.5)
   const [gridBearingDeg, setGridBearingDeg] = useState(0)
-  const [replaceOperation, setReplaceOperation] = useState<{ payload: string; key: string } | null>(null)
-  const [publishOperation, setPublishOperation] = useState<{ payload: string; key: string } | null>(null)
+  const gpsDraftOperation = useRef<(ReturnType<typeof operationFor> & { boundary?: MissionPlantGpsBoundaryPoint[] }) | null>(null)
+  const publishOperation = useRef<ReturnType<typeof operationFor> | null>(null)
   const [publishResult, setPublishResult] = useState<PlantGpsPublishResult | null>(null)
   const [boundaryUpdateResult, setBoundaryUpdateResult] = useState<ReplacePlantGpsResult | null>(null)
 
@@ -233,7 +227,20 @@ export function ManagerMissionDetailPage() {
   }
   const publishPlantGpsMutation = useMutation({
     mutationFn: async () => {
-      if (!yoloResult) throw new Error('Chưa có kết quả nhận diện cây.')
+      if (!yoloResult || yoloResult.missionId !== missionId) throw new Error('Chưa có kết quả nhận diện cây của nhiệm vụ này.')
+      const modelName = import.meta.env.VITE_MAPPING_MODEL_NAME?.trim()
+      const modelVersionId = import.meta.env.VITE_MAPPING_MODEL_VERSION_ID?.trim()
+      const algorithmVersion = import.meta.env.VITE_MAPPING_ALGORITHM_VERSION?.trim()
+      if (!modelName || !modelVersionId || !algorithmVersion) {
+        throw new Error('Ứng dụng chưa được cấu hình phiên bản model và thuật toán nhận diện cây để lưu GPS.')
+      }
+      if (modelName !== yoloResult.modelName) {
+        throw new Error(`Model nhận diện “${yoloResult.modelName}” không khớp model “${modelName}” đã cấu hình để lưu GPS.`)
+      }
+      const processing = validateMappingProcessing({
+        modelVersionId, algorithmVersion, rowSpacingM, plantSpacingM, gridBearingDeg,
+        startedAt: yoloResult.startedAt, sourceVersion: yoloResult.sourceVersion,
+      })
       // latest.surveyOrderId chỉ có trong cùng phiên vừa hoàn tất chuyến bay/upload (MissionDetail không có API GET riêng).
       // Sau khi tải lại trang, suy ngược lại từ missionCode (luôn có sẵn từ GET .../missions) thay vì chặn hẳn thao tác publish.
       const surveyOrderId = latest?.surveyOrderId ?? (mission ? surveyOrderIdFromMissionCode(mission.missionCode) : null)
@@ -250,27 +257,24 @@ export function ManagerMissionDetailPage() {
       const boundary: MissionPlantGpsBoundaryPoint[] | undefined = shouldSetFarmBoundary
         ? boundaryPolygon!.coordinates[0].map(([longitude, latitude]) => ({ longitude, latitude }))
         : undefined
-      if (!mappingModelVersionId) throw new Error('Chưa cấu hình model nhận diện cây (VITE_MAPPING_MODEL_VERSION_ID) — cần id của một AiModelVersion PLANT_DETECTION đang active. Liên hệ dev.')
-      // Bước 1 — lưu nháp: BE lưu cây + một lần xử lý bản đồ bất biến (spacing/góc lưới/model) và trả về processingJobId.
-      // Giữ nguyên clientOperationId khi thử lại cùng dữ liệu (BE trả lại đúng job cũ); dữ liệu khác → mã mới.
-      const processingFields = { modelVersionId: mappingModelVersionId, gridBearingDeg: normalizeGridBearingDeg(gridBearingDeg), rowSpacingM, plantSpacingM, algorithmVersion: `yolo:${yoloResult.modelName}` }
-      const replaceOp = operationFor(replaceOperation, { trees, boundary, ...processingFields })
-      setReplaceOperation(replaceOp)
-      const processing = buildMappingProcessing({ ...processingFields, clientOperationId: replaceOp.key, startedAt: yoloResultAt ?? new Date() })
-      const replaceResult = await api.replaceMissionPlantGps(token, farmId, missionId, trees, processing, boundary)
+      // Use the same boundary on retry even after the farm query reflects the first save.
+      const saveOperation = operationFor(gpsDraftOperation.current, { farmId, missionId, trees, processing, boundaryPolygon })
+      if (saveOperation !== gpsDraftOperation.current) gpsDraftOperation.current = { ...saveOperation, boundary }
+      const savedBoundary = gpsDraftOperation.current?.boundary
+      const replaceResult = await api.replaceMissionPlantGps(
+        token, farmId, missionId, trees, { ...processing, clientOperationId: saveOperation.key }, savedBoundary,
+      )
+      setBoundaryUpdateResult(replaceResult)
       await client.invalidateQueries({ queryKey: ['mission-plant-gps', farmId, missionId] })
-      if (boundary) await client.invalidateQueries({ queryKey: ['manager-farm-context', farmId] })
-      if (!replaceResult.processingJobId) throw new Error('Máy chủ không trả về mã lần xử lý bản đồ (processingJobId) sau khi lưu nháp.')
-      // Bước 2 — publish: chỉ gửi id, BE tự đọc cây và metadata từ lần xử lý đã lưu.
+      if (savedBoundary) await client.invalidateQueries({ queryKey: ['manager-farm-context', farmId] })
+      if (!replaceResult.processingJobId) throw new Error('API đã lưu GPS nhưng chưa trả mã lần xử lý (processingJobId) để publish.')
       const payload = { surveyOrderId, processingJobId: replaceResult.processingJobId }
-      const next = operationFor(publishOperation, payload)
-      setPublishOperation(next)
-      const publishResult = await api.publishMissionPlantGps(token, farmId, missionId, payload, next.key)
+      publishOperation.current = operationFor(publishOperation.current, payload)
+      const publishResult = await api.publishMissionPlantGps(token, farmId, missionId, payload, publishOperation.current.key)
       return { publishResult, replaceResult }
     },
     onSuccess: ({ publishResult, replaceResult }) => {
       setPublishResult(publishResult)
-      setBoundaryUpdateResult(replaceResult)
       void message.success(replaceResult.boundaryId ? 'Đã lưu nháp, set ranh giới nông trại và gửi yêu cầu đưa vào hệ thống chính thức.' : 'Đã lưu nháp và gửi yêu cầu đưa vào hệ thống chính thức.')
     },
   })
@@ -551,7 +555,7 @@ export function ManagerMissionDetailPage() {
     {!isPlantHealth && sliceResult && boundaryPolygon && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Nhận diện cây YOLO & Publish GPS" status={publishResult ? 'done' : 'active'} summary={publishResult ? `Đã gửi yêu cầu publish (${publishResult.status}).` : yoloResult ? `${yoloResult.totalUniqueTrees} cây đã nhận diện.` : undefined}>
       <p className="form-hint">Chạy nhận diện trong phạm vi ranh giới đã khóa. Có thể chọn lại cây neo (Hàng 1 - Cột 1) từ kết quả lần chạy trước rồi chạy lại để đánh số đúng theo thực địa.</p>
       <YoloDetectionPanel token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
-        boundaryPolygon={boundaryPolygon} onDetected={result => { setYoloResult(result); setYoloResultAt(new Date()) }} />
+        boundaryPolygon={boundaryPolygon} onDetected={setYoloResult} />
       {yoloResult ? <>
         <p className="form-hint">Kết quả gần nhất: {yoloResult.totalUniqueTrees} cây, {yoloResult.totalMissingTrees} vị trí thiếu — dùng ở bước lưu nháp GPS cây tiếp theo.</p>
         <Button onClick={downloadTreesCsv}>Tải CSV kết quả cây</Button>
@@ -572,7 +576,7 @@ export function ManagerMissionDetailPage() {
     </StepSection> : null}
     {!isPlantHealth ? <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>GPS cây (lưu nháp)</strong><span>Bước lưu nháp trước khi đưa vào hệ thống chính thức (xem mục Publish ở màn kết quả nhận diện cây). Lưu sẽ thay toàn bộ danh sách hiện có, không cộng dồn.</span></div>
-        <Button onClick={() => setPastingPlantGps(true)}>Dán danh sách cây</Button>
+        <Button disabled={publishPlantGpsMutation.isPending} onClick={() => setPastingPlantGps(true)}>Dán danh sách cây</Button>
       </div>
       {plantGpsQuery.isError && isNotFound(plantGpsQuery.error) ? <CommonState type="empty" title="Nhiệm vụ này không áp dụng GPS cây" />
         : plantGpsQuery.isError ? <CommonState type="error" description={missionError(plantGpsQuery.error)} retry={() => plantGpsQuery.refetch()} />
@@ -597,8 +601,7 @@ export function ManagerMissionDetailPage() {
     {rescheduling && version !== undefined ? <RescheduleMissionModal token={token} farmId={farmId} missionId={missionId} currentVersion={version} currentDroneId={mission.droneId}
       close={() => setRescheduling(false)} onRescheduled={async result => { await refreshAfter(result); void message.success('Đã lên lịch lại nhiệm vụ bay.') }} /> : null}
     {!isPlantHealth && pastingPlantGps ? <PlantGpsPasteModal token={token} farmId={farmId} missionId={missionId} close={() => setPastingPlantGps(false)}
-      modelVersionId={mappingModelVersionId} rowSpacingM={rowSpacingM} plantSpacingM={plantSpacingM} gridBearingDeg={gridBearingDeg}
-      onSaved={async result => { await client.invalidateQueries({ queryKey: ['mission-plant-gps', farmId, missionId] }); void message.success(`Đã lưu ${result.savedCount} cây.`) }} /> : null}
+      onSaved={async result => { gpsDraftOperation.current = null; await client.invalidateQueries({ queryKey: ['mission-plant-gps', farmId, missionId] }); void message.success(`Đã lưu ${result.savedCount} cây.`) }} /> : null}
     {action ? <ActionModal action={action} close={() => setAction(null)} /> : null}
   </>
 }

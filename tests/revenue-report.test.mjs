@@ -34,13 +34,15 @@ test('Dashboard calls the v3 revenue endpoint with Bearer token, omits service f
 })
 
 test('Excel export returns the blob with server file name and surfaces text/plain 400 instead of saving it', async () => {
+  const snapshotId = 'b338a4e9-e5c5-484f-90a2-550a2d0f4a18'
   globalThis.fetch = async url => {
     const parsed = new URL(url)
     assert.equal(parsed.pathname, '/api/v3/system-admin/reports/revenue/export')
     assert.equal(parsed.searchParams.get('service'), 'MAP')
+    assert.equal(parsed.searchParams.get('snapshotId'), snapshotId)
     return new Response(new Uint8Array([80, 75]), { headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename=revenue-2026-11.xlsx' } })
   }
-  const file = await api.exportRevenueReport('admin', { year: 2026, month: 11, service: 'MAP' })
+  const file = await api.exportRevenueReport('admin', { year: 2026, month: 11, service: 'MAP', snapshotId })
   assert.equal(file.fileName, 'revenue-2026-11.xlsx')
   assert.equal(file.blob.size, 2)
 
@@ -86,6 +88,7 @@ test('Revenue errors map HTTP status to actionable Vietnamese messages', () => {
   assert.match(workflow.revenueError(new ApiError(401, 'x')), /Phiên đăng nhập đã hết hạn/)
   assert.match(workflow.revenueError(new ApiError(403, 'x'), 'export'), /thiếu thông tin xác thực/)
   assert.match(workflow.revenueError(new ApiError(403, 'x')), /không có quyền xem/)
+  assert.match(workflow.revenueError(new ApiError(409, 'x'), 'export'), /Nhấn Tải lại trước khi xuất Excel/)
   assert.match(workflow.revenueError(new ApiError(503, 'Service Unavailable')), /Chưa kết nối được máy chủ/)
   assert.equal(workflow.isUnauthorized(new ApiError(401, 'x')), true)
 })

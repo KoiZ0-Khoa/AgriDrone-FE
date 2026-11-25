@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { CircleMarker, ImageOverlay, MapContainer, Polygon, Popup, useMapEvents } from 'react-leaflet'
 import { MapBaseLayers } from '../../components/MapBaseLayers'
 import * as api from './missionApi'
-import type { DetectedTree, DetectMissionTreesResult, GeoJsonPolygon, OrthophotoBounds } from './missionTypes'
+import type { DetectedTree, GeoJsonPolygon, MissionTreeDetection, OrthophotoBounds } from './missionTypes'
 import { isWithinOrthophotoBounds, missionError } from './missionWorkflow'
 
 // Giữ đúng token màu của app (global.css :root / workspace.css .app-shell) thay vì bảng màu map_picker.
@@ -30,7 +30,7 @@ function renumberAfterRemoval<T extends DetectedTree>(trees: T[], row: number, r
 
 export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bounds, boundaryPolygon, onDetected }: {
   token: string; farmId: string; missionId: string; previewUrl: string; bounds: OrthophotoBounds
-  boundaryPolygon: GeoJsonPolygon | null; onDetected: (result: DetectMissionTreesResult) => void
+  boundaryPolygon: GeoJsonPolygon | null; onDetected: (result: MissionTreeDetection) => void
 }) {
   const { message } = App.useApp()
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25)
@@ -39,22 +39,27 @@ export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bound
   const [anchor, setAnchor] = useState<{ lat: number; lon: number } | null>(null)
   const [pickingAnchor, setPickingAnchor] = useState(false)
   const [manualAddMode, setManualAddMode] = useState(false)
-  const [result, setResult] = useState<DetectMissionTreesResult | null>(null)
+  const [result, setResult] = useState<MissionTreeDetection | null>(null)
   const leafletBounds: [[number, number], [number, number]] = [[bounds.minLat, bounds.minLon], [bounds.maxLat, bounds.maxLon]]
 
   const detectMutation = useMutation({
-    mutationFn: () => api.detectMissionTrees(token, farmId, missionId, {
-      confidenceThreshold, rowSpacing, colSpacing,
-      anchorLat: anchor?.lat, anchorLon: anchor?.lon,
-      polygonGeoJson: boundaryPolygon ?? undefined,
-    }),
+    mutationFn: async () => {
+      const startedAt = new Date().toISOString()
+      const sourceVersion = (result?.sourceVersion ?? 0) + 1
+      const detected = await api.detectMissionTrees(token, farmId, missionId, {
+        confidenceThreshold, rowSpacing, colSpacing,
+        anchorLat: anchor?.lat, anchorLon: anchor?.lon,
+        polygonGeoJson: boundaryPolygon ?? undefined,
+      })
+      return { ...detected, startedAt, sourceVersion }
+    },
     onSuccess: data => { setResult(data); onDetected(data); setPickingAnchor(false) },
   })
 
   // Chuẩn hóa Hàng & Cột (học theo nút renumberAllRowsAndColumns của map_picker.py): gửi danh sách cây hiện tại (kể cả đã sửa tay)
   // lên BE tính lại hàng/cột + cây khuyết, không quét YOLO lại. Cây neo (nếu đã chọn) luôn thành Hàng 1 - Cột 1.
   const recalculateMutation = useMutation({
-    mutationFn: (current: DetectMissionTreesResult) => api.recalculateMissionTreeGrid(token, farmId, missionId, {
+    mutationFn: (current: MissionTreeDetection) => api.recalculateMissionTreeGrid(token, farmId, missionId, {
       activeTrees: current.activeTrees, rowSpacing, colSpacing,
       anchorLat: anchor?.lat, anchorLon: anchor?.lon,
       polygonGeoJson: boundaryPolygon ?? undefined,
@@ -62,7 +67,8 @@ export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bound
     onSuccess: (data, current) => {
       // BE trả totalTilesScanned=0 / modelName="recalculated" — giữ thông tin lần quét YOLO gốc để thống kê không bị reset.
       applyEdit({ ...data, modelName: current.modelName, totalTilesScanned: current.totalTilesScanned, totalRawDetections: current.totalRawDetections,
-        suggestedRowSpacing: data.suggestedRowSpacing ?? current.suggestedRowSpacing, suggestedColSpacing: data.suggestedColSpacing ?? current.suggestedColSpacing })
+        suggestedRowSpacing: data.suggestedRowSpacing ?? current.suggestedRowSpacing, suggestedColSpacing: data.suggestedColSpacing ?? current.suggestedColSpacing,
+        startedAt: current.startedAt, sourceVersion: current.sourceVersion })
       setPickingAnchor(false); setManualAddMode(false)
       message.success(`Đã chuẩn hóa Hàng & Cột: ${data.activeTrees.length} cây · ${data.missingTrees.length} nghi khuyết · ${data.maxRow} hàng × ${data.maxCol} cột`)
     },
@@ -78,7 +84,7 @@ export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bound
 
   // Toàn bộ thao tác sửa tay dưới đây chỉ là state cục bộ trên FE (giống cách map_picker.py làm, không có API riêng) —
   // mỗi lần sửa gọi lại onDetected() để yoloResult ở trang cha (dùng cho CSV/Publish) luôn khớp dữ liệu đã sửa.
-  function applyEdit(next: DetectMissionTreesResult) {
+  function applyEdit(next: MissionTreeDetection) {
     setResult(next)
     onDetected(next)
   }

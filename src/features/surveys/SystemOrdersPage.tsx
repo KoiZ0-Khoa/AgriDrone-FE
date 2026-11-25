@@ -3,7 +3,7 @@ import { ReloadOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Pagination, Select, Space, Table, Tag } from 'antd'
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { orderStatusLabels } from './orderWorkflow'
@@ -23,7 +23,7 @@ export function SystemOrdersPage() {
     setPage(1); setParams(next)
   }
   return <>
-    <section className="resource-page-heading"><div><span className="page-kicker">QUẢN LÝ KHẢO SÁT</span><h1>Đơn khảo sát</h1><p>Theo dõi tiến độ khảo sát trên toàn hệ thống.</p></div><Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => { void query.refetch() }}>Tải lại</Button></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">QUẢN LÝ KHẢO SÁT</span><h1>Đơn khảo sát</h1><p>Theo dõi tiến độ khảo sát trên toàn hệ thống.</p></div><Space wrap><Link className="workflow-detail-link" to="/system/survey-orders/quality-refunds">Hồ sơ hoàn tiền</Link><Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => { void query.refetch() }}>Tải lại</Button></Space></section>
     <section className="resource-panel">
       <div className="workflow-toolbar">
         <Select aria-label="Trạng thái đơn khảo sát" value={filters.status} onChange={value => filter('status', value)} options={[{ value: '', label: 'Tất cả trạng thái' }, ...Object.entries(orderStatusLabels).map(([value, label]) => ({ value, label }))]} />

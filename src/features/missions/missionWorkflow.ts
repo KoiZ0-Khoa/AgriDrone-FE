@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client'
 import type { AssignedOrder } from '../surveys/orderTypes'
-import type { MappingProcessingCompletion, MissionPurpose, OrthophotoBounds, PlantGpsTree } from './missionTypes'
+import type { MappingProcessingMetadata, MissionPurpose, OrthophotoBounds, PlantGpsTree } from './missionTypes'
 
 // Bắt buộc người dùng chỉ chấm điểm (ranh giới, chấm thêm trụ...) trong phạm vi ảnh orthophoto, không phải trên nền vệ tinh/OSM xung quanh.
 export function isWithinOrthophotoBounds(lat: number, lon: number, bounds: OrthophotoBounds) {
@@ -204,17 +204,14 @@ export function isNotFound(error: unknown) {
 // ReplacePlantGps / PublishPlantGps Conflict/Invalid responses carry no errorCode (see MissionPlantGpsStore and
 // MissionPlantGpsPublisher) — match the known literal English messages instead so the user still sees a Vietnamese explanation.
 const publishPlantGpsMessagesByText: Record<string, string> = {
-  // MissionPlantGpsStore.ReplaceAsync (bước lưu nháp)
-  'Mapping processing completion metadata is incomplete or invalid.': 'Thông tin lần xử lý bản đồ không hợp lệ (khoảng cách hàng/cây phải > 0, góc lưới 0–360°, thời điểm bắt đầu không được sau giờ máy chủ).',
-  'The active mapping model version was not found.': 'Không tìm thấy phiên bản model nhận diện cây đang hoạt động. Kiểm tra VITE_MAPPING_MODEL_VERSION_ID có trùng một model PLANT_DETECTION đang active.',
-  'ClientOperationId was already used for a different mapping import.': 'Mã thao tác lưu nháp đã được dùng cho dữ liệu khác. Hãy bấm lại để tạo mã mới.',
-  // MissionPlantGpsPublisher.PublishAsync (bước publish)
-  'surveyOrderId and processingJobId are required.': 'Thiếu mã đơn khảo sát hoặc mã lần xử lý bản đồ. Hãy lưu nháp lại rồi publish.',
-  'Payload survey order does not match the mission context.': 'Mã đơn khảo sát không khớp với nhiệm vụ này.',
-  'Mission must be associated with a valid CaptureAttempt before publishing mapping candidates.': 'Nhiệm vụ chưa gắn với lượt bay (CaptureAttempt) hợp lệ — nhiệm vụ cũ (legacy) không publish được bản đồ.',
-  'Mission CaptureAttempt does not match the tenant, farm, order, and mission context.': 'Lượt bay (CaptureAttempt) của nhiệm vụ không khớp với nông trại/đơn khảo sát.',
-  'Mission must be associated with a valid FarmBoundaryVersion before publishing mapping candidates.': 'Nhiệm vụ chưa gắn với phiên bản ranh giới nông trại hợp lệ.',
-  'Follow-up mapping mission must have a pinned SourceMapVersionId.': 'Nhiệm vụ theo dõi chưa gắn bản đồ nền nguồn.',
+  'Payload survey order does not match a baseline mapping mission.': 'Chỉ đưa GPS cây vào hệ thống chính thức cho nhiệm vụ Khảo sát bản đồ nền (Baseline Mapping).',
+  'Payload survey order does not match the mission context.': 'Đơn khảo sát không khớp với nhiệm vụ bay này.',
+  'Mission must be associated with a valid CaptureAttempt before publishing mapping candidates.': 'Nhiệm vụ chưa liên kết với lần thu thập dữ liệu hợp lệ. Mở nhiệm vụ đã được chuẩn bị từ đơn khảo sát để publish.',
+  'Mission must be associated with a valid FarmBoundaryVersion before publishing mapping candidates.': 'Nhiệm vụ chưa liên kết với phiên bản ranh giới nông trại hợp lệ.',
+  'The active mapping model version was not found.': 'Không tìm thấy phiên bản model nhận diện cây đang hoạt động. Kiểm tra lại ID phiên bản model.',
+  'Payload candidates must match every saved CSV tree_id exactly once.': 'Danh sách cây vừa gửi không khớp với dữ liệu đã lưu nháp (thiếu/dư/trùng mã cây). Hãy nhận diện lại rồi thử lại.',
+  'Payload candidate fields must match the saved plant GPS rows.': 'Dữ liệu cây vừa gửi không khớp với dữ liệu đã lưu nháp. Hãy nhận diện lại rồi thử lại.',
+  'Each candidate must include valid row, col, coordinates, confidence, status, and source.': 'Có cây với dữ liệu không hợp lệ (hàng/cột/tọa độ/độ tin cậy/trạng thái/nguồn).',
   'No saved plant GPS rows were found for this mission.': 'Chưa có GPS cây nào được lưu nháp cho nhiệm vụ này.',
   'Saved mapping output contains missing or duplicate tree_id values.': 'Dữ liệu đã lưu nháp có cây thiếu mã hoặc trùng mã. Hãy nhận diện lại rồi thử lại.',
   'Saved mapping output contains invalid row, column, coordinates, confidence, status, or source values.': 'Có cây với dữ liệu không hợp lệ (hàng/cột/tọa độ/độ tin cậy/trạng thái/nguồn).',
@@ -231,39 +228,40 @@ export function publishPlantGpsError(error: unknown) {
   return missionError(error)
 }
 
-const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-// Chưa có API trả về model nhận diện cây đang active, nên id model lấy từ cấu hình build (VITE_MAPPING_MODEL_VERSION_ID).
-export function parseMappingModelVersionId(value: unknown) {
-  return typeof value === 'string' && GUID_PATTERN.test(value.trim()) && !/^0{8}-(0{4}-){3}0{12}$/.test(value.trim()) ? value.trim() : null
-}
-
-// Góc lưới BE yêu cầu trong [0, 360).
-export function normalizeGridBearingDeg(value: number) {
-  const normalized = ((value % 360) + 360) % 360
-  return normalized === 360 ? 0 : normalized
-}
-
-// Dựng MappingProcessingCompletion gửi kèm bước lưu nháp GPS cây. startedAt luôn ở dạng UTC "...Z" (BE từ chối offset khác 0).
-export function buildMappingProcessing(input: {
-  clientOperationId: string; modelVersionId: string; gridBearingDeg: number; rowSpacingM: number; plantSpacingM: number
-  algorithmVersion: string; startedAt: Date
-}): MappingProcessingCompletion {
-  return {
-    clientOperationId: input.clientOperationId,
-    modelVersionId: input.modelVersionId,
-    sourceVersion: 1,
-    gridBearingDeg: normalizeGridBearingDeg(input.gridBearingDeg),
-    rowSpacingM: input.rowSpacingM,
-    plantSpacingM: input.plantSpacingM,
-    algorithmVersion: input.algorithmVersion.trim() || 'unknown',
-    startedAt: input.startedAt.toISOString(),
+export function validateMappingProcessing(value: unknown): MappingProcessingMetadata {
+  if (value === null || typeof value !== 'object') throw new Error('Thiếu thông tin lần xử lý (processing).')
+  const { modelVersionId, sourceVersion, gridBearingDeg, rowSpacingM, plantSpacingM, algorithmVersion, startedAt } = value as Record<string, unknown>
+  if (typeof modelVersionId !== 'string' || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(modelVersionId) || !/[1-9a-f]/i.test(modelVersionId)) {
+    throw new Error('Cần UUID phiên bản model nhận diện cây đã đăng ký (modelVersionId).')
   }
+  if (typeof sourceVersion !== 'number' || !Number.isInteger(sourceVersion) || sourceVersion < 1 || sourceVersion > 2_147_483_647) {
+    throw new Error('Phiên bản nguồn (sourceVersion) phải là số nguyên dương hợp lệ.')
+  }
+  if (typeof gridBearingDeg !== 'number' || !Number.isFinite(gridBearingDeg) || gridBearingDeg < 0 || gridBearingDeg >= 360) {
+    throw new Error('Góc lưới phải từ 0 đến dưới 360 độ.')
+  }
+  if (typeof rowSpacingM !== 'number' || !Number.isFinite(rowSpacingM) || rowSpacingM <= 0 ||
+      typeof plantSpacingM !== 'number' || !Number.isFinite(plantSpacingM) || plantSpacingM <= 0) {
+    throw new Error('Khoảng cách hàng và khoảng cách cây phải lớn hơn 0.')
+  }
+  if (typeof algorithmVersion !== 'string' || !algorithmVersion.trim()) throw new Error('Thiếu phiên bản thuật toán nhận diện cây.')
+  if (typeof startedAt !== 'string' || !/T.*Z$/.test(startedAt) || !Number.isFinite(Date.parse(startedAt))) {
+    throw new Error('Thời điểm bắt đầu xử lý (startedAt) phải là thời gian UTC dạng ISO 8601.')
+  }
+  return { modelVersionId, sourceVersion, gridBearingDeg, rowSpacingM, plantSpacingM, algorithmVersion: algorithmVersion.trim(), startedAt }
+}
+
+export function parsePlantGpsImport(json: string) {
+  let input: unknown
+  try { input = JSON.parse(json) } catch { throw new Error('Dữ liệu GPS cây không phải JSON hợp lệ.') }
+  if (!input || typeof input !== 'object' || !('trees' in input) || !('processing' in input)) {
+    throw new Error('Dữ liệu GPS cây cần có cả danh sách trees và thông tin processing của lần xử lý gốc.')
+  }
+  return { trees: validatePlantGpsTrees(input.trees), processing: validateMappingProcessing(input.processing) }
 }
 
 // Mirrors the validation in SystemManagerMissionsController.ReplacePlantGps.
-export function parsePlantGpsTrees(json: string): PlantGpsTree[] {
-  let input: unknown
-  try { input = JSON.parse(json) } catch { throw new Error('Danh sách cây không phải JSON hợp lệ.') }
+function validatePlantGpsTrees(input: unknown): PlantGpsTree[] {
   if (!Array.isArray(input) || input.length < 1 || input.length > 10000) throw new Error('Cần từ 1 đến 10.000 cây.')
   const ids = new Set<string>()
   return input.map(value => {

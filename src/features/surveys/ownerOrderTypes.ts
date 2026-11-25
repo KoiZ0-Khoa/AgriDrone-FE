@@ -8,6 +8,7 @@ export type OwnerSurveyOrder = {
   mappingSubtotal: number | null; plantHealthSubtotal: number | null
   comboDiscountPercentage: number | null; comboDiscountAmount: number | null
   surveyOrderId: string; orderNumber: string; farmId: string; farmName: string; status: string; orderVersion: number
+  serviceType: string
   depositAmount: number; totalAmount: number | null; remainingAmount: number | null; currency: string; currentAppointment: OwnerAppointment | null
 }
 export type OwnerAppointmentBody = { expectedOrderVersion: number; expectedAppointmentVersion: number }
