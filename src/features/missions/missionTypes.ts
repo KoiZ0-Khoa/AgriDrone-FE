@@ -39,10 +39,16 @@ export type PlantGpsTree = { treeId: string; row: number; col: number; latitude:
 export type PlantGpsResult = { missionId: string; savedCount: number; trees: PlantGpsTree[] }
 // Tối thiểu 3 điểm khác nhau; không cần tự khép vòng, BE tự đóng. Chỉ gửi kèm khi muốn set/đổi ranh giới farm trong cùng request.
 export type MissionPlantGpsBoundaryPoint = { longitude: number; latitude: number }
-export type ReplacePlantGpsResult = { missionId: string; savedCount: number; boundaryPointCount: number; boundaryId: string | null; boundaryVersionNumber: number | null; boundaryStatus: string | null }
+// Mirrors MappingProcessingCompletionRequest (ReplaceMissionPlantGpsRequest.Processing). BE stores it as an immutable
+// AI mapping processing run and returns its id as processingJobId. startedAt must be UTC (ISO "...Z").
+export type MappingProcessingCompletion = {
+  clientOperationId: string; modelVersionId: string; sourceVersion: number
+  gridBearingDeg: number; rowSpacingM: number; plantSpacingM: number; algorithmVersion: string; startedAt: string
+}
+export type ReplacePlantGpsResult = { missionId: string; savedCount: number; processingJobId: string; boundaryPointCount: number; boundaryId: string | null; boundaryVersionNumber: number | null; boundaryStatus: string | null }
 
-// Candidates must exactly match the rows just saved via ReplacePlantGpsResult above (same shape) — verified against MissionPlantGpsPublisher.
-export type PlantGpsPublishPayload = { surveyOrderId: string; candidates: PlantGpsTree[]; rowSpacingM: number; plantSpacingM: number; gridBearingDeg: number }
+// Mirrors MissionPlantGpsPublishPayload: BE reads candidates + spatial metadata from the saved processing run, client sends only the ids.
+export type PlantGpsPublishPayload = { surveyOrderId: string; processingJobId: string }
 export type PlantGpsPublishResult = { missionId: string; messageId: string; status: string }
 
 // Literal strings, not enum JSON — verified against UploadMissionMediaItemResponse (api/missions/{missionId}/farms/{farmId}/media).
@@ -104,6 +110,7 @@ export type SliceTilesResult = { missionId: string; totalTiles: number; totalTil
 
 export type DetectedTree = { id: string; row: number; col: number; lat: number; lon: number; confidence: number; status: string; source: string; isAnchor: boolean }
 export type DetectMissionTreesOptions = { confidenceThreshold?: number; rowSpacing?: number; colSpacing?: number; anchorLat?: number; anchorLon?: number; customAngleDeg?: number; polygonGeoJson?: GeoJsonPolygon }
+export type RecalculateTreeGridOptions = { activeTrees: DetectedTree[]; rowSpacing?: number; colSpacing?: number; anchorLat?: number; anchorLon?: number; customAngleDeg?: number; polygonGeoJson?: GeoJsonPolygon }
 export type DetectMissionTreesResult = {
   missionId: string; modelName: string; totalTilesScanned: number; totalRawDetections: number; totalUniqueTrees: number; totalMissingTrees: number
   suggestedRowSpacing: number | null; suggestedColSpacing: number | null; maxRow: number; maxCol: number; csvDownloadUrl: string | null

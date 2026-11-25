@@ -1,7 +1,7 @@
 import { apiRequest, apiRequestFile } from '../../api/client'
 import type { Drone } from '../drones/types'
 import type { Page } from '../surveys/types'
-import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPlantGpsBoundaryPoint, MissionPurpose, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, ReplacePlantGpsResult, ResetMissionUploadResult, SliceTilesResult, UploadReadiness } from './missionTypes'
+import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MappingProcessingCompletion, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPlantGpsBoundaryPoint, MissionPurpose, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, RecalculateTreeGridOptions, ReplacePlantGpsResult, ResetMissionUploadResult, SliceTilesResult, UploadReadiness } from './missionTypes'
 
 const farmPath = (farmId: string) => `/api/system-manager/farms/${encodeURIComponent(farmId)}`
 const missionPath = (farmId: string, missionId: string) => `${farmPath(farmId)}/missions/${encodeURIComponent(missionId)}`
@@ -64,8 +64,8 @@ export const getMissionPlantGps = (token: string, farmId: string, missionId: str
   apiRequest<PlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, { token, signal })
 // boundary: chỉ gửi kèm khi muốn set/đổi ranh giới farm trong cùng request (xem MissionPlantGpsBoundaryPoint) — BE tự so
 // với ranh giới đã duyệt hiện tại của farm (operationalContext.Version lấy ngay tại thời điểm xử lý, FE không cần tự quản version).
-export const replaceMissionPlantGps = (token: string, farmId: string, missionId: string, trees: PlantGpsTree[], boundary?: MissionPlantGpsBoundaryPoint[]) =>
-  apiRequest<ReplacePlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, { method: 'POST', token, body: boundary && boundary.length > 0 ? { trees, boundary } : { trees } })
+export const replaceMissionPlantGps = (token: string, farmId: string, missionId: string, trees: PlantGpsTree[], processing: MappingProcessingCompletion, boundary?: MissionPlantGpsBoundaryPoint[]) =>
+  apiRequest<ReplacePlantGpsResult>(`${missionPath(farmId, missionId)}/plant-gps`, { method: 'POST', token, body: boundary && boundary.length > 0 ? { trees, processing, boundary } : { trees, processing } })
 export const publishMissionPlantGps = (token: string, farmId: string, missionId: string, payload: PlantGpsPublishPayload, key: string) =>
   apiRequest<PlantGpsPublishResult>(`${missionPath(farmId, missionId)}/plant-gps/publish`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body: { payload } })
 
@@ -110,5 +110,8 @@ export const sliceMissionTiles = (token: string, farmId: string, missionId: stri
   apiRequest<SliceTilesResult>(`${processingPath(farmId, missionId)}/tiling-slice`, { method: 'POST', token, body: { tileSize: options.tileSize ?? 640, overlap: options.overlap ?? 64, dualScale: options.dualScale ?? true, polygonGeoJson } })
 export const detectMissionTrees = (token: string, farmId: string, missionId: string, options: DetectMissionTreesOptions = {}) =>
   apiRequest<DetectMissionTreesResult>(`${processingPath(farmId, missionId)}/yolo-detect`, { method: 'POST', token, body: options })
+// Chuẩn hóa Hàng & Cột: tính lại hàng/cột + cây khuyết cho danh sách cây hiện tại (đã sửa tay) mà không quét YOLO lại.
+export const recalculateMissionTreeGrid = (token: string, farmId: string, missionId: string, options: RecalculateTreeGridOptions) =>
+  apiRequest<DetectMissionTreesResult>(`${processingPath(farmId, missionId)}/yolo-recalculate-grid`, { method: 'POST', token, body: options })
 export const downloadMissionTreesCsv = (token: string, farmId: string, missionId: string) =>
   apiRequestFile(`${processingPath(farmId, missionId)}/yolo-csv`, { token, fallbackFileName: `trees_${missionId}.csv` })

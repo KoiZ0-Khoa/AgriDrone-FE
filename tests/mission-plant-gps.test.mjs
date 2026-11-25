@@ -12,6 +12,7 @@ const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
 const sampleTree = { treeId: 'TREE-001', row: 1, col: 1, latitude: 10.123456, longitude: 105.812345, confidence: 0.98, status: 'DETECTED', source: 'DRONE_DETECTION' }
+const sampleProcessing = { clientOperationId: 'op-1', modelVersionId: 'model-1', sourceVersion: 1, gridBearingDeg: 0, rowSpacingM: 3, plantSpacingM: 2.5, algorithmVersion: 'yolo:v8', startedAt: '2026-11-25T00:00:00.000Z' }
 
 test('parsePlantGpsTrees accepts a valid tree list and rejects malformed JSON', () => {
   assert.deepEqual(workflow.parsePlantGpsTrees(JSON.stringify([sampleTree])), [sampleTree])
@@ -26,22 +27,23 @@ test('parsePlantGpsTrees accepts a valid tree list and rejects malformed JSON', 
   assert.throws(() => workflow.parsePlantGpsTrees(JSON.stringify([{ ...sampleTree, source: '' }])), /nguồn/)
 })
 
-test('plant GPS GET/POST hit the mission-scoped route and replace sends the parsed trees as-is', async () => {
+test('plant GPS GET/POST hit the mission-scoped route and replace sends the parsed trees plus the processing run', async () => {
   const calls = []
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url)
     calls.push({ path: parsed.pathname, method: options.method ?? 'GET', body: options.body ? JSON.parse(options.body) : undefined })
     return options?.method === 'POST'
-      ? Response.json({ missionId: 'mission-1', savedCount: 1, boundaryPointCount: 0, boundaryId: null, boundaryVersionNumber: null, boundaryStatus: null })
+      ? Response.json({ missionId: 'mission-1', savedCount: 1, processingJobId: 'job-1', boundaryPointCount: 0, boundaryId: null, boundaryVersionNumber: null, boundaryStatus: null })
       : Response.json({ missionId: 'mission-1', savedCount: 1, trees: [sampleTree] })
   }
   const current = await api.getMissionPlantGps('manager', 'farm-1', 'mission-1')
   assert.equal(current.trees[0].treeId, 'TREE-001')
-  const saved = await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree])
+  const saved = await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree], sampleProcessing)
   assert.equal(saved.savedCount, 1)
+  assert.equal(saved.processingJobId, 'job-1')
   assert.deepEqual(calls, [
     { path: '/api/system-manager/farms/farm-1/missions/mission-1/plant-gps', method: 'GET', body: undefined },
-    { path: '/api/system-manager/farms/farm-1/missions/mission-1/plant-gps', method: 'POST', body: { trees: [sampleTree] } },
+    { path: '/api/system-manager/farms/farm-1/missions/mission-1/plant-gps', method: 'POST', body: { trees: [sampleTree], processing: sampleProcessing } },
   ])
 })
 
@@ -56,16 +58,16 @@ test('replaceMissionPlantGps sends boundary alongside trees when provided (sets/
   const calls = []
   globalThis.fetch = async (url, options) => {
     calls.push(JSON.parse(options.body))
-    return Response.json({ missionId: 'mission-1', savedCount: 1, boundaryPointCount: 4, boundaryId: 'boundary-1', boundaryVersionNumber: 1, boundaryStatus: 'Approved' })
+    return Response.json({ missionId: 'mission-1', savedCount: 1, processingJobId: 'job-1', boundaryPointCount: 4, boundaryId: 'boundary-1', boundaryVersionNumber: 1, boundaryStatus: 'Approved' })
   }
   const boundary = [{ longitude: 106.49, latitude: 10.46 }, { longitude: 106.50, latitude: 10.46 }, { longitude: 106.50, latitude: 10.47 }]
-  const saved = await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree], boundary)
+  const saved = await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree], sampleProcessing, boundary)
   assert.equal(saved.boundaryId, 'boundary-1')
-  assert.deepEqual(calls[0], { trees: [sampleTree], boundary })
-  await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree])
-  assert.deepEqual(calls[1], { trees: [sampleTree] })
-  await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree], [])
-  assert.deepEqual(calls[2], { trees: [sampleTree] })
+  assert.deepEqual(calls[0], { trees: [sampleTree], processing: sampleProcessing, boundary })
+  await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree], sampleProcessing)
+  assert.deepEqual(calls[1], { trees: [sampleTree], processing: sampleProcessing })
+  await api.replaceMissionPlantGps('manager', 'farm-1', 'mission-1', [sampleTree], sampleProcessing, [])
+  assert.deepEqual(calls[2], { trees: [sampleTree], processing: sampleProcessing })
 })
 
 test('boundary-related error codes from replacing plant GPS with a boundary translate to actionable Vietnamese messages', async () => {
