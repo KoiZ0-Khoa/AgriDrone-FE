@@ -81,7 +81,7 @@ test('single and batch review use exact new endpoints/bodies; conflict is not au
 })
 
 test('validation and publication use POST without invented expectedVersion or client pole counts', async () => {
-  for (const [run, suffix] of [[() => api.validateBaseMapDraft('manager', farmId, draftId), '/validate'], [() => api.publishBaseMapDraft('manager', farmId, draftId), '/publish']]) {
+  for (const [run, suffix] of [[() => api.validateBaseMapDraft('manager', farmId, draftId), '/validate'], [() => api.approveBaseMapDraft('manager', farmId, draftId), '/approve-internal']]) {
     globalThis.fetch = async (url, options) => { assert.equal(url, root + suffix); assert.equal(options.method, 'POST'); assert.equal(options.body, undefined); assert.equal(options.headers.Authorization, 'Bearer manager'); return Response.json(validation) }
     await run()
   }

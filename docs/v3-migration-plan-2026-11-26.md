@@ -46,10 +46,12 @@ Lần bay (`CaptureAttemptStatus`): `PLANNED`, `PREFLIGHT_READY`, `IN_FLIGHT`, `
 | BE-2 | Bộ lọc đơn không có trạng thái V3 | ✅ Đã sửa (`fc01761`) | G0 |
 | BE-3 | Không có GET danh sách lần bay | ✅ Đã sửa (`fc01761`) | G4, G6 dùng `GET capture-attempts` |
 | BE-4 | Chính sách thương mại V3 chỉ có POST, không có GET | ❌ Đã báo BE, sẽ bổ sung sớm | G12 (cuối) |
-| **BE-5** | `MissionPlantGpsPublisher` đã nhận mục đích `Capture` ở `dd0ada8`. Truy vấn xác minh lần bay vẫn dùng `survey.capture_attempts.mission_id`, trong khi liên kết nằm ở `mission.drone_missions.capture_attempt_id` | Cần sửa truy vấn phía BE | Chặn publish GPS cây ở G5 |
+| **BE-5** | Publish GPS và duyệt bản đồ V3 còn truy vấn `survey.capture_attempts.mission_id`. Liên kết thực tế nằm ở `mission.drone_missions.capture_attempt_id` | Chờ BE điều chỉnh và kiểm thử | G5 |
 | BE-6 | Owner GET gắn nhãn `PAID_SERVICE` cho lịch Capture. Response đổi lịch có thể trả `AWAITINGDEPOSIT` | FE dùng trạng thái từ GET đơn và bỏ qua nhãn mục đích trên lịch V3 | G2 |
 | **BE-7** | `GET /api/tenant-owner/survey-orders/{id}/payments` đọc cả khoản cọc V3, nhưng `GetSurveyPaymentHistoryQueryHandler.MapPurpose` thiếu `PaymentPurpose.OrderDeposit => "ORDER_DEPOSIT"`. Handler ném exception khi gặp khoản cọc V3 | Cần sửa mapper và test lịch sử có cọc V3 | G3 và lịch sử thanh toán G8. FE giữ URL phiên vừa tạo khi lịch sử trả 5xx và đọc lại đơn để cập nhật trạng thái |
 | **BE-8** | `GET /api/system-manager/survey-orders/{id}/drones/available` đọc lịch và điều kiện tiền của luồng cũ. API drone theo farm cần `startAt`, `endAt`. API đơn của Manager chỉ có ID, phiên bản và trạng thái lịch | Cần danh sách drone theo lịch Capture đã xác nhận, hoặc bổ sung khung giờ lịch vào API Manager | Chặn chọn drone để chuẩn bị lần bay đầu ở G4 |
+| **BE-9** | GET lần bay thiếu manifest hiện hành. `input-approval` yêu cầu `processingJobId`, và chốt dữ liệu chưa chuyển nhiệm vụ sang sẵn sàng xử lý | Chờ BE cung cấp thông tin manifest, nguồn ID job và quy định chuyển trạng thái sau duyệt | G5 |
+| **BE-10** | `disease-detect` thiếu `jobId` và `sourceRevision` mà `combo-analysis/handoffs` yêu cầu. Truy vấn COMBO còn dùng tên bảng `survey.survey_order_commercial_snapshots` | Chờ BE sửa truy vấn và trả thông tin lần nhận diện đã lưu | G5 → G7 |
 
 ## Bảng tiến độ
 
@@ -60,7 +62,7 @@ Lần bay (`CaptureAttemptStatus`): `PLANNED`, `PREFLIGHT_READY`, `IN_FLIGHT`, `
 | G2 | Lịch hẹn Capture (Manager đề xuất, Owner xác nhận/đổi, báo vắng mặt) | `OrderActionModals.tsx`, `OwnerAppointmentDialog.tsx` | [x] API được giả lập trong test, còn kiểm thử với BE thật |
 | G3 | Cọc V3 (`OrderDeposit`) | `SurveyPaymentPanel.tsx`, `OwnerPaymentsPage.tsx` | [x] FE, chờ BE-7 và kiểm thử thanh toán |
 | G4 | Chuẩn bị lần bay và bay (prepare → checklist → start → complete / fail) | `PrepareMissionModal.tsx`, `ManagerMissionDetailPage.tsx` | [ ] Đã nối danh sách và thao tác bay, chuẩn bị lần bay chờ BE-8 |
-| G5 | Sau bay: tải dữ liệu, chốt và duyệt dữ liệu đầu vào, xử lý MAP/COMBO | `ManagerMissionDetailPage.tsx`, `plantHealthProcessingApi.ts` | [ ] (MAP chờ BE-5) |
+| G5 | Sau bay: tải dữ liệu, chốt và duyệt dữ liệu đầu vào, xử lý MAP/COMBO | `ManagerMissionDetailPage.tsx`, `ManagerBaseMapsPage.tsx` | [ ] FE đã nối upload, telemetry và chốt theo API hiện tại. Chờ BE-5, BE-9, BE-10 và ranh giới First |
 | G6 | Bay lại + lịch sử chuyến bay | `ManagerMissionDetailPage.tsx`, modal mới | [ ] |
 | G7 | Duyệt kết quả V3 (result-review, combo-reviews, freeze) | trang mới thay `ManagerHealthReviewPage` | [ ] |
 | G8 | Hóa đơn V3 + Owner trả phần còn lại | trang mới, `OwnerPaymentsPage.tsx` | [ ] |
@@ -183,15 +185,16 @@ Coordinator V3 tạo nhiệm vụ mã `V3CAP-{orderId:N}` (mục đích `Capture
 - Ranh giới farm: kiểm khi làm V3 lấy ranh giới từ đâu (đơn đầu tiên chưa có bản đồ nền) trước khi gỡ các màn hình xác minh / thu thập ranh giới cũ.
 - Đã nối danh sách lần bay và các nút bắt đầu, kết thúc, báo lỗi cho nhiệm vụ V3 đã liên kết với đơn. BE kiểm tra phiên bản đơn/lần bay và điều kiện checklist. Bước chọn drone để chuẩn bị nhiệm vụ mới còn chờ BE-8. Coordinator hiện sao chép `FarmBoundaryVersionId` từ đơn khi tạo nhiệm vụ.
 
-## G5. Sau bay — [ ] (MAP chờ BE-5)
+## G5. Sau bay — [ ] Đã nối FE đến bước chốt dữ liệu
 
 Thứ tự dự kiến (xác nhận lại khi làm):
-1. **Tải dữ liệu**: `api/missions/{missionId}/farms/{farmId}/media|telemetry|upload`. Kiểm handler nhận nhiệm vụ `Capture`. Media phải có SHA-256 và nằm thật trên MinIO vì bước chốt sẽ đối chiếu. Bỏ nút "Reset upload".
-2. **Chốt dữ liệu đầu vào**: `POST .../capture-attempts/{attemptId}/input-manifest/freeze`, body `{ missionId, expectedOrderVersion, expectedAttemptVersion, operationId, payloadFingerprint }` → `{ manifestId, manifestFingerprint, totalFileCount, totalSizeBytes, status, version }`. Sau khi chốt, bộ ảnh đầu vào không đổi được.
-3. **Duyệt dữ liệu đầu vào**: `POST .../input-approval`, body `{ manifestId, manifestFingerprint, processingJobId, expectedOrderVersion, expectedAttemptVersion, operationId, payloadFingerprint, notes? }` → `{ approvalId, status, version }`. Cần xác định `processingJobId` lấy từ bước xử lý nào.
+1. **Tải dữ liệu** qua API media và telemetry hiện có. BE tính SHA-256 lúc nhận tệp. FE cho upload/import khi đơn và lần bay còn chờ dữ liệu. Nút reset và finalize cũ được ẩn cho nhiệm vụ V3.
+2. **Chốt dữ liệu đầu vào** qua `POST .../capture-attempts/{attemptId}/input-manifest/freeze` với `{ missionId, expectedOrderVersion, expectedAttemptVersion, operationId, payloadFingerprint }`. FE dùng API readiness để kiểm tra ảnh và phiên upload đang mở. Sau khi chốt, FE hiển thị số tệp và dung lượng từ phản hồi. Sau khi tải lại, FE đọc trạng thái lần bay từ GET. Telemetry được nhập qua API riêng trước khi chốt.
+3. **Duyệt dữ liệu đầu vào**: FE hiển thị trạng thái chờ duyệt. `POST .../input-approval` yêu cầu `manifestId`, `manifestFingerprint` và `processingJobId`. Chờ BE-9 để nối thao tác duyệt.
 4. **Xử lý theo dịch vụ**:
-   - **MAP và phần bản đồ của COMBO**: Metashape → YOLO → lưu GPS cây (`plant-gps`) → **công bố GPS cây (`plant-gps/publish`) — bị chặn bởi BE-5**. Sau khi công bố, BE tạo lô ứng viên bản đồ và ảnh chụp số trụ dùng cho G7–G8.
-   - **COMBO**: thêm `disease-detect` (đòi lần bay ở `PROCESSING`, đã duyệt dữ liệu đầu vào; chỉ phân tích đúng ảnh đã chốt) rồi `POST api/v3/farms/{farmId}/missions/{missionId}/combo-analysis/handoffs` (thay `plant-health/publish`). Mã lỗi mới: `DetectDiseases.IncompleteImageCoverage`, `DetectDiseases.ZeroInferenceCoverage`.
+   - **MAP và phần bản đồ của COMBO**: dùng API ghép ảnh, cắt tiles và YOLO khi nhiệm vụ đủ điều kiện. FE cho tải CSV kết quả. Gửi GPS V3 còn chờ BE-5 và phiên bản ranh giới gắn với đơn và nhiệm vụ. Đơn First cần BE cung cấp thao tác xác nhận ranh giới từ ảnh trực giao.
+   - **Duyệt bản đồ nháp** gọi API đang có `POST .../approve-internal`. Duyệt bản đồ V3 còn phụ thuộc BE-5.
+   - **COMBO**: chờ BE-10 để nối `disease-detect` với `POST api/v3/farms/{farmId}/missions/{missionId}/combo-analysis/handoffs`.
 
 ## G6. Bay lại + lịch sử chuyến bay — [ ]
 

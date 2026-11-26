@@ -1,6 +1,6 @@
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Button, Checkbox, Divider, Form, Input, InputNumber, Radio, Space, Steps, Table, Tag } from 'antd'
+import { Alert, App, Button, Checkbox, Divider, Form, Input, InputNumber, Modal, Radio, Space, Steps, Table, Tag } from 'antd'
 import { useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
@@ -9,6 +9,11 @@ import { ActionModal } from '../../management/ActionModal'
 import { text, type Action } from '../../management/actions'
 import { useAuth } from '../auth/AuthContext'
 import { getFarmContext } from '../surveys/farmOperationsApi'
+import { getAssignedOrder } from '../surveys/orderApi'
+import { ownerGuid, validOwnerVersion } from '../surveys/ownerOrderWorkflow'
+import { SurveyMutationError } from '../surveys/SurveyMutationError'
+import { freezeCaptureInput, getCaptureAttempts } from '../surveys/v3Api'
+import { captureAttemptStatusLabels, v3OperationFor, v3ServiceKind, type V3Operation } from '../surveys/v3Workflow'
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
 import type { GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, MissionTreeDetection, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, SliceTilesResult, TelemetrySegment } from './missionTypes'
@@ -22,6 +27,7 @@ import { PlantHealthProcessingPanel } from './PlantHealthProcessingPanel'
 import { V3CaptureFlightActions } from './V3CaptureFlightActions'
 
 const missionStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Ghép bản đồ', 'Ranh giới, YOLO & Publish GPS']
+const v3MissionStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Chốt & duyệt dữ liệu', 'Ghép bản đồ', 'Ranh giới & YOLO']
 function missionStepIndex(status: string, preflightDone: boolean) {
   if (status === 'DRAFT') return 0
   if (status === 'SCHEDULED') return preflightDone ? 1 : 0
@@ -103,6 +109,9 @@ export function ManagerMissionDetailPage() {
   const mediaInputRef = useRef<HTMLInputElement>(null)
   const [mediaDropActive, setMediaDropActive] = useState(false)
   const [uploadResults, setUploadResults] = useState<MediaUploadItemResult[] | null>(null)
+  const [confirmFreeze, setConfirmFreeze] = useState<{ missionVersion: number; orderVersion: number; attemptVersion: number } | null>(null)
+  const freezeOperation = useRef<V3Operation | null>(null)
+  const freezing = useRef(false)
   const [showAllMedia, setShowAllMedia] = useState(false)
   const [logFile, setLogFile] = useState<File | null>(null)
   const [normalized, setNormalized] = useState<NormalizedTelemetryLog | null>(null)
@@ -147,13 +156,35 @@ export function ManagerMissionDetailPage() {
   const canDetectDiseases = isPlantHealth && ['READY_FOR_PROCESSING', 'AWAITING_REVIEW', 'PROCESSING_FAILED'].includes(status ?? '')
   const farmBoundaryMissing = farmContextQuery.data ? !farmContextQuery.data.approvedBoundary : false
   const postFlight = ['FLIGHT_COMPLETED', 'UPLOADING', 'READY_FOR_PROCESSING', 'PROCESSING', 'AWAITING_REVIEW', 'COMPLETED'].includes(status ?? '')
-  const telemetryEligible = status === 'FLIGHT_COMPLETED' || status === 'UPLOADING'
+    || (v3Capture && ['UPLOAD_FAILED', 'PROCESSING_FAILED'].includes(status ?? ''))
+  const captureOrderId = latest?.surveyOrderId ?? orderId
+  const readCapture = v3Capture && postFlight && ownerGuid(captureOrderId)
+  const captureOrder = useQuery({
+    queryKey: ['manager-order-context', captureOrderId],
+    queryFn: ({ signal }) => getAssignedOrder(token, captureOrderId, signal),
+    enabled: readCapture,
+    retry: false,
+  })
+  const captureAttempts = useQuery({
+    queryKey: ['capture-attempts', captureOrderId],
+    queryFn: ({ signal }) => getCaptureAttempts(token, captureOrderId, signal),
+    enabled: readCapture,
+    retry: false,
+  })
+  const captureAttempt = captureAttempts.data?.find(item => item.missionId === missionId)
+  const linkedCapture = captureOrder.data?.surveyOrderId === captureOrderId && captureOrder.data.farmId === farmId &&
+    v3ServiceKind(captureOrder.data.surveyServiceCode) !== null && !!captureAttempt && ownerGuid(captureAttempt.captureAttemptId)
+  const captureAwaitingUpload = linkedCapture && !captureOrder.isError && !captureAttempts.isError &&
+    captureOrder.data?.status === 'AWAITING_CAPTURE_UPLOAD' && captureAttempt?.status === 'AWAITING_UPLOAD'
+  const captureCanProcess = linkedCapture && !captureOrder.isError && !captureAttempts.isError &&
+    captureOrder.data?.status === 'PROCESSING' && captureAttempt?.status === 'PROCESSING'
+  const captureFrozen = linkedCapture && ['UPLOADED', 'PROCESSING', 'ACCEPTED'].includes(captureAttempt?.status ?? '')
   const uploading = status === 'UPLOADING'
-  const canResetUpload = status === 'UPLOADING' || status === 'UPLOAD_FAILED' || status === 'READY_FOR_PROCESSING' || status === 'PROCESSING_FAILED'
+  const canResetUpload = !v3Capture && ['UPLOADING', 'UPLOAD_FAILED', 'READY_FOR_PROCESSING', 'PROCESSING_FAILED'].includes(status ?? '')
   const mediaQuery = useQuery({ queryKey: ['mission-media', farmId, missionId], queryFn: ({ signal }) => api.getMissionMedia(token, farmId, missionId, 1, 20, signal), enabled: postFlight })
-  const readinessQuery = useQuery({ queryKey: ['mission-readiness', farmId, missionId], queryFn: ({ signal }) => api.getUploadReadiness(token, farmId, missionId, signal), enabled: uploading })
-  const canStartOrthophoto = !isPlantHealth && (status === 'READY_FOR_PROCESSING' || status === 'AWAITING_REVIEW' || status === 'PROCESSING_FAILED')
-  const orthophotoProcessing = !isPlantHealth && status === 'PROCESSING'
+  const readinessQuery = useQuery({ queryKey: ['mission-readiness', farmId, missionId], queryFn: ({ signal }) => api.getUploadReadiness(token, farmId, missionId, signal), enabled: v3Capture ? captureAwaitingUpload : uploading })
+  const canStartOrthophoto = !isPlantHealth && (!v3Capture || captureCanProcess) && (status === 'READY_FOR_PROCESSING' || status === 'AWAITING_REVIEW' || status === 'PROCESSING_FAILED')
+  const orthophotoProcessing = !isPlantHealth && (!v3Capture || captureCanProcess) && status === 'PROCESSING'
   const orthophotoEligible = canStartOrthophoto || orthophotoProcessing
   const orthophotoStatusQuery = useQuery({
     queryKey: ['mission-orthophoto-status', farmId, missionId],
@@ -190,6 +221,7 @@ export function ManagerMissionDetailPage() {
   })
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
+      if (v3Capture && (!captureAwaitingUpload || freezing.current)) throw new Error('Lần bay đã chuyển bước. Tải lại trước khi tải ảnh.')
       const results: MediaUploadItemResult[] = []
       let offset = 0
       for (const batch of batchFilesBySize(files, maxUploadBatchBytes, maxUploadBatchFiles)) {
@@ -200,9 +232,10 @@ export function ManagerMissionDetailPage() {
       }
       return results
     },
-    onSuccess: async results => {
-      setUploadResults(results)
+    onSuccess: setUploadResults,
+    onSettled: async () => {
       await Promise.all([
+        client.invalidateQueries({ queryKey: ['mission-detail', farmId, missionId] }),
         client.invalidateQueries({ queryKey: ['mission-media', farmId, missionId] }),
         client.invalidateQueries({ queryKey: ['mission-readiness', farmId, missionId] }),
       ])
@@ -289,6 +322,7 @@ export function ManagerMissionDetailPage() {
   })
   const importMutation = useMutation({
     mutationFn: () => {
+      if (v3Capture && (!captureAwaitingUpload || freezing.current)) throw new Error('Lần bay đã chuyển bước. Tải lại trước khi nhập telemetry.')
       if (!normalized || version === undefined) throw new Error('Chưa có dữ liệu log đã decode.')
       const segments = normalized.segments.filter(segment => selectedSegmentIndexes.includes(segment.segmentIndex))
       if (segments.length === 0) throw new Error('Chọn ít nhất 1 segment để import.')
@@ -315,6 +349,50 @@ export function ManagerMissionDetailPage() {
       void message.success(data.reusedOperation ? 'Telemetry đã được ghi nhận từ trước.' : 'Đã import telemetry.')
     },
   })
+  async function refreshCaptureInput() {
+    await Promise.all([
+      captureOrder.refetch(),
+      captureAttempts.refetch(),
+      missionQuery.refetch(),
+      client.invalidateQueries({ queryKey: ['manager-order-scope', captureOrderId] }),
+      client.invalidateQueries({ queryKey: ['manager-orders'] }),
+      client.invalidateQueries({ queryKey: ['mission-readiness', farmId, missionId] }),
+    ])
+  }
+  const captureUploadsBusy = uploadMutation.isPending || importMutation.isPending
+  const readiness = readinessQuery.data
+  const canFreeze = captureAwaitingUpload && !captureOrder.isFetching && !captureAttempts.isFetching &&
+    !captureUploadsBusy && readinessQuery.isSuccess && !readinessQuery.isFetching &&
+    readiness?.missionId === missionId && readiness.rawImageCount > 0 && !readiness.hasActiveUploadSessions &&
+    readiness.missionVersion === version && validOwnerVersion(captureOrder.data!.orderVersion) && validOwnerVersion(captureAttempt!.version)
+  const freezeSnapshotChanged = !!confirmFreeze && (confirmFreeze.missionVersion !== version ||
+    confirmFreeze.orderVersion !== captureOrder.data?.orderVersion || confirmFreeze.attemptVersion !== captureAttempt?.version)
+  const freezeMutation = useMutation({
+    retry: false,
+    mutationFn: async () => {
+      if (!canFreeze || freezeSnapshotChanged || !confirmFreeze || !captureAttempt) throw new Error('Dữ liệu lần bay đã thay đổi. Tải lại trước khi chốt.')
+      const body = { missionId, expectedOrderVersion: confirmFreeze.orderVersion, expectedAttemptVersion: confirmFreeze.attemptVersion }
+      const operation = await v3OperationFor(freezeOperation.current, body)
+      freezeOperation.current = operation
+      const result = await freezeCaptureInput(token, captureOrderId, captureAttempt.captureAttemptId, {
+        ...body, operationId: operation.operationId, payloadFingerprint: operation.payloadFingerprint,
+      })
+      if (!result.success || result.attemptId !== captureAttempt.captureAttemptId) throw new Error('Máy chủ chưa xác nhận bộ dữ liệu của lần bay này.')
+      return result
+    },
+    onSuccess: async () => {
+      setConfirmFreeze(null)
+      setSelectedFiles([])
+      await refreshCaptureInput()
+      setLatest(null)
+    },
+    onError: refreshCaptureInput,
+    onSettled: () => { freezing.current = false },
+  })
+  const frozenInput = freezeMutation.data?.attemptId === captureAttempt?.captureAttemptId ? freezeMutation.data : undefined
+  const canEditCaptureUpload = captureAwaitingUpload && !frozenInput && !freezeMutation.isPending
+  const telemetryEligible = (status === 'FLIGHT_COMPLETED' || uploading) && (!v3Capture || canEditCaptureUpload)
+  const canEditMedia = !v3Capture || (canEditCaptureUpload && ['FLIGHT_COMPLETED', 'UPLOADING', 'UPLOAD_FAILED'].includes(status ?? ''))
   const finalizeMutation = useMutation({
     mutationFn: () => { if (version === undefined) throw new Error('Chưa tải được phiên bản nhiệm vụ.'); return api.finalizeMissionUpload(token, farmId, missionId, version) },
     onSuccess: async data => {
@@ -395,7 +473,11 @@ export function ManagerMissionDetailPage() {
     {back}
     <section className="resource-page-heading">
       <div><span className="page-kicker">NHIỆM VỤ BAY</span><h1>{latest?.purpose ? missionPurposeLabel(latest.purpose) : 'Nhiệm vụ bay'}</h1>{droneQuery.data ? <p>{droneQuery.data.name}</p> : null}<CopyReference value={mission.missionCode} label="Sao chép mã nhiệm vụ" /></div>
-      <Space wrap><Tag color="blue">{missionStatusLabel(status ?? mission.status)}</Tag><Button icon={<ReloadOutlined />} onClick={() => { void missionQuery.refetch(); void checklistQuery.refetch() }}>Tải lại</Button></Space>
+      <Space wrap><Tag color="blue">{missionStatusLabel(status ?? mission.status)}</Tag><Button icon={<ReloadOutlined />} onClick={() => {
+        void missionQuery.refetch()
+        if (scheduled && !preflightDone) void checklistQuery.refetch()
+        if (readCapture) void refreshCaptureInput()
+      }}>Tải lại</Button></Space>
     </section>
     <section className="resource-panel">
       <dl className="detail-list">
@@ -404,7 +486,9 @@ export function ManagerMissionDetailPage() {
         <div><dt>Phiên bản</dt><dd>v{version}</dd></div>
       </dl>
     </section>
-    <Steps className="mission-steps" size="small" current={missionStepIndex(status ?? mission.status, preflightDone)} items={(isPlantHealth ? ['Preflight', 'Bay', 'Upload & Telemetry', 'Nhận diện bệnh', 'Chuyển kết quả kiểm duyệt'] : missionStepTitles).map(title => ({ title }))} />
+    <Steps className="mission-steps" size="small"
+      current={v3Capture && postFlight ? orthophotoStatusQuery.data?.status === 'COMPLETED' ? 5 : orthophotoEligible ? 4 : captureFrozen ? 3 : 2 : missionStepIndex(status ?? mission.status, preflightDone)}
+      items={(v3Capture ? v3MissionStepTitles : isPlantHealth ? ['Preflight', 'Bay', 'Upload & Telemetry', 'Nhận diện bệnh', 'Chuyển kết quả kiểm duyệt'] : missionStepTitles).map(title => ({ title }))} />
     {!draft && !scheduled && !inFlight && !flightFailed && !postFlight && !orthophotoEligible && !canResetUpload ? <Alert className="workflow-notice" type="info" showIcon message={`Nhiệm vụ đang ở trạng thái "${missionStatusLabel(status ?? mission.status)}", không ở bước có thao tác trong phạm vi đã triển khai.`} /> : null}
     {flightFailed ? <Alert className="workflow-notice" type="warning" showIcon message="Chuyến bay trước đã lỗi." description={v3Capture ? 'Xem quyết định bay lại trên đơn khảo sát.' : 'Chỉ lên lịch lại được nếu quyết định khắc phục khi báo lỗi là "Cần lên lịch lại".'} /> : null}
     {!draft ? <StepSection title="Checklist trước khi bay" status={scheduled && !preflightDone ? 'active' : 'done'} summary={preflightDone ? `Phù hợp để bay: ${preflightSuitable ? 'Có' : 'Không'}.` : undefined}>
@@ -445,7 +529,8 @@ export function ManagerMissionDetailPage() {
       {completeFlightMutation.error ? <Alert type="error" showIcon message={missionError(completeFlightMutation.error)} /> : null}
       <Button type="primary" loading={completeFlightMutation.isPending} onClick={() => completeFlightMutation.mutate()}>Kết thúc chuyến bay</Button>
     </StepSection> : null}
-    {postFlight ? <StepSection title="Upload ảnh/video" status={status === 'FLIGHT_COMPLETED' || status === 'UPLOADING' || status === 'UPLOAD_FAILED' ? 'active' : 'done'} summary={mediaQuery.data ? `${mediaQuery.data.totalCount} file đã upload.` : undefined}>
+    {postFlight ? <StepSection title="Upload ảnh/video" status={v3Capture ? canEditMedia ? 'active' : 'done' : status === 'FLIGHT_COMPLETED' || uploading || status === 'UPLOAD_FAILED' ? 'active' : 'done'} summary={mediaQuery.data ? `${mediaQuery.data.totalCount} file đã upload.` : 'Xem danh sách tệp'}>
+      {canEditMedia ? <>
       <p className="form-hint">Chọn ảnh/video từ drone, hoặc kéo-thả cả thư mục vào đây để lấy toàn bộ file bên trong.</p>
       <input ref={mediaInputRef} type="file" multiple accept="image/*,video/*" style={{ display: 'none' }} disabled={uploadMutation.isPending}
         onChange={event => setSelectedFiles(Array.from(event.target.files ?? []))} />
@@ -465,8 +550,9 @@ export function ManagerMissionDetailPage() {
           <span className="form-hint">{selectedFiles.length ? `${selectedFiles.length} file đã chọn` : 'Chưa chọn tệp nào'}</span>
         </Space>
       </div>
-      <div><Button type="primary" disabled={selectedFiles.length === 0} loading={uploadMutation.isPending} onClick={() => uploadMutation.mutate(selectedFiles)}>Tải lên{selectedFiles.length ? ` (${selectedFiles.length} file)` : ''}</Button></div>
+      <div><Button type="primary" disabled={selectedFiles.length === 0 || (v3Capture && importMutation.isPending)} loading={uploadMutation.isPending} onClick={() => uploadMutation.mutate(selectedFiles)}>Tải lên{selectedFiles.length ? ` (${selectedFiles.length} file)` : ''}</Button></div>
       {uploadMutation.error ? <Alert type="error" showIcon message={missionError(uploadMutation.error)} /> : null}
+      </> : null}
       {uploadResults ? <Table<MediaUploadItemResult> size="small" rowKey="index" dataSource={uploadResults} pagination={false} columns={[
         { title: 'File', dataIndex: 'fileName' },
         { title: 'Kết quả', render: (_, item) => <Tag color={item.status === 'Completed' ? 'success' : item.status === 'Failed' ? 'error' : 'default'}>{mediaUploadStatusLabels[item.status] ?? item.status}</Tag> },
@@ -499,10 +585,59 @@ export function ManagerMissionDetailPage() {
           ]} />
         {importResult ? <Alert type="success" showIcon message={importResult.reusedOperation ? 'Telemetry đã được ghi nhận từ trước.' : 'Đã import telemetry.'} description={`${importResult.pointCount} điểm · phiên bản nhiệm vụ mới: v${importResult.missionVersion}.`} /> : null}
         {importMutation.error ? <Alert type="error" showIcon message={missionError(importMutation.error)} /> : null}
-        <Button type="primary" disabled={selectedSegmentIndexes.length === 0} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import telemetry đã chọn</Button>
+        {!v3Capture || telemetryEligible ? <Button type="primary" disabled={selectedSegmentIndexes.length === 0 || (v3Capture && uploadMutation.isPending)} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import telemetry đã chọn</Button> : null}
       </> : null}
     </StepSection> : null}
-    {uploading || orthophotoEligible ? <StepSection title="Hoàn tất upload" status={uploading ? 'active' : 'done'}>
+    {v3Capture && postFlight ? <StepSection title="Chốt bộ dữ liệu đầu vào" status="active">
+      {!readCapture ? <Alert showIcon type="info" title="Mở nhiệm vụ từ đơn khảo sát để tải dữ liệu lần bay." action={<Link to="/manager/orders">Đơn khảo sát được giao</Link>} />
+        : captureOrder.isError || captureAttempts.isError ? <SurveyMutationError error={captureOrder.error ?? captureAttempts.error} />
+        : captureOrder.isPending || captureAttempts.isPending ? <CommonState type="loading" />
+        : !linkedCapture ? <Alert showIcon type="warning" title="Nhiệm vụ không thuộc lần bay của đơn này." />
+        : captureAttempt?.status === 'UPLOADED' || (frozenInput && captureAwaitingUpload) ? <>
+          <Alert showIcon type="info" title="Đã chốt bộ dữ liệu · Chờ duyệt đầu vào"
+            description={frozenInput ? `${frozenInput.totalFileCount} tệp · ${fileSizeLabel(frozenInput.totalSizeBytes)}` : undefined} />
+          <p className="form-hint">Bước duyệt đầu vào đang chờ máy chủ cung cấp thông tin bộ dữ liệu và mã xử lý.</p>
+          <Button icon={<ReloadOutlined />} loading={captureOrder.isFetching || captureAttempts.isFetching} onClick={() => { void refreshCaptureInput() }}>Kiểm tra lại</Button>
+        </>
+        : captureFrozen ? <Alert showIcon type="success" title="Đã duyệt bộ dữ liệu đầu vào" />
+        : captureAwaitingUpload ? <>
+          {readinessQuery.isPending ? <CommonState type="loading" /> : null}
+          {readinessQuery.isError ? <SurveyMutationError error={readinessQuery.error} /> : null}
+          {readinessQuery.isSuccess && readiness ? <>
+            <dl className="detail-list">
+              <div><dt>Ảnh gốc</dt><dd>{readiness.rawImageCount}</dd></div>
+              <div><dt>Video gốc</dt><dd>{readiness.rawVideoCount}</dd></div>
+              <div><dt>Điểm telemetry</dt><dd>{readiness.telemetryPointCount}</dd></div>
+            </dl>
+            {readiness.hasActiveUploadSessions ? <Alert showIcon type="warning" title="Còn phiên tải tệp đang mở. Tải lại sau khi các tệp được xử lý." /> : null}
+            {readiness.rawImageCount === 0 ? <p className="form-hint">Tải ảnh gốc của lần bay để làm bản đồ.</p> : null}
+          </> : null}
+          <Space wrap>
+            <Button icon={<ReloadOutlined />} disabled={freezeMutation.isPending} onClick={() => { void refreshCaptureInput() }}>Kiểm tra lại</Button>
+            <Button type="primary" disabled={!canFreeze} loading={freezeMutation.isPending} onClick={() => {
+              if (canFreeze && readiness && captureOrder.data && captureAttempt) setConfirmFreeze({
+                missionVersion: readiness.missionVersion, orderVersion: captureOrder.data.orderVersion, attemptVersion: captureAttempt.version,
+              })
+            }}>Chốt bộ dữ liệu</Button>
+          </Space>
+        </> : <p className="form-hint">Lần bay đang ở bước {captureAttempt?.status ? captureAttemptStatusLabels[captureAttempt.status] : 'chưa xác định'}.</p>}
+      {!confirmFreeze ? <SurveyMutationError error={freezeMutation.error} /> : null}
+    </StepSection> : null}
+    <Modal open={!!confirmFreeze} title="Chốt bộ dữ liệu đầu vào" okText="Chốt bộ dữ liệu" cancelText="Quay lại"
+      confirmLoading={freezeMutation.isPending} closable={!freezeMutation.isPending} mask={{ closable: !freezeMutation.isPending }}
+      cancelButtonProps={{ disabled: freezeMutation.isPending }} okButtonProps={{ disabled: !canFreeze || freezeSnapshotChanged }}
+      onCancel={() => { if (!freezeMutation.isPending) setConfirmFreeze(null) }}
+      onOk={() => {
+        if (!canFreeze || freezeSnapshotChanged || freezing.current) return
+        freezing.current = true
+        freezeMutation.mutate()
+      }}>
+      <p>Kiểm tra ảnh và telemetry trước khi chốt danh sách tệp. Sau bước này, lần bay chuyển sang chờ duyệt.</p>
+      <Alert showIcon type="info" title="Màn hình hiện hỗ trợ đến bước chốt. Duyệt đầu vào cần thông tin từ máy chủ." />
+      {freezeSnapshotChanged ? <Alert showIcon type="warning" title="Dữ liệu vừa thay đổi. Đóng hộp thoại và kiểm tra lại." /> : null}
+      <SurveyMutationError error={freezeMutation.error} />
+    </Modal>
+    {!v3Capture && (uploading || orthophotoEligible) ? <StepSection title="Hoàn tất upload" status={uploading ? 'active' : 'done'}>
       {!uploading ? <p className="form-hint">Đã hoàn tất upload.</p>
         : readinessQuery.isPending ? <CommonState type="loading" />
         : readinessQuery.isError ? <CommonState type="error" description={missionError(readinessQuery.error)} retry={() => readinessQuery.refetch()} />
@@ -557,17 +692,21 @@ export function ManagerMissionDetailPage() {
     </StepSection> : null}
     {!isPlantHealth && orthophotoStatusQuery.data?.status === 'COMPLETED' && orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Vẽ ranh giới vườn + cắt tiles" status={sliceResult ? 'done' : 'active'} summary={sliceResult ? `${sliceResult.totalTiles} tile đã cắt.` : undefined}>
       <p className="form-hint">Click lên ảnh để thêm điểm ranh giới. Từ 3 điểm trở lên tự khép kín. Khóa viền trước khi cắt tiles.</p>
-      <BoundaryTilingPanel token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
-        onSliced={(result, polygon) => { setSliceResult(result); setBoundaryPolygon(polygon) }} />
+      <BoundaryTilingPanel key={missionId} token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
+        disabled={publishPlantGpsMutation.isPending}
+        approvedBoundary={v3Capture ? farmContextQuery.data?.approvedBoundary?.geometry?.coordinates : undefined}
+        onSliced={(result, polygon) => { setSliceResult(result); setBoundaryPolygon(polygon) }}
+        onUnlock={() => { setSliceResult(null); setBoundaryPolygon(null); setYoloResult(null); setPublishResult(null); setBoundaryUpdateResult(null); publishPlantGpsMutation.reset() }} />
       {sliceResult ? <p className="form-hint">Đã sẵn sàng {sliceResult.totalTiles} tile để nhận diện cây ở bước tiếp theo.</p> : null}
     </StepSection> : null}
-    {!isPlantHealth && sliceResult && boundaryPolygon && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Nhận diện cây YOLO & Publish GPS" status={publishResult ? 'done' : 'active'} summary={publishResult ? `Đã gửi yêu cầu publish (${publishResult.status}).` : yoloResult ? `${yoloResult.totalUniqueTrees} cây đã nhận diện.` : undefined}>
+    {!isPlantHealth && sliceResult && boundaryPolygon && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title={v3Capture ? 'Nhận diện cây YOLO' : 'Nhận diện cây YOLO & Publish GPS'} status={publishResult ? 'done' : 'active'} summary={publishResult ? `Đã gửi yêu cầu publish (${publishResult.status}).` : yoloResult ? `${yoloResult.totalUniqueTrees} cây đã nhận diện.` : undefined}>
       <p className="form-hint">Chạy nhận diện trong phạm vi ranh giới đã khóa. Có thể chọn lại cây neo (Hàng 1 - Cột 1) từ kết quả lần chạy trước rồi chạy lại để đánh số đúng theo thực địa.</p>
       <YoloDetectionPanel token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
         boundaryPolygon={boundaryPolygon} onDetected={setYoloResult} />
       {yoloResult ? <>
         <p className="form-hint">Kết quả gần nhất: {yoloResult.totalUniqueTrees} cây, {yoloResult.totalMissingTrees} vị trí thiếu — dùng ở bước lưu nháp GPS cây tiếp theo.</p>
         <Button onClick={downloadTreesCsv}>Tải CSV kết quả cây</Button>
+        {v3Capture ? <Alert showIcon type="info" title="Có thể tải CSV kết quả. Gửi tọa độ trụ V3 đang chờ máy chủ hỗ trợ đúng liên kết lần bay và ranh giới." /> : <>
         <Divider />
         <div className="resource-panel-heading"><div><strong>Đưa vào hệ thống chính thức</strong><span>Lưu nháp lại danh sách cây ở trên rồi gửi yêu cầu publish cho đơn khảo sát. Chỉ áp dụng cho nhiệm vụ Khảo sát bản đồ nền.</span></div></div>
         <Form layout="inline">
@@ -578,9 +717,11 @@ export function ManagerMissionDetailPage() {
         {!isBaselineMapping ? <Alert type="warning" showIcon message="Nhiệm vụ này không phải Khảo sát bản đồ nền — yêu cầu sẽ bị từ chối." /> : null}
         {isBaselineMapping && farmBoundaryMissing ? <Alert type="info" showIcon message="Nông trại này chưa có ranh giới nào." description="Ranh giới đã vẽ ở bước trên sẽ được dùng để set luôn ranh giới chính thức của nông trại khi bấm nút bên dưới." /> : null}
         {publishPlantGpsMutation.error ? <Alert type="error" showIcon message={publishPlantGpsError(publishPlantGpsMutation.error)} /> : null}
-        {publishResult ? <Alert type="success" showIcon message={`Đã gửi yêu cầu (${publishResult.status})`} description={`messageId: ${publishResult.messageId} — hệ thống xử lý không đồng bộ, kiểm tra lại sau ít phút.`} /> : null}
+        {publishResult ? <Alert type="success" showIcon message={`Đã gửi yêu cầu (${publishResult.status})`}
+          description={`messageId: ${publishResult.messageId} — hệ thống xử lý không đồng bộ, kiểm tra lại sau ít phút.`} /> : null}
         {boundaryUpdateResult?.boundaryId ? <Alert type="success" showIcon message="Đã set ranh giới nông trại." description={`boundaryId: ${boundaryUpdateResult.boundaryId} · phiên bản ${boundaryUpdateResult.boundaryVersionNumber} · ${boundaryUpdateResult.boundaryPointCount} điểm.`} /> : null}
         <Button type="primary" loading={publishPlantGpsMutation.isPending} onClick={() => publishPlantGpsMutation.mutate()}>Đưa vào hệ thống chính thức</Button>
+        </>}
       </> : null}
     </StepSection> : null}
     {!isPlantHealth ? <section className="resource-panel">

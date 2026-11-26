@@ -21,8 +21,10 @@ function ClickCapture({ enabled, bounds, onAdd, onOutsideBounds }: { enabled: bo
   return null
 }
 
-export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, bounds, onSliced }: {
-  token: string; farmId: string; missionId: string; previewUrl: string; bounds: OrthophotoBounds; onSliced: (result: SliceTilesResult, polygon: GeoJsonPolygon) => void
+export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, bounds, onSliced, onUnlock, disabled, approvedBoundary }: {
+  token: string; farmId: string; missionId: string; previewUrl: string; bounds: OrthophotoBounds
+  onSliced: (result: SliceTilesResult, polygon: GeoJsonPolygon) => void; onUnlock: () => void; disabled?: boolean
+  approvedBoundary?: number[][][]
 }) {
   const { message } = App.useApp()
   const [points, setPoints] = useState<[number, number][]>([])
@@ -42,6 +44,7 @@ export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, boun
       <Button disabled={locked || sliceMutation.isPending || points.length === 0} onClick={() => setPoints(previous => previous.slice(0, -1))}>↩ Xóa điểm cuối</Button>
       <Button disabled={locked || sliceMutation.isPending || points.length === 0} onClick={() => setPoints([])}>🗑️ Xóa hết</Button>
       <span className="form-hint">{locked ? 'Đã khóa ranh giới.' : 'Bấm lên ảnh để thêm điểm. Vẽ xong, khóa ranh giới bên dưới để cắt tiles.'}</span>
+      {approvedBoundary ? <span className="form-hint">Nét đứt là ranh giới đã duyệt của nông trại.</span> : null}
     </Space>
     <Space align="center" style={{ marginTop: 12 }}>
       <span className="form-hint">Độ mờ ảnh drone</span>
@@ -55,6 +58,8 @@ export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, boun
       <MapContainer bounds={leafletBounds} maxZoom={22} style={{ height: '100%', width: '100%' }}>
         <MapBaseLayers />
         <ImageOverlay url={previewUrl} bounds={leafletBounds} opacity={opacity} />
+        {approvedBoundary ? <Polygon positions={approvedBoundary.map(ring => ring.map(([lng, lat]): [number, number] => [lat, lng]))}
+          pathOptions={{ color: 'var(--text)', dashArray: '6 5', fill: false }} /> : null}
         <ClickCapture enabled={!locked && !sliceMutation.isPending} bounds={bounds} onAdd={point => setPoints(previous => [...previous, point])} onOutsideBounds={() => message.warning('Chỉ chấm điểm được trong phạm vi ảnh orthophoto.')} />
         {points.map((point, index) => <CircleMarker key={index} center={[point[1], point[0]]} radius={6} pathOptions={{ color: boundaryColor, fillColor: boundaryColor, fillOpacity: 0.9 }} />)}
         {points.length >= 2 && points.length < 3 ? <Polyline positions={latLngPoints} pathOptions={{ color: boundaryColor }} /> : null}
@@ -66,8 +71,11 @@ export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, boun
     <p className="form-hint" role="status">{points.length < 3 ? 'Chọn ít nhất 3 điểm để tạo ranh giới.' : locked ? 'Ranh giới đã khóa. Bạn có thể cắt tiles.' : 'Đã đủ điểm. Bấm Khóa ranh giới để bật nút Cắt tiles.'}</p>
     {sliceMutation.error ? <Alert type="error" showIcon message={missionError(sliceMutation.error)} /> : null}
     <Space wrap>
-      <Button type={locked ? 'default' : 'primary'} disabled={points.length < 3 || sliceMutation.isPending} onClick={() => setLocked(value => !value)}>{locked ? 'Mở khóa chỉnh sửa' : 'Khóa ranh giới'}</Button>
-      <Button type="primary" disabled={!locked || points.length < 3} loading={sliceMutation.isPending} onClick={() => sliceMutation.mutate()}>Cắt tiles</Button>
+      <Button type={locked ? 'default' : 'primary'} disabled={disabled || points.length < 3 || sliceMutation.isPending} onClick={() => {
+        if (locked) { sliceMutation.reset(); onUnlock() }
+        setLocked(!locked)
+      }}>{locked ? 'Mở khóa chỉnh sửa' : 'Khóa ranh giới'}</Button>
+      <Button type="primary" disabled={disabled || !locked || points.length < 3} loading={sliceMutation.isPending} onClick={() => sliceMutation.mutate()}>Cắt tiles</Button>
     </Space>
     {sliceMutation.data ? <Alert type="success" showIcon message={`Đã cắt ${sliceMutation.data.totalTiles} tile (${sliceMutation.data.totalTiles640} × 640, ${sliceMutation.data.totalTiles1280} × 1280).`} /> : null}
   </>

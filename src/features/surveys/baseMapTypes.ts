@@ -25,4 +25,7 @@ export type MappingValidation = {
   pendingCount: number; confirmedPublishablePoleCount: number
   issues: { candidateId: string | null; code: string; message: string; severity: string }[]
 }
-export type PublishedBaseMap = { farmBaseMapVersionId: string; versionNumber: number; confirmedSurveyPoleCount: number; publishedAt: string }
+export type ApprovedBaseMap = {
+  farmBaseMapVersionId: string; versionNumber: number; surveyOrderId: string; farmId: string
+  verifiedBillablePoleCount: number; poleCountSnapshotId: string; evidenceFingerprint: string; approvedAt: string
+}

@@ -136,3 +136,18 @@ test('V3 flight mutations send the attempt and order versions with exact action 
   await assert.rejects(v3Api.startCaptureFlight('manager', 'order/1', 'attempt/1', { ...expected, missionId: 'mission' }), error => error.code === 'CAPTURE_VERSION_CONFLICT')
   assert.equal(calls, 1)
 })
+
+test('V3 capture input freeze sends the mission and observed versions and preserves the manifest receipt', async () => {
+  const body = { missionId: 'mission', expectedOrderVersion: 55, expectedAttemptVersion: 5, operationId: 'freeze-operation', payloadFingerprint: 'a'.repeat(64) }
+  const receipt = { success: true, attemptId: 'attempt/1', manifestId: 'manifest', manifestFingerprint: 'A'.repeat(64), totalFileCount: 190, totalSizeBytes: 104857600, status: 'Uploaded', version: 6 }
+  globalThis.fetch = async (url, options) => {
+    assert.equal(new URL(url).pathname, '/api/v3/system-manager/survey-orders/order%2F1/capture-attempts/attempt%2F1/input-manifest/freeze')
+    assert.equal(options.headers.Authorization, 'Bearer manager')
+    assert.equal(options.method, 'POST')
+    assert.deepEqual(JSON.parse(options.body), body)
+    return Response.json(receipt)
+  }
+  assert.deepEqual(await v3Api.freezeCaptureInput('manager', 'order/1', 'attempt/1', body), receipt)
+  globalThis.fetch = async () => Response.json({ title: 'CAPTURE_MEDIA_INCOMPLETE' }, { status: 409 })
+  await assert.rejects(v3Api.freezeCaptureInput('manager', 'order/1', 'attempt/1', body), error => error.code === 'CAPTURE_MEDIA_INCOMPLETE')
+})

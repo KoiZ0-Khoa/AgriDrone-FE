@@ -70,13 +70,20 @@ export type V3CaptureAttempt = {
   history: V3CaptureAttemptHistory[]
 }
 
-type V3FlightOperation = {
+type V3AttemptOperation = {
   expectedOrderVersion: number
   expectedAttemptVersion: number
   operationId: string
   payloadFingerprint: string
 }
-export type V3StartFlightBody = V3FlightOperation & { missionId: string }
-export type V3CompleteFlightBody = V3FlightOperation & { endedAt: string; flightCompletedReceipt: string }
-export type V3FailFlightBody = V3FlightOperation & { failedAt: string; failureReason: string; failureIncidentEvidence: string }
+export type V3StartFlightBody = V3AttemptOperation & { missionId: string }
+export type V3CompleteFlightBody = V3AttemptOperation & { endedAt: string; flightCompletedReceipt: string }
+export type V3FailFlightBody = V3AttemptOperation & { failedAt: string; failureReason: string; failureIncidentEvidence: string }
 export type V3FlightResult = { success: boolean; attemptId: string; status: string; version: number }
+export type FreezeCaptureInputBody = V3AttemptOperation & { missionId: string }
+export type FrozenCaptureInput = V3FlightResult & {
+  manifestId: string
+  manifestFingerprint: string
+  totalFileCount: number
+  totalSizeBytes: number
+}

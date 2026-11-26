@@ -36,7 +36,7 @@ test('Manager base-map UI checks assignment, renders real draft candidates and k
     assert.match(html, /Trong ranh giới/)
     assert.match(html, /Chưa duyệt/)
     assert.match(html, /Kiểm tra bản đồ/)
-    assert.match(html, /<button[^>]*disabled=""[^>]*><span>Phát hành bản đồ<\/span>/)
+    assert.match(html, /<button[^>]*disabled=""[^>]*><span>Duyệt nội bộ bản đồ<\/span>/)
     assert.match(html, new RegExp(`/manager/orders/${draft.sourceSurveyOrderId}`))
     const published = render({ ...draft, status: 'Published', batchStatus: 'Approved', pendingCount: 0, candidates: [{ ...candidate, reviewDecision: 'CreateNew' }] })
     assert.match(published, /Bản đồ hiện chỉ được xem/)

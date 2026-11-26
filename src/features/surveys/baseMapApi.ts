@@ -1,5 +1,5 @@
 import { apiRequest } from '../../api/client'
-import type { BaseMapDraft, BatchReviewBody, BatchReviewResult, CandidateReviewBody, CandidateReviewResult, MappingValidation, PublishedBaseMap } from './baseMapTypes'
+import type { ApprovedBaseMap, BaseMapDraft, BatchReviewBody, BatchReviewResult, CandidateReviewBody, CandidateReviewResult, MappingValidation } from './baseMapTypes'
 
 const path = (farmId: string, draftId: string) => `/api/system-manager/farms/${encodeURIComponent(farmId)}/base-map-drafts/${encodeURIComponent(draftId)}`
 export async function getCurrentBaseMapDraft(token: string, farmId: string, surveyOrderId?: string, signal?: AbortSignal) {
@@ -17,4 +17,4 @@ export async function getBaseMapDraft(token: string, farmId: string, draftId: st
 export const reviewMappingCandidate = (token: string, farmId: string, draftId: string, candidateId: string, body: CandidateReviewBody) => apiRequest<CandidateReviewResult>(`${path(farmId, draftId)}/candidates/${encodeURIComponent(candidateId)}/review`, { method: 'POST', token, body })
 export const reviewMappingBatch = (token: string, farmId: string, draftId: string, body: BatchReviewBody) => apiRequest<BatchReviewResult>(`${path(farmId, draftId)}/candidates/review-batch`, { method: 'POST', token, body })
 export const validateBaseMapDraft = (token: string, farmId: string, draftId: string) => apiRequest<MappingValidation>(`${path(farmId, draftId)}/validate`, { method: 'POST', token })
-export const publishBaseMapDraft = (token: string, farmId: string, draftId: string) => apiRequest<PublishedBaseMap>(`${path(farmId, draftId)}/publish`, { method: 'POST', token })
+export const approveBaseMapDraft = (token: string, farmId: string, draftId: string) => apiRequest<ApprovedBaseMap>(`${path(farmId, draftId)}/approve-internal`, { method: 'POST', token })

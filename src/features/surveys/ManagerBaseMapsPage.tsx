@@ -8,8 +8,8 @@ import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { getAssignedFarms } from './api'
-import { getBaseMapDraft, getCurrentBaseMapDraft, publishBaseMapDraft, validateBaseMapDraft } from './baseMapApi'
-import type { BaseMapDraft, MappingCandidate, MappingValidation, PublishedBaseMap } from './baseMapTypes'
+import { getBaseMapDraft, getCurrentBaseMapDraft, approveBaseMapDraft, validateBaseMapDraft } from './baseMapApi'
+import type { BaseMapDraft, MappingCandidate, MappingValidation, ApprovedBaseMap } from './baseMapTypes'
 import { canPublishDraft, decisionLabel, decisionLabels, draftFingerprint, editableDraft, stateToken, validGuid } from './baseMapWorkflow'
 import { BaseMapReviewDialog, type ReviewSelection } from './BaseMapReviewDialog'
 import { SurveyMutationError } from './SurveyMutationError'
@@ -56,7 +56,7 @@ export function BaseMapDraftDetail({ token, farmId, draftId, farmName, initialDr
   const [decision, setDecision] = useState(''), [search, setSearch] = useState('')
   const [selected, setSelected] = useState<string[]>([]), [editor, setEditor] = useState<ReviewSelection | null>(null)
   const [validation, setValidation] = useState<{ fingerprint: string; data: MappingValidation } | null>(null)
-  const [publishOpen, setPublishOpen] = useState(false), [published, setPublished] = useState<PublishedBaseMap | null>(null)
+  const [approveOpen, setApproveOpen] = useState(false), [approved, setApproved] = useState<ApprovedBaseMap | null>(null)
   const confirmButtonId = useId()
   const submitting = useRef(false)
   const validate = useMutation({ retry: false, mutationFn: async () => {
@@ -64,20 +64,20 @@ export function BaseMapDraftDetail({ token, farmId, draftId, farmName, initialDr
     const fingerprint = draftFingerprint(query.data)
     return { fingerprint, data: await validateBaseMapDraft(token, farmId, draftId) }
   }, onSuccess: setValidation })
-  const publish = useMutation({ retry: false, mutationFn: async () => {
-    if (query.isError || query.isFetching || !query.data || !canPublishDraft(query.data, validation?.data ?? null, validation?.fingerprint ?? null)) throw new Error('Kiểm tra lại bản đồ trước khi phát hành.')
-    const result = await publishBaseMapDraft(token, farmId, draftId)
-    if (result.farmBaseMapVersionId.toLowerCase() !== draftId.toLowerCase()) throw new Error('Kết quả phát hành không khớp bản đồ. Tải lại để kiểm tra.')
+  const approve = useMutation({ retry: false, mutationFn: async () => {
+    if (query.isError || query.isFetching || !query.data || !canPublishDraft(query.data, validation?.data ?? null, validation?.fingerprint ?? null)) throw new Error('Kiểm tra lại bản đồ trước khi duyệt nội bộ.')
+    const result = await approveBaseMapDraft(token, farmId, draftId)
+    if (result.farmBaseMapVersionId.toLowerCase() !== draftId.toLowerCase() || result.farmId.toLowerCase() !== farmId || result.surveyOrderId !== query.data.sourceSurveyOrderId) throw new Error('Kết quả duyệt không khớp bản đồ. Tải lại để kiểm tra.')
     return result
   }, onSuccess: async result => {
-    setPublished(result); setPublishOpen(false); setValidation(null); setSelected([])
+    setApproved(result); setApproveOpen(false); setValidation(null); setSelected([])
     await Promise.all([client.invalidateQueries({ queryKey }), client.invalidateQueries({ queryKey: ['manager-farm-context', farmId] }), client.invalidateQueries({ queryKey: ['manager-orders'] }), client.invalidateQueries({ queryKey: ['manager-order-context'] }), client.invalidateQueries({ queryKey: ['manager-order-scope'] })])
-  }, onError: () => { setPublishOpen(false); setValidation(null) }, onSettled: () => { submitting.current = false } })
+  }, onError: () => { setApproveOpen(false); setValidation(null) }, onSettled: () => { submitting.current = false } })
   async function refresh() {
-    setEditor(null); setSelected([]); setValidation(null); setPublishOpen(false); validate.reset(); publish.reset()
+    setEditor(null); setSelected([]); setValidation(null); setApproveOpen(false); validate.reset(); approve.reset()
     await query.refetch()
   }
-  async function reviewed(notice: string) { setEditor(null); setSelected([]); setValidation(null); validate.reset(); publish.reset(); await query.refetch(); void message.success(notice) }
+  async function reviewed(notice: string) { setEditor(null); setSelected([]); setValidation(null); validate.reset(); approve.reset(); await query.refetch(); void message.success(notice) }
   const back = <Link className="back-link" to={`/manager/farms/${farmId}`}><ArrowLeftOutlined /> {farmName}</Link>
   if (query.isPending) return <>{back}<CommonState type="loading" title="Đang tải bản đồ nháp" /></>
   if (query.isError) return <>{back}<SurveyMutationError error={query.error} /><Button onClick={() => { void refresh() }}>Tải lại bản đồ</Button></>
@@ -85,16 +85,16 @@ export function BaseMapDraftDetail({ token, farmId, draftId, farmName, initialDr
   const rows = draft.candidates
   const filtered = rows.filter(item => (!decision || stateToken(item.reviewDecision) === stateToken(decision)) && (!search.trim() || `${item.treeId ?? ''} ${item.candidateId}`.toLowerCase().includes(search.trim().toLowerCase())))
   const pendingIds = rows.filter(item => stateToken(item.reviewDecision) === 'PENDING').map(item => item.candidateId)
-  const busy = query.isFetching || validate.isPending || publish.isPending
-  const editable = editableDraft(draft) && !published && !publish.error && !validate.error
+  const busy = query.isFetching || validate.isPending || approve.isPending
+  const editable = editableDraft(draft) && !approved && !approve.error && !validate.error
   const checked = validation?.fingerprint === draftFingerprint(draft) ? validation.data : null
-  const canPublish = !busy && !published && !publish.error && canPublishDraft(draft, checked, validation?.fingerprint ?? null)
+  const canApprove = !busy && !approved && !approve.error && canPublishDraft(draft, checked, validation?.fingerprint ?? null)
   function changeFilter(run: () => void) { setSelected([]); run() }
   function openReview(ids: string[], batch: boolean) { if (!editable || busy || !ids.length) return; setValidation(null); setEditor({ snapshot: draft, candidateIds: ids, batch }) }
   return <>{back}
-    <section className="resource-page-heading"><div><span className="page-kicker">{farmName} · Phiên bản {draft.versionNumber}</span><h1>Duyệt bản đồ nền</h1><p>Kiểm tra từng điểm trước khi ghi nhận cây và số trụ chính thức.</p></div><Space wrap><Button icon={<ReloadOutlined />} disabled={validate.isPending || publish.isPending || !!editor} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button><Button icon={<CheckCircleOutlined />} loading={validate.isPending} disabled={!editable || busy || !!editor} onClick={() => { setValidation(null); validate.mutate() }}>Kiểm tra bản đồ</Button><Button type="primary" disabled={!canPublish || !!editor} onClick={() => setPublishOpen(true)}>Phát hành bản đồ</Button></Space></section>
-    {published ? <Alert className="workflow-notice" showIcon type="success" title={`Đã phát hành bản đồ phiên bản ${published.versionNumber}`} description={`Số trụ chính thức: ${published.confirmedSurveyPoleCount.toLocaleString('vi-VN')} · ${dateTime(published.publishedAt)}`} /> : null}
-    {!editableDraft(draft) ? <Alert className="workflow-notice" showIcon type="info" title="Bản đồ hiện chỉ được xem" description={`Trạng thái: ${stateToken(draft.status) === 'PUBLISHED' ? 'Đã phát hành' : stateToken(draft.status) === 'SUPERSEDED' ? 'Đã được thay thế' : draft.status}.`} /> : null}
+    <section className="resource-page-heading"><div><span className="page-kicker">{farmName} · Phiên bản {draft.versionNumber}</span><h1>Duyệt bản đồ nền</h1><p>Kiểm tra từng điểm trước khi ghi nhận cây và số trụ chính thức.</p></div><Space wrap><Button icon={<ReloadOutlined />} disabled={validate.isPending || approve.isPending || !!editor} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button><Button icon={<CheckCircleOutlined />} loading={validate.isPending} disabled={!editable || busy || !!editor} onClick={() => { setValidation(null); validate.mutate() }}>Kiểm tra bản đồ</Button><Button type="primary" disabled={!canApprove || !!editor} onClick={() => setApproveOpen(true)}>Duyệt nội bộ bản đồ</Button></Space></section>
+    {approved ? <Alert className="workflow-notice" showIcon type="success" title={`Đã duyệt nội bộ bản đồ phiên bản ${approved.versionNumber}`} description={`Số trụ đã xác minh ${approved.verifiedBillablePoleCount.toLocaleString('vi-VN')} · ${dateTime(approved.approvedAt)}`} /> : null}
+    {!editableDraft(draft) ? <Alert className="workflow-notice" showIcon type="info" title="Bản đồ hiện chỉ được xem" description={`Trạng thái: ${stateToken(draft.status) === 'PUBLISHED' ? 'Đã phát hành' : stateToken(draft.status) === 'INTERNALLYAPPROVED' ? 'Đã duyệt nội bộ' : stateToken(draft.status) === 'SUPERSEDED' ? 'Đã được thay thế' : draft.status}.`} /> : null}
     <div className="mapping-summary" aria-label="Tiến độ duyệt"><div><span>Tổng số điểm</span><strong>{draft.totalCandidates}</strong></div><div><span>Chưa duyệt</span><strong>{draft.pendingCount}</strong></div><div><span>Đã xử lý</span><strong>{draft.acceptedCount + draft.relocatedCount + draft.replacedCount}</strong></div><div><span>Đã loại bỏ</span><strong>{draft.rejectedCount}</strong></div></div>
     <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Cây / trụ nhận diện</strong><span>Dữ liệu nhận lúc {dateTime(draft.producedAt)}</span></div><Link className="workflow-detail-link" to={`/manager/orders/${encodeURIComponent(draft.sourceSurveyOrderId)}`}>Xem đơn khảo sát →</Link></div>
       <div className="workflow-toolbar mapping-filters"><Input.Search aria-label="Tìm mã cây hoặc điểm" placeholder="Tìm mã cây / điểm" value={search} onChange={event => changeFilter(() => setSearch(event.target.value))} /><Select aria-label="Lọc quyết định duyệt" value={decision} onChange={value => changeFilter(() => setDecision(value))} options={[{ value: '', label: 'Tất cả quyết định' }, ...Object.entries(decisionLabels).map(([value, label]) => ({ value, label }))]} /></div>
@@ -109,10 +109,10 @@ export function BaseMapDraftDetail({ token, farmId, draftId, farmName, initialDr
         { title: 'Thao tác', render: (_, item) => <Button disabled={!editable || busy || !!editor} onClick={() => openReview([item.candidateId], false)}>Xem và duyệt</Button> },
       ]} expandable={{ expandedRowRender: item => <dl className="detail-list"><div><dt>Cây được ghép</dt><dd>{(item.correctedMatchedPlantId ?? item.proposedMatchedPlantId) ? <CopyReference value={item.correctedMatchedPlantId ?? item.proposedMatchedPlantId} label="Sao chép mã cây được ghép" /> : 'Chưa có'}</dd></div><div><dt>Vị trí gốc</dt><dd>{item.longitude}, {item.latitude}</dd></div><div><dt>Ghi chú duyệt</dt><dd>{item.reviewReason ?? 'Không có'}</dd></div><div><dt>Duyệt lúc</dt><dd>{dateTime(item.reviewedAt)}</dd></div></dl> }} />
     </section>
-    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Kết quả kiểm tra</strong><span>Kiểm tra lại sau mỗi lần chỉnh sửa hoặc tải lại bản đồ.</span></div></div><SurveyMutationError error={validate.error ?? publish.error} />
-      {checked ? <><Alert showIcon type={checked.isValid ? 'success' : 'warning'} title={checked.isValid ? `Hợp lệ · ${checked.confirmedPublishablePoleCount} trụ có thể phát hành` : 'Còn lỗi cần xử lý trước khi phát hành'} /><Table rowKey={(_, index) => String(index)} dataSource={checked.issues} pagination={{ pageSize: 10, hideOnSinglePage: true }} locale={{ emptyText: 'Không có lỗi kiểm tra.' }} columns={[{ title: 'Mức độ', render: (_, issue) => stateToken(issue.severity) === 'ERROR' ? 'Lỗi' : 'Lưu ý' }, { title: 'Điểm', render: (_, issue) => readableCode(rows.find(row => row.candidateId === issue.candidateId)?.treeId) ?? (issue.candidateId ? 'Điểm cần kiểm tra' : 'Toàn bản đồ') }, { title: 'Chi tiết', dataIndex: 'message' }, { title: 'Thao tác', render: (_, issue) => issue.candidateId && rows.some(row => row.candidateId === issue.candidateId) ? <Button disabled={!editable || busy || !!editor} onClick={() => openReview([issue.candidateId!], false)}>Xử lý</Button> : null }]} /></> : <p className="form-hint">Bấm Kiểm tra bản đồ để xem kết quả từ máy chủ. Chỉ phát hành khi không còn điểm chưa duyệt và không có lỗi chặn.</p>}
+    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Kết quả kiểm tra</strong><span>Kiểm tra lại sau mỗi lần chỉnh sửa hoặc tải lại bản đồ.</span></div></div><SurveyMutationError error={validate.error ?? approve.error} />
+      {checked ? <><Alert showIcon type={checked.isValid ? 'success' : 'warning'} title={checked.isValid ? `Hợp lệ · ${checked.confirmedPublishablePoleCount} trụ có thể duyệt` : 'Còn lỗi cần xử lý trước khi duyệt'} /><Table rowKey={(_, index) => String(index)} dataSource={checked.issues} pagination={{ pageSize: 10, hideOnSinglePage: true }} locale={{ emptyText: 'Không có lỗi kiểm tra.' }} columns={[{ title: 'Mức độ', render: (_, issue) => stateToken(issue.severity) === 'ERROR' ? 'Lỗi' : 'Lưu ý' }, { title: 'Điểm', render: (_, issue) => readableCode(rows.find(row => row.candidateId === issue.candidateId)?.treeId) ?? (issue.candidateId ? 'Điểm cần kiểm tra' : 'Toàn bản đồ') }, { title: 'Chi tiết', dataIndex: 'message' }, { title: 'Thao tác', render: (_, issue) => issue.candidateId && rows.some(row => row.candidateId === issue.candidateId) ? <Button disabled={!editable || busy || !!editor} onClick={() => openReview([issue.candidateId!], false)}>Xử lý</Button> : null }]} /></> : <p className="form-hint">Bấm Kiểm tra bản đồ để xem kết quả từ máy chủ. Chỉ duyệt khi không còn điểm chưa duyệt và không có lỗi chặn.</p>}
     </section>
     {editor ? <BaseMapReviewDialog token={token} selection={editor} current={draft} disabled={busy || !editable} close={() => { setEditor(null); void refresh() }} done={reviewed} /> : null}
-    <Modal open={publishOpen} title="Phát hành bản đồ nền" okText="Xác nhận phát hành" cancelText="Hủy" confirmLoading={publish.isPending} afterOpenChange={open => { if (open) document.getElementById(confirmButtonId)?.focus() }} okButtonProps={{ disabled: !canPublish, autoFocus: true, id: confirmButtonId }} cancelButtonProps={{ disabled: publish.isPending }} closable={!publish.isPending} mask={{ closable: !publish.isPending }} onCancel={() => { if (!publish.isPending) setPublishOpen(false) }} onOk={() => { if (!canPublish || submitting.current) return; submitting.current = true; publish.mutate() }}><p>Phát hành bản đồ phiên bản <strong>{draft.versionNumber}</strong> cho <strong>{farmName}</strong> với <strong>{checked?.confirmedPublishablePoleCount ?? 0} trụ</strong>.</p><p>Các quyết định sẽ được áp dụng vào cây chính thức. Bản đồ hiện hành sẽ được thay thế và đơn khảo sát chuyển sang bước xác nhận giá.</p></Modal>
+    <Modal open={approveOpen} title="Duyệt nội bộ bản đồ nền" okText="Xác nhận duyệt" cancelText="Hủy" confirmLoading={approve.isPending} afterOpenChange={open => { if (open) document.getElementById(confirmButtonId)?.focus() }} okButtonProps={{ disabled: !canApprove, autoFocus: true, id: confirmButtonId }} cancelButtonProps={{ disabled: approve.isPending }} closable={!approve.isPending} mask={{ closable: !approve.isPending }} onCancel={() => { if (!approve.isPending) setApproveOpen(false) }} onOk={() => { if (!canApprove || submitting.current) return; submitting.current = true; approve.mutate() }}><p>Duyệt nội bộ bản đồ phiên bản <strong>{draft.versionNumber}</strong> cho <strong>{farmName}</strong> với <strong>{checked?.confirmedPublishablePoleCount ?? 0} trụ</strong>.</p><p>Kết quả duyệt dùng để xác minh số trụ và tiếp tục xử lý đơn khảo sát.</p></Modal>
   </>
 }
