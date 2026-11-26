@@ -168,6 +168,15 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.doesNotMatch(waitingOwner, /<button[^>]*><span>Đề xuất lịch bay<\/span><\/button>/)
     const ready = { ...proposed, status: 'READY_FOR_CAPTURE', currentAppointmentStatus: 'CONFIRMED' }
     const readyScope = { ...scope, orderStatus: 'READY_FOR_CAPTURE' }
+    const firstCapture = { ...ready, surveyServiceCode: 'COMBO', currentAppointmentStartAt: '2099-01-01T00:00:00Z', currentAppointmentEndAt: '2099-01-01T17:00:00Z' }
+    const noAttempts = [[['capture-attempts', 'order'], []]]
+    assert.match(renderOrder(firstCapture, readyScope, noAttempts), /<span>Chuẩn bị lần bay<\/span>/)
+    const missingCaptureWindow = renderOrder({ ...firstCapture, currentAppointmentEndAt: null }, readyScope, noAttempts)
+    assert.doesNotMatch(missingCaptureWindow, /<span>Chuẩn bị lần bay<\/span>/)
+    assert.match(missingCaptureWindow, /Thiếu thông tin khung giờ Capture/)
+    const hasAttempt = renderOrder(firstCapture, readyScope, [[['capture-attempts', 'order'], [{ attemptIndex: 1, captureAttemptId: 'attempt', status: 'PLANNED', missionId: 'mission', history: [] }]]])
+    assert.doesNotMatch(hasAttempt, /<span>Chuẩn bị lần bay<\/span>/)
+    assert.match(hasAttempt, /Mở nhiệm vụ của lần 1/)
     const readyPage = renderOrder(ready, readyScope)
     assert.match(readyPage, /<button[^>]*><span>Báo khách vắng mặt<\/span><\/button>/)
     assert.doesNotMatch(readyPage, /Đề xuất lịch bay/)

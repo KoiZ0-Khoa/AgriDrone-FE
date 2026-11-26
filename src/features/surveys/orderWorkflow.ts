@@ -2,7 +2,7 @@ import type { AssignedOrder, OrderScope } from './orderTypes'
 import type { CaptureAppointmentBody, CaptureNoShowBody, QualityReflightBody, V3CaptureAttempt } from './v3Types'
 import type { GeoJsonPolygon } from '../farms/types'
 import type { CaptureSample, CaptureSession, OrthophotoBody } from './orderTypes'
-import { canCreateQualityReflight, reflightParentAttempt, v3OrderStageNotices, v3OrderStatusLabels } from './v3Workflow'
+import { canCreateQualityReflight, reflightParentAttempt, v3OrderStageNotices, v3OrderStatusLabels, v3ServiceKind } from './v3Workflow'
 
 // Web chỉ chạy luồng V3: nhãn và hướng dẫn theo trạng thái đơn V3. Bộ lọc trạng thái ở các trang danh sách đơn lấy từ đây.
 export const orderStatusLabels: Record<string, string> = v3OrderStatusLabels
@@ -34,6 +34,18 @@ export function canProposeCaptureAppointment(order: AssignedOrder, scope: OrderS
 export function canRecordCaptureNoShow(order: AssignedOrder, scope: OrderScope) {
   const current = currentAppointment(order)
   return matchingOrderSnapshot(order, scope) && scope.orderStatus === 'READY_FOR_CAPTURE' && !!current && current.status === 'CONFIRMED' && validVersion(current.version)
+}
+
+export function capturePreparationWindow(order: AssignedOrder, scope: OrderScope, attempts: readonly V3CaptureAttempt[], now = Date.now()) {
+  if (!matchingOrderSnapshot(order, scope) || scope.orderStatus !== 'READY_FOR_CAPTURE' ||
+      !v3ServiceKind(order.surveyServiceCode) || attempts.length !== 0 ||
+      order.currentAppointmentPurpose !== 'CAPTURE' || order.currentAppointmentStatus !== 'CONFIRMED' ||
+      !order.currentAppointmentId || !validVersion(order.currentAppointmentVersion)) return null
+
+  const { currentAppointmentStartAt: startAt, currentAppointmentEndAt: endAt } = order
+  if (!startAt || !endAt) return null
+  const start = Date.parse(startAt), end = Date.parse(endAt)
+  return Number.isFinite(start) && end > start && end > now ? { startAt, endAt } : null
 }
 
 function isValidScheduledDate(value: string): boolean {

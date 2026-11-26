@@ -7,6 +7,7 @@ export type AssignedOrder = {
   boundaryCaptureSessionId: string | null; baselineRoutePlanId: string | null
   currentAppointmentId: string | null; currentAppointmentVersion: number | null; currentAppointmentStatus: string | null
   currentAppointmentPurpose: string | null
+  currentAppointmentStartAt?: string | null; currentAppointmentEndAt?: string | null
   createdAt: string; updatedAt: string
 }
 export type OrderScope = {

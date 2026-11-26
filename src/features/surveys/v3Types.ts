@@ -90,6 +90,13 @@ export type FrozenCaptureInput = V3FlightResult & {
 
 // G6 — CreateV3QualityReflightRequest. Ngày bay lại theo giờ Việt Nam (yyyy-MM-dd); BE tự tạo lịch Capture cả ngày, ở trạng thái
 // chờ Owner xác nhận. Lý do và bằng chứng kỹ thuật 1–500 ký tự. Không thu thêm cọc.
+export type PrepareCaptureAttemptBody = {
+  droneId: string; expectedOrderVersion: number; operationId: string; payloadFingerprint: string
+}
+export type PrepareCaptureAttemptResult = {
+  success: boolean; attemptId: string; attemptIndex: number; missionId: string; status: string; version: number
+}
+
 export type QualityReflightBody = {
   droneId: string
   scheduledDate: string

@@ -2,7 +2,7 @@ import { apiRequest } from '../../api/client'
 import type { Appointment, PaymentSession } from './orderTypes'
 import type { CaptureAppointmentBody, CaptureAppointmentOwnerBody, CaptureNoShowBody, CaptureNoShowResult, CaptureRescheduleBody, V3CaptureAttempt } from './v3Types'
 import type { FreezeCaptureInputBody, FrozenCaptureInput, V3CompleteFlightBody, V3FailFlightBody, V3FlightResult, V3StartFlightBody } from './v3Types'
-import type { QualityReflightBody, QualityReflightResult } from './v3Types'
+import type { PrepareCaptureAttemptBody, PrepareCaptureAttemptResult, QualityReflightBody, QualityReflightResult } from './v3Types'
 import type { ComboReviewResult, FreezeResult, FreezeResultBody, RecordComboReviewBody, ResultReview } from './v3Types'
 import type { AdminCancellationBody } from './systemOrderTypes'
 
@@ -25,6 +25,9 @@ export async function getCaptureAttempts(token: string, orderId: string, signal?
   if (!Array.isArray(attempts)) throw new Error('Dữ liệu lần bay từ máy chủ không hợp lệ. Tải lại trang.')
   return [...attempts].sort((a, b) => a.attemptIndex - b.attemptIndex)
 }
+
+export const prepareCaptureAttempt = (token: string, orderId: string, body: PrepareCaptureAttemptBody) =>
+  apiRequest<PrepareCaptureAttemptResult>(captureAttemptsPath(orderId), { method: 'POST', token, body })
 
 export const startCaptureFlight = (token: string, orderId: string, attemptId: string, body: V3StartFlightBody) =>
   apiRequest<V3FlightResult & { startedAt: string }>(`${captureFlightPath(orderId, attemptId)}/start`, { method: 'POST', token, body })
