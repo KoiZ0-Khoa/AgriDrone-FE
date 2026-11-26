@@ -68,6 +68,10 @@ export type V3CaptureAttempt = {
   startedAt: string | null
   endedAt: string | null
   history: V3CaptureAttemptHistory[]
+  manifestId?: string | null
+  manifestFingerprint?: string | null
+  processingJobId?: string | null
+  orderVersion?: number | null
 }
 
 type V3AttemptOperation = {
@@ -86,7 +90,23 @@ export type FrozenCaptureInput = V3FlightResult & {
   manifestFingerprint: string
   totalFileCount: number
   totalSizeBytes: number
+  processingJobId?: string | null
+  orderVersion?: number | null
 }
+
+export type ReopenCaptureInputBody = V3AttemptOperation & { manifestId: string; reason: string }
+export type ReopenCaptureInputResult = V3FlightResult & {
+  missionId: string
+  supersededManifestId: string
+  orderVersion: number
+}
+export type ApproveCaptureInputBody = V3AttemptOperation & {
+  manifestId: string
+  manifestFingerprint: string
+  processingJobId: string
+  notes?: string
+}
+export type ApproveCaptureInputResult = V3FlightResult & { approvalId: string }
 
 // G6 — CreateV3QualityReflightRequest. Ngày bay lại theo giờ Việt Nam (yyyy-MM-dd); BE tự tạo lịch Capture cả ngày, ở trạng thái
 // chờ Owner xác nhận. Lý do và bằng chứng kỹ thuật 1–500 ký tự. Không thu thêm cọc.

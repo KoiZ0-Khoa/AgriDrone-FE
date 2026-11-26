@@ -19,6 +19,7 @@ import * as api from './missionApi'
 import type { GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, MissionTreeDetection, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, SliceTilesResult, TelemetrySegment } from './missionTypes'
 import { dateTime, fileSizeLabel, isBaselineMappingMissionCode, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
 import { BoundaryTilingPanel } from './BoundaryTilingPanel'
+import { CaptureInputReview } from './CaptureInputReview'
 import { PlantGpsPasteModal } from './PlantGpsPasteModal'
 import { RescheduleMissionModal } from './RescheduleMissionModal'
 import { StepSection } from './StepSection'
@@ -176,6 +177,8 @@ export function ManagerMissionDetailPage() {
     v3ServiceKind(captureOrder.data.surveyServiceCode) !== null && !!captureAttempt && ownerGuid(captureAttempt.captureAttemptId)
   const captureAwaitingUpload = linkedCapture && !captureOrder.isError && !captureAttempts.isError &&
     captureOrder.data?.status === 'AWAITING_CAPTURE_UPLOAD' && captureAttempt?.status === 'AWAITING_UPLOAD'
+  const captureAwaitingReview = linkedCapture &&
+    captureOrder.data?.status === 'AWAITING_INPUT_REVIEW' && captureAttempt?.status === 'UPLOADED'
   const captureCanProcess = linkedCapture && !captureOrder.isError && !captureAttempts.isError &&
     captureOrder.data?.status === 'PROCESSING' && captureAttempt?.status === 'PROCESSING'
   const captureFrozen = linkedCapture && ['UPLOADED', 'PROCESSING', 'ACCEPTED'].includes(captureAttempt?.status ?? '')
@@ -363,7 +366,8 @@ export function ManagerMissionDetailPage() {
   const readiness = readinessQuery.data
   const canFreeze = captureAwaitingUpload && !captureOrder.isFetching && !captureAttempts.isFetching &&
     !captureUploadsBusy && readinessQuery.isSuccess && !readinessQuery.isFetching &&
-    readiness?.missionId === missionId && readiness.rawImageCount > 0 && !readiness.hasActiveUploadSessions &&
+    readiness?.missionId === missionId && readiness.rawImageCount > 0 &&
+    readiness.telemetryPointCount >= 2 && !readiness.hasActiveUploadSessions &&
     readiness.missionVersion === version && validOwnerVersion(captureOrder.data!.orderVersion) && validOwnerVersion(captureAttempt!.version)
   const freezeSnapshotChanged = !!confirmFreeze && (confirmFreeze.missionVersion !== version ||
     confirmFreeze.orderVersion !== captureOrder.data?.orderVersion || confirmFreeze.attemptVersion !== captureAttempt?.version)
@@ -389,7 +393,8 @@ export function ManagerMissionDetailPage() {
     onError: refreshCaptureInput,
     onSettled: () => { freezing.current = false },
   })
-  const frozenInput = freezeMutation.data?.attemptId === captureAttempt?.captureAttemptId ? freezeMutation.data : undefined
+  const frozenInput = freezeMutation.data && freezeMutation.data.attemptId === captureAttempt?.captureAttemptId &&
+    freezeMutation.data.version >= captureAttempt.version ? freezeMutation.data : undefined
   const canEditCaptureUpload = captureAwaitingUpload && !frozenInput && !freezeMutation.isPending
   const telemetryEligible = (status === 'FLIGHT_COMPLETED' || uploading) && (!v3Capture || canEditCaptureUpload)
   const canEditMedia = !v3Capture || (canEditCaptureUpload && ['FLIGHT_COMPLETED', 'UPLOADING', 'UPLOAD_FAILED'].includes(status ?? ''))
@@ -588,7 +593,7 @@ export function ManagerMissionDetailPage() {
         {!v3Capture || telemetryEligible ? <Button type="primary" disabled={selectedSegmentIndexes.length === 0 || (v3Capture && uploadMutation.isPending)} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import telemetry đã chọn</Button> : null}
       </> : null}
     </StepSection> : null}
-    {v3Capture && postFlight ? <StepSection title="Chốt bộ dữ liệu đầu vào" status="active">
+    {v3Capture && postFlight ? <StepSection title="Chốt & duyệt dữ liệu đầu vào" status={orthophotoEligible ? 'done' : 'active'} summary="Đã duyệt bộ dữ liệu đầu vào.">
       {!readCapture ? <Alert showIcon type="info" title="Mở nhiệm vụ từ đơn khảo sát để tải dữ liệu lần bay." action={<Link to="/manager/orders">Đơn khảo sát được giao</Link>} />
         : captureOrder.isError || captureAttempts.isError ? <SurveyMutationError error={captureOrder.error ?? captureAttempts.error} />
         : captureOrder.isPending || captureAttempts.isPending ? <CommonState type="loading" />
@@ -596,10 +601,22 @@ export function ManagerMissionDetailPage() {
         : captureAttempt?.status === 'UPLOADED' || (frozenInput && captureAwaitingUpload) ? <>
           <Alert showIcon type="info" title="Đã chốt bộ dữ liệu · Chờ duyệt đầu vào"
             description={frozenInput ? `${frozenInput.totalFileCount} tệp · ${fileSizeLabel(frozenInput.totalSizeBytes)}` : undefined} />
-          <p className="form-hint">Bước duyệt đầu vào đang chờ máy chủ cung cấp thông tin bộ dữ liệu và mã xử lý.</p>
-          <Button icon={<ReloadOutlined />} loading={captureOrder.isFetching || captureAttempts.isFetching} onClick={() => { void refreshCaptureInput() }}>Kiểm tra lại</Button>
+          {captureAwaitingReview && captureOrder.data && captureAttempt
+            ? <CaptureInputReview key={captureAttempt.captureAttemptId} token={token} orderId={captureOrderId}
+              orderVersion={captureOrder.data.orderVersion} attempt={captureAttempt}
+              refreshing={freezeMutation.isPending || captureOrder.isFetching || captureAttempts.isFetching}
+              refresh={async () => { await refreshCaptureInput(); setLatest(null) }}
+              onReopened={() => { freezeMutation.reset(); freezeOperation.current = null }} />
+            : <Button icon={<ReloadOutlined />} loading={captureOrder.isFetching || captureAttempts.isFetching}
+              onClick={() => { void refreshCaptureInput() }}>Kiểm tra lại</Button>}
         </>
-        : captureFrozen ? <Alert showIcon type="success" title="Đã duyệt bộ dữ liệu đầu vào" />
+        : captureFrozen ? <>
+          <Alert showIcon type="success" title="Đã duyệt bộ dữ liệu đầu vào" />
+          {captureCanProcess && !orthophotoEligible ? <Alert showIcon type="info" title="Chờ nhiệm vụ sẵn sàng ghép bản đồ"
+            description={`Trạng thái nhiệm vụ: ${missionStatusLabel(status ?? mission.status)}.`}
+            action={<Button icon={<ReloadOutlined />} loading={missionQuery.isFetching}
+              onClick={async () => { await refreshCaptureInput(); setLatest(null) }}>Kiểm tra lại</Button>} /> : null}
+        </>
         : captureAwaitingUpload ? <>
           {readinessQuery.isPending ? <CommonState type="loading" /> : null}
           {readinessQuery.isError ? <SurveyMutationError error={readinessQuery.error} /> : null}
@@ -611,6 +628,8 @@ export function ManagerMissionDetailPage() {
             </dl>
             {readiness.hasActiveUploadSessions ? <Alert showIcon type="warning" title="Còn phiên tải tệp đang mở. Tải lại sau khi các tệp được xử lý." /> : null}
             {readiness.rawImageCount === 0 ? <p className="form-hint">Tải ảnh gốc của lần bay để làm bản đồ.</p> : null}
+            {readiness.telemetryPointCount < 2 ? <Alert showIcon type="warning" title="Cần nhập telemetry trước khi chốt"
+              description="Giải mã log Blackbox, chọn segment nằm trong thời gian chuyến bay và bấm Import telemetry đã chọn." /> : null}
           </> : null}
           <Space wrap>
             <Button icon={<ReloadOutlined />} disabled={freezeMutation.isPending} onClick={() => { void refreshCaptureInput() }}>Kiểm tra lại</Button>
@@ -633,7 +652,6 @@ export function ManagerMissionDetailPage() {
         freezeMutation.mutate()
       }}>
       <p>Kiểm tra ảnh và telemetry trước khi chốt danh sách tệp. Sau bước này, lần bay chuyển sang chờ duyệt.</p>
-      <Alert showIcon type="info" title="Màn hình hiện hỗ trợ đến bước chốt. Duyệt đầu vào cần thông tin từ máy chủ." />
       {freezeSnapshotChanged ? <Alert showIcon type="warning" title="Dữ liệu vừa thay đổi. Đóng hộp thoại và kiểm tra lại." /> : null}
       <SurveyMutationError error={freezeMutation.error} />
     </Modal>

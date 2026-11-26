@@ -139,7 +139,7 @@ test('V3 flight mutations send the attempt and order versions with exact action 
 
 test('V3 capture input freeze sends the mission and observed versions and preserves the manifest receipt', async () => {
   const body = { missionId: 'mission', expectedOrderVersion: 55, expectedAttemptVersion: 5, operationId: 'freeze-operation', payloadFingerprint: 'a'.repeat(64) }
-  const receipt = { success: true, attemptId: 'attempt/1', manifestId: 'manifest', manifestFingerprint: 'A'.repeat(64), totalFileCount: 190, totalSizeBytes: 104857600, status: 'Uploaded', version: 6 }
+  const receipt = { success: true, attemptId: 'attempt/1', manifestId: 'manifest', manifestFingerprint: 'A'.repeat(64), totalFileCount: 190, totalSizeBytes: 104857600, status: 'Uploaded', version: 6, processingJobId: 'job', orderVersion: 56 }
   globalThis.fetch = async (url, options) => {
     assert.equal(new URL(url).pathname, '/api/v3/system-manager/survey-orders/order%2F1/capture-attempts/attempt%2F1/input-manifest/freeze')
     assert.equal(options.headers.Authorization, 'Bearer manager')
@@ -150,4 +150,34 @@ test('V3 capture input freeze sends the mission and observed versions and preser
   assert.deepEqual(await v3Api.freezeCaptureInput('manager', 'order/1', 'attempt/1', body), receipt)
   globalThis.fetch = async () => Response.json({ title: 'CAPTURE_MEDIA_INCOMPLETE' }, { status: 409 })
   await assert.rejects(v3Api.freezeCaptureInput('manager', 'order/1', 'attempt/1', body), error => error.code === 'CAPTURE_MEDIA_INCOMPLETE')
+})
+
+test('V3 capture review sends the current manifest and versions to reopen or approve', async () => {
+  const base = { manifestId: 'manifest', expectedOrderVersion: 56, expectedAttemptVersion: 6, operationId: 'operation', payloadFingerprint: 'a'.repeat(64) }
+  const actions = [
+    [v3Api.reopenCaptureInput, 'input-manifest/reopen', { ...base, reason: 'Thiếu telemetry' },
+      { status: 'AwaitingUpload', missionId: 'mission', supersededManifestId: 'manifest', orderVersion: 57 }],
+    [v3Api.approveCaptureInput, 'input-approval', { ...base, manifestFingerprint: 'A'.repeat(64), processingJobId: 'job', notes: 'Đã kiểm tra ảnh và log' },
+      { status: 'Processing', approvalId: 'approval' }],
+  ]
+  for (const [send, route, body, response] of actions) {
+    const receipt = { success: true, attemptId: 'attempt/1', version: 7, ...response }
+    globalThis.fetch = async (url, options) => {
+      assert.equal(new URL(url).pathname, `/api/v3/system-manager/survey-orders/order%2F1/capture-attempts/attempt%2F1/${route}`)
+      assert.equal(options.headers.Authorization, 'Bearer manager')
+      assert.equal(options.method, 'POST')
+      assert.deepEqual(JSON.parse(options.body), body)
+      return Response.json(receipt, { status: route === 'input-approval' ? 201 : 200 })
+    }
+    assert.deepEqual(await send('manager', 'order/1', 'attempt/1', body), receipt)
+  }
+
+  let attempts = 0
+  globalThis.fetch = async () => {
+    attempts++
+    return Response.json({ title: 'CAPTURE_TELEMETRY_NOT_FROZEN' }, { status: 409 })
+  }
+  await assert.rejects(v3Api.approveCaptureInput('manager', 'order/1', 'attempt/1', actions[1][2]),
+    error => error.status === 409 && error.code === 'CAPTURE_TELEMETRY_NOT_FROZEN')
+  assert.equal(attempts, 1)
 })

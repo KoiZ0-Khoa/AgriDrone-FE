@@ -2,6 +2,7 @@ import { apiRequest } from '../../api/client'
 import type { Appointment, PaymentSession } from './orderTypes'
 import type { CaptureAppointmentBody, CaptureAppointmentOwnerBody, CaptureNoShowBody, CaptureNoShowResult, CaptureRescheduleBody, V3CaptureAttempt } from './v3Types'
 import type { FreezeCaptureInputBody, FrozenCaptureInput, V3CompleteFlightBody, V3FailFlightBody, V3FlightResult, V3StartFlightBody } from './v3Types'
+import type { ApproveCaptureInputBody, ApproveCaptureInputResult, ReopenCaptureInputBody, ReopenCaptureInputResult } from './v3Types'
 import type { PrepareCaptureAttemptBody, PrepareCaptureAttemptResult, QualityReflightBody, QualityReflightResult } from './v3Types'
 import type { ComboReviewResult, FreezeResult, FreezeResultBody, RecordComboReviewBody, ResultReview } from './v3Types'
 import type { AdminCancellationBody } from './systemOrderTypes'
@@ -37,6 +38,11 @@ export const failCaptureFlight = (token: string, orderId: string, attemptId: str
   apiRequest<V3FlightResult>(`${captureFlightPath(orderId, attemptId)}/fail-flight`, { method: 'POST', token, body })
 export const freezeCaptureInput = (token: string, orderId: string, attemptId: string, body: FreezeCaptureInputBody) =>
   apiRequest<FrozenCaptureInput>(`${captureFlightPath(orderId, attemptId)}/input-manifest/freeze`, { method: 'POST', token, body })
+export const reopenCaptureInput = (token: string, orderId: string, attemptId: string, body: ReopenCaptureInputBody) =>
+  apiRequest<ReopenCaptureInputResult>(`${captureFlightPath(orderId, attemptId)}/input-manifest/reopen`, { method: 'POST', token, body })
+export const approveCaptureInput = (token: string, orderId: string, attemptId: string, body: ApproveCaptureInputBody) =>
+  apiRequest<ApproveCaptureInputResult>(`${captureFlightPath(orderId, attemptId)}/input-approval`, { method: 'POST', token, body })
+
 // G6 — bay lại từ lần bay lỗi / cần bay lại. BE tạo lần bay mới, nhiệm vụ mới và lịch Capture chờ Owner xác nhận.
 export const createQualityReflight = (token: string, orderId: string, parentAttemptId: string, body: QualityReflightBody) =>
   apiRequest<QualityReflightResult>(`${captureFlightPath(orderId, parentAttemptId)}/quality-reflights`, { method: 'POST', token, body })
