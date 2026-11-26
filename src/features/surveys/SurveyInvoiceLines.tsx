@@ -1,19 +1,13 @@
-import type { OwnerSurveyOrder } from './ownerOrderTypes'
+import type { OwnerSurveyInvoice } from './ownerOrderTypes'
 import { money } from './paymentWorkflow'
 import { priceLabel } from './workflow'
 
-type Invoice = Pick<OwnerSurveyOrder, 'currency' | 'confirmedMappingPoleCount' | 'confirmedPlantHealthPoleCount' | 'mappingPricePerPole' | 'plantHealthPricePerPole' | 'mappingSubtotal' | 'plantHealthSubtotal' | 'comboDiscountPercentage' | 'comboDiscountAmount'>
-
-// Display the saved server invoice; counts may differ between the full map and Health scope.
-export function SurveyInvoiceLines({ invoice }: { invoice: Invoice }) {
-  if (invoice.confirmedMappingPoleCount == null && invoice.confirmedPlantHealthPoleCount == null) return null
-  return <>
-    <div><dt>Trụ bản đồ nền</dt><dd>{invoice.confirmedMappingPoleCount?.toLocaleString('vi-VN') ?? 'Chưa xác định'} trụ</dd></div>
-    <div><dt>Đơn giá bản đồ nền</dt><dd>{invoice.mappingPricePerPole == null ? 'Chưa xác định' : priceLabel(invoice.mappingPricePerPole, invoice.currency)}</dd></div>
-    <div><dt>Thành tiền bản đồ nền</dt><dd>{money(invoice.mappingSubtotal, invoice.currency)}</dd></div>
-    <div><dt>Trụ khảo sát sức khỏe</dt><dd>{invoice.confirmedPlantHealthPoleCount?.toLocaleString('vi-VN') ?? 'Chưa xác định'} trụ</dd></div>
-    <div><dt>Đơn giá khảo sát sức khỏe</dt><dd>{invoice.plantHealthPricePerPole == null ? 'Chưa xác định' : priceLabel(invoice.plantHealthPricePerPole, invoice.currency)}</dd></div>
-    <div><dt>Thành tiền khảo sát sức khỏe</dt><dd>{money(invoice.plantHealthSubtotal, invoice.currency)}</dd></div>
-    <div><dt>Giảm giá Combo{invoice.comboDiscountPercentage == null ? '' : ` (${invoice.comboDiscountPercentage.toLocaleString('vi-VN')}%)`}</dt><dd>{money(invoice.comboDiscountAmount, invoice.currency)}</dd></div>
-  </>
+export function SurveyInvoiceLines({ invoice }: { invoice: OwnerSurveyInvoice }) {
+  return <dl className="detail-list">
+    <div><dt>Phiên bản hóa đơn</dt><dd>{invoice.invoiceRevisionNumber}</dd></div>
+    <div><dt>Số trụ tính phí</dt><dd>{invoice.verifiedBillablePoleCount.toLocaleString('vi-VN')} trụ</dd></div>
+    <div><dt>Đơn giá</dt><dd>{priceLabel(invoice.pricePerPole, invoice.currency)}</dd></div>
+    <div><dt>Tổng tiền dịch vụ</dt><dd>{money(invoice.totalAmount, invoice.currency)}</dd></div>
+    <div><dt>Số tiền còn lại</dt><dd>{money(invoice.dueAmount, invoice.currency)}</dd></div>
+  </dl>
 }

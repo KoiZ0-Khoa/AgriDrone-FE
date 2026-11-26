@@ -1,11 +1,11 @@
-﻿import assert from 'node:assert/strict'
+import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createServer } from 'vite'
-import { confirmedOrder, orderId, ownerOrder, settlementOrder, paymentItem } from './owner-payment-fixtures.mjs'
+import { confirmedOrder, orderId, ownerInvoice, ownerOrder, settlementOrder, paymentItem } from './owner-payment-fixtures.mjs'
 
 test('Owner screens render paginated orders, appointment actions, payment eligibility and server-only results', async () => {
   const server = await createServer({ configFile: false, logLevel: 'silent', server: { middlewareMode: true, hmr: false, watch: null }, optimizeDeps: { noDiscovery: true, include: [] } })
@@ -18,7 +18,7 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     const { AuthProvider } = await server.ssrLoadModule('/src/features/auth/AuthContext.tsx')
     const { OwnerPaymentsPage } = await server.ssrLoadModule('/src/features/surveys/OwnerPaymentsPage.tsx')
     const { ApiError } = await server.ssrLoadModule('/src/api/client.ts')
-    function render(role, payments, { path = '/survey-payments/' + orderId, order = confirmedOrder, tenantId = 'tenant', list = [ownerOrder] } = {}) {
+    function render(role, payments, { path = '/survey-payments/' + orderId, order = confirmedOrder, invoice = null, tenantId = 'tenant', list = [ownerOrder] } = {}) {
       Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => JSON.stringify({ role, fullName: 'Owner', email: 'owner@example.test', phone: null, accessToken: 'test-token', expiresAt: '2099-01-01T00:00:00Z', tenant: { id: tenantId, name: 'An Phu', code: 'ANPHU' } }) } })
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, gcTime: Infinity, staleTime: Infinity } } })
       clients.push(client)
@@ -27,6 +27,7 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
         else client.setQueryData(key, value)
       }
       seed(['owner-survey-order', tenantId, orderId], order)
+      seed(['owner-survey-invoice', tenantId, orderId], invoice)
       seed(['owner-payment-history', tenantId, orderId], payments instanceof Error ? payments : { surveyOrderId: orderId, payments })
       const url = new URL(path, 'http://test.local')
       seed(['owner-survey-orders', tenantId, Number(url.searchParams.get('page') ?? 1), ''], { items: list, pageNumber: 1, pageSize: 20, totalCount: 41 })
@@ -39,8 +40,7 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
       return html
     }
     const button = (html, label) => [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]).find(value => value.includes('>' + label + '<'))
-    // G2 — đơn V3 chờ chốt lịch; BE trả purpose 'PAID_SERVICE' cho lịch CAPTURE (BE-6), FE vẫn cho xác nhận.
-    const v3Proposed = { ...ownerOrder, status: 'AWAITING_APPOINTMENT', currentAppointment: { ...ownerOrder.currentAppointment, purpose: 'PAID_SERVICE' } }
+    const v3Proposed = ownerOrder
     const proposed = render('OWNER', [], { order: v3Proposed })
     assert.match(proposed, /Sao chép mã đơn/)
     assert.match(proposed, /Long An/)
@@ -53,6 +53,8 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     assert.doesNotMatch(proposed, /Chưa thể tạo thanh toán mới|Thông tin đơn và lịch hẹn chưa sẵn sàng/)
     const ready = render('OWNER', [])
     assert.doesNotMatch(button(ready, 'Trả cọc'), /disabled=""/)
+    assert.match(ready, /Xem số tiền khi tạo phiên trả cọc/)
+    assert.doesNotMatch(ready, /NaN|undefined/)
     const pending = render('OWNER', [paymentItem], { path: '/survey-payments/' + orderId + '?status=success&orderVersion=999&amount=1' })
     assert.match(pending, /Đang xử lý/)
     assert.match(pending, /10\.000/)
@@ -63,9 +65,9 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     assert.match(paid, /Đã thanh toán/)
     assert.match(button(paid, 'Trả cọc'), /disabled=""/)
     assert.match(render('OWNER', []), /Chưa có giao dịch/)
-    const invoice = { ...settlementOrder, confirmedMappingPoleCount: 1000, confirmedPlantHealthPoleCount: 300, mappingPricePerPole: 1500, plantHealthPricePerPole: 1000, mappingSubtotal: 1500000, plantHealthSubtotal: 300000, comboDiscountPercentage: 20, comboDiscountAmount: 360000, totalAmount: 1440000, remainingAmount: 940000 }
-    const finalInvoice = render('OWNER', [], { order: invoice })
-    for (const value of ['Trụ bản đồ nền', 'Trụ khảo sát sức khỏe', '1.500.000', '300.000', '360.000', '1.440.000', '940.000', '20%']) assert.match(finalInvoice, new RegExp(value))
+    const finalInvoice = render('OWNER', [], { order: settlementOrder, invoice: ownerInvoice })
+    for (const value of ['Số trụ tính phí', '1.500.000', '940.000']) assert.match(finalInvoice, new RegExp(value))
+    assert.match(render('OWNER', [], { order: settlementOrder }), /Hóa đơn được hiển thị sau khi chốt kết quả khảo sát/)
     assert.equal(button(finalInvoice, 'Trả cọc'), undefined)
     assert.equal(button(finalInvoice, 'Thanh toán'), undefined)
     const legacyDeposit = render('OWNER', [], { order: { ...confirmedOrder, status: 'AWAITING_BASELINE_DEPOSIT' } })
@@ -109,6 +111,8 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     assert.match(unavailable, /Chưa kết nối được máy chủ/)
     const list = render('OWNER', [], { path: '/survey-payments?page=3' })
     assert.match(list, /SO-OWNER-1/)
+    assert.match(list, /Bản đồ và sức khỏe cây/)
+    assert.doesNotMatch(list, /NaN|Tổng tiền/)
     const generatedOrderNumber = 'SO-01a17d91fc96732abaff93fb21b78d89'
     const generatedDetail = render('OWNER', [], { order: { ...confirmedOrder, orderNumber: generatedOrderNumber } })
     assert.doesNotMatch(generatedDetail.replace(/<[^>]*>/g, ''), new RegExp(generatedOrderNumber))

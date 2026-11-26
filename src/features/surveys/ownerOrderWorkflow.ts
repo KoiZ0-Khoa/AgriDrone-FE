@@ -11,11 +11,10 @@ export const ownerOrderFingerprint = (order: OwnerSurveyOrder) => JSON.stringify
 export function historyMatchesOrder(order: OwnerSurveyOrder, history: PaymentHistory | undefined) { return !!history && history.surveyOrderId.toLowerCase() === order.surveyOrderId.toLowerCase() }
 export const activePaymentStatus = (status: string) => ['PENDING', 'PROCESSING', 'PAID', 'CONFIRMED', 'ADJUSTMENT_REQUIRED'].includes(status)
 
-// Lịch hẹn bay V3: đơn V3 chỉ có lịch CAPTURE nên không xét `purpose`. BE (TenantOwnerSurveyOrderResponseMapper) hiện trả
-// mọi lịch không phải bản đồ nền là "PAID_SERVICE", kể cả lịch CAPTURE — lỗi nhỏ phía BE (BE-6), FE bỏ qua trường này.
+// Điều kiện thao tác dựa vào lịch CAPTURE trả từ GET đơn V3.
 function validAppointmentContext(order: OwnerSurveyOrder) {
   const appointment = order.currentAppointment
-  return validOwnerVersion(order.orderVersion) && ownerGuid(order.surveyOrderId) && !!appointment && ownerGuid(appointment.appointmentId) && validOwnerVersion(appointment.appointmentVersion) &&
+  return validOwnerVersion(order.orderVersion) && ownerGuid(order.surveyOrderId) && appointment?.purpose === 'CAPTURE' && ownerGuid(appointment.appointmentId) && validOwnerVersion(appointment.appointmentVersion) &&
     Number.isFinite(Date.parse(appointment.startAt)) && Date.parse(appointment.endAt) > Date.parse(appointment.startAt)
 }
 // Owner xác nhận lịch Manager đề xuất khi đơn đang chờ chốt lịch; sau đó đơn sang chờ cọc hoặc sẵn sàng bay (nếu đã đủ cọc).
@@ -32,7 +31,7 @@ export function ownerAppointmentBody(order: OwnerSurveyOrder): CaptureAppointmen
   return { expectedOrderVersion: order.orderVersion, expectedAppointmentVersion: order.currentAppointment!.appointmentVersion }
 }
 export function canInitiateOwnerDeposit(order: OwnerSurveyOrder, history: PaymentHistory | undefined, now = Date.now()) {
-  return order.status === 'AWAITING_DEPOSIT' && Number.isFinite(order.depositAmount) && order.depositAmount > 0 &&
+  return order.status === 'AWAITING_DEPOSIT' &&
     validAppointmentContext(order) && order.currentAppointment!.status === 'CONFIRMED' && Date.parse(order.currentAppointment!.endAt) > now &&
     !!history && historyMatchesOrder(order, history) && !history.payments.some(item => item.purpose === 'ORDER_DEPOSIT' && activePaymentStatus(item.status))
 }

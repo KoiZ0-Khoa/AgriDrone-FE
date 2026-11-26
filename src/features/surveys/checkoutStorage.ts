@@ -25,8 +25,8 @@ export function readCheckout(key: string, orderId: string): PaymentSession | nul
 export function depositCheckoutMatchesOrder(payment: PaymentSession, order: OwnerSurveyOrder, now = Date.now()) {
   const appointment = order.currentAppointment
   return payment.surveyOrderId === order.surveyOrderId && order.status === 'AWAITING_DEPOSIT' &&
-    Number.isFinite(payment.amount) && payment.amount > 0 && payment.currency === order.currency &&
-    !!appointment && appointment.status === 'CONFIRMED' && payment.appointmentId === appointment.appointmentId && Date.parse(appointment.endAt) > now
+    Number.isFinite(payment.amount) && payment.amount > 0 && payment.currency === 'VND' &&
+    appointment?.purpose === 'CAPTURE' && appointment.status === 'CONFIRMED' && payment.appointmentId === appointment.appointmentId && Date.parse(appointment.endAt) > now
 }
 export function restoredCheckoutMatches(payment: PaymentSession, order: OwnerSurveyOrder, history: PaymentHistory | undefined, now = Date.now()) {
   return history?.surveyOrderId === order.surveyOrderId && depositCheckoutMatchesOrder(payment, order, now) &&

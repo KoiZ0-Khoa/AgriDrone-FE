@@ -53,7 +53,7 @@ export function SurveyPaymentPanel({ order, history, refreshOrder, disabled = fa
   function start() { if (!confirm || !canPay || staleConfirm || submitting.current) return; submitting.current = true; payment.mutate(confirm) }
   return <section className="resource-panel">
     <div className="resource-panel-heading"><div><strong>Thanh toán</strong><span>Cọc khảo sát và khoản còn lại</span></div><Button icon={<ReloadOutlined />} loading={history.isFetching} disabled={payment.isPending} onClick={() => { void refresh() }}>Kiểm tra trạng thái</Button></div>
-    {awaitingDeposit ? <div className="payment-summary"><div><span className="payment-summary-label">Mức cọc của đơn</span><strong>{money(order.depositAmount, order.currency)}</strong></div><Button type="primary" size="large" icon={<CreditCardOutlined />} disabled={!canPay} loading={payment.isPending} onClick={() => setConfirm(order)}>Trả cọc</Button></div> : null}
+    {awaitingDeposit ? <div className="payment-summary"><div><span className="payment-summary-label">Cọc khảo sát</span><strong>{checkout && url ? money(checkout.amount, checkout.currency) : 'Xem số tiền khi tạo phiên trả cọc'}</strong></div><Button type="primary" size="large" icon={<CreditCardOutlined />} disabled={!canPay} loading={payment.isPending} onClick={() => setConfirm(order)}>Trả cọc</Button></div> : null}
     {awaitingDeposit && order.currentAppointment?.status !== 'CONFIRMED' ? <Alert className="workflow-notice" type="info" showIcon title="Xác nhận lịch bay trước khi trả cọc." /> : null}
     {awaitingDeposit && order.currentAppointment?.status === 'CONFIRMED' && Date.parse(order.currentAppointment.endAt) <= Date.now() ? <Alert className="workflow-notice" type="warning" showIcon title="Lịch hẹn đã hết thời gian. Liên hệ Manager để điều chỉnh lịch trước khi trả cọc." /> : null}
     {order.status === 'READY_FOR_CAPTURE' ? <Alert className="workflow-notice" type="success" showIcon title="Đơn đã đủ điều kiện tiền cọc và sẵn sàng chuẩn bị bay." /> : null}
@@ -75,8 +75,8 @@ export function SurveyPaymentPanel({ order, history, refreshOrder, disabled = fa
       { title: 'Thời điểm', render: (_, item) => dateTime(item.confirmedAt ?? item.createdAt) },
     ]} expandable={{ expandedRowRender: item => <><CopyReference value={item.providerReference ?? item.surveyPaymentId} label="Sao chép mã giao dịch" /><p>Cổng thanh toán: {item.provider}</p>{item.events.map((event, index) => <p key={index}>{event.eventType} · {dateTime(event.occurredAt)}</p>)}</> }} />
     <Modal title="Trả cọc khảo sát" open={confirm !== null} afterOpenChange={open => { if (open) document.getElementById(confirmButtonId)?.focus() }} onCancel={() => { if (!payment.isPending) setConfirm(null) }} onOk={start} okText="Tạo phiên trả cọc" cancelText="Hủy" confirmLoading={payment.isPending} closable={!payment.isPending} mask={{ closable: !payment.isPending }} cancelButtonProps={{ disabled: payment.isPending }} okButtonProps={{ disabled: !canPay || staleConfirm, autoFocus: true, id: confirmButtonId }}>
-      {staleConfirm ? <Alert showIcon type="warning" title="Đơn đã thay đổi. Đóng và kiểm tra lại số tiền, lịch hẹn trước khi thanh toán." /> : null}
-      <p>Mức cọc của đơn: <strong>{confirm ? money(confirm.depositAmount, confirm.currency) : '—'}</strong></p><p>Kiểm tra số tiền còn phải trả trên phiên thanh toán trước khi mở cổng thanh toán.</p>
+      {staleConfirm ? <Alert showIcon type="warning" title="Đơn đã thay đổi. Đóng và kiểm tra lại lịch hẹn trước khi thanh toán." /> : null}
+      <p>Số tiền cọc của đơn sẽ hiển thị sau khi tạo phiên. Kiểm tra số tiền trước khi mở trang thanh toán.</p>
     </Modal>
   </section>
 }

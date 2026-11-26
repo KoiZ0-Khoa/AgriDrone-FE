@@ -4,13 +4,12 @@ import { lazy, Suspense, useRef, useState } from 'react'
 import { CommonState } from '../../components/CommonState'
 import { ApiError } from '../../api/client'
 import { mutationNeedsReload, SurveyMutationError } from './SurveyMutationError'
-import type { OwnerSurveyOrder } from './ownerOrderTypes'
 import { getOwnerRefunds, getRefundClaimWindow, getRefundFarmPlants, refundIssueLabels, reportRefund, type ReportRefundBody, type RefundIssue } from './qualityRefundApi'
 import { QualityRefundCaseCard, RefundCaseDetailsView, RefundEvidenceButton } from './QualityRefundCaseCard'
 import { workflowError } from './workflow'
 
 const RefundPlantMap = lazy(() => import('./RefundPlantMap'))
-type Props = { token: string; tenantId: string; order: OwnerSurveyOrder }
+type Props = { token: string; tenantId: string; order: { surveyOrderId: string; orderNumber: string; farmId: string; farmName: string; currency: string } }
 type IssueDraft = { issueType?: RefundIssue['issueType']; details?: string }
 type ReportFields = Omit<ReportRefundBody, 'issues'> & { plants: string[]; issues: Record<string, IssueDraft> }
 

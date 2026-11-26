@@ -15,10 +15,11 @@ export function OwnerAppointmentDialog({ token, tenantId, action, current, disab
   const [form] = Form.useForm<{ reason?: string }>()
   const submitting = useRef(false)
   const { snapshot, kind } = action
+  const appointment = snapshot.currentAppointment!
   const stale = ownerOrderFingerprint(snapshot) !== ownerOrderFingerprint(current)
   const mutation = useMutation({ mutationKey: ['owner-order-write', tenantId, snapshot.surveyOrderId], retry: false, mutationFn: async ({ reason }: { reason?: string }) => {
     if (stale) throw new Error('Đơn hoặc lịch hẹn đã thay đổi. Đóng và tải lại trước khi tiếp tục.')
-    const body = ownerAppointmentBody(snapshot), appointmentId = snapshot.currentAppointment!.appointmentId
+    const body = ownerAppointmentBody(snapshot), appointmentId = appointment.appointmentId
     if (kind === 'confirm') {
       if (!canConfirmOwnerAppointment(snapshot)) throw new Error('Lịch hẹn không còn ở trạng thái cho phép xác nhận.')
       return confirmCaptureAppointment(token, snapshot.surveyOrderId, appointmentId, body)
@@ -30,7 +31,7 @@ export function OwnerAppointmentDialog({ token, tenantId, action, current, disab
   }, onSuccess: done, onSettled: () => { submitting.current = false } })
   const blocked = stale || disabled || mutation.isError
   return <Modal open title={kind === 'confirm' ? 'Xác nhận lịch bay' : 'Yêu cầu đổi lịch'} okText={kind === 'confirm' ? 'Xác nhận lịch' : 'Gửi yêu cầu đổi lịch'} cancelText="Hủy" confirmLoading={mutation.isPending} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }} cancelButtonProps={{ disabled: mutation.isPending }} okButtonProps={{ disabled: blocked || mutation.isPending, autoFocus: kind === 'confirm' }} onCancel={() => { if (!mutation.isPending) close() }} onOk={() => form.submit()}>
-    <p><strong>{snapshot.farmName}</strong></p><p>{appointmentScheduleLabel(snapshot.currentAppointment!.scheduledDate, snapshot.currentAppointment!.scheduledStartDate, snapshot.currentAppointment!.scheduledEndDate, snapshot.currentAppointment!.startAt, snapshot.currentAppointment!.endAt)}</p>
+    <p><strong>{snapshot.farmName}</strong></p><p>{appointmentScheduleLabel(null, null, null, appointment.startAt, appointment.endAt)}</p>
     {stale ? <Alert showIcon type="warning" title="Đơn hoặc lịch đã thay đổi. Đóng biểu mẫu và kiểm tra lại." /> : null}
     <Form form={form} layout="vertical" disabled={blocked || mutation.isPending} onFinish={values => { if (blocked || mutation.isPending || submitting.current) return; submitting.current = true; mutation.mutate(values) }}>
       <FormSubmit disabled={blocked || mutation.isPending} />

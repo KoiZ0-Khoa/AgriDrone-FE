@@ -7,12 +7,10 @@ import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { OwnerAppointmentDialog, type OwnerAppointmentAction } from './OwnerAppointmentDialog'
-import { OwnerQualityRefundPanel } from './OwnerQualityRefundPanel'
-import { getOwnerOrder, getOwnerOrders } from './ownerOrderApi'
+import { getOwnerOrder, getOwnerOrderInvoice, getOwnerOrders } from './ownerOrderApi'
 import type { OwnerSurveyOrder } from './ownerOrderTypes'
 import { canConfirmOwnerAppointment, canRescheduleOwnerAppointment, ownerGuid, ownerOrderStatusQuery, validOwnerVersion } from './ownerOrderWorkflow'
 import { getPaymentHistory } from './paymentApi'
-import { money } from './paymentWorkflow'
 import { appointmentStatusLabels, orderStatusLabels } from './orderWorkflow'
 import { SurveyMutationError } from './SurveyMutationError'
 import { SurveyPaymentPanel } from './SurveyPaymentPanel'
@@ -47,7 +45,7 @@ function OwnerOrderList({ token, tenantId, tenantName, returned }: { token: stri
           { title: 'Nông trại', render: (_, order) => <><strong>{order.farmName}</strong>{readableCode(order.orderNumber) ? <div className="form-hint">{readableCode(order.orderNumber)}</div> : null}</> },
           { title: 'Trạng thái', render: (_, order) => <Tag>{orderStatusLabels[order.status] ?? order.status}</Tag> },
           { title: 'Lịch hiện tại', render: (_, order) => order.currentAppointment ? <>{dateTime(order.currentAppointment.startAt)}<div className="form-hint">{appointmentStatusLabels[order.currentAppointment.status] ?? order.currentAppointment.status}</div></> : 'Chờ Manager đề xuất' },
-          { title: 'Tổng tiền', render: (_, order) => money(order.totalAmount, order.currency) },
+          { title: 'Dịch vụ', dataIndex: 'serviceName' },
           { title: 'Thao tác', render: (_, order) => <Link className="workflow-detail-link" to={'/survey-payments/' + encodeURIComponent(order.surveyOrderId)}>Xem đơn & thanh toán →</Link> },
         ]} />
         <Pagination current={page} pageSize={20} total={query.data?.totalCount ?? 0} showSizeChanger={false} onChange={changePage} />
@@ -63,6 +61,10 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
   const [notice, setNotice] = useState('')
   const query = useQuery({ queryKey: ['owner-survey-order', tenantId, orderId], queryFn: ({ signal }) => getOwnerOrder(token, orderId, signal), retry: false,
     refetchOnWindowFocus: writes === 0, refetchInterval: value => writes === 0 && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.status) ? 10000 : false })
+  const invoiceKey = ['owner-survey-invoice', tenantId, orderId] as const
+  const canViewInvoice = query.data?.status === 'AWAITING_SETTLEMENT' || query.data?.status === 'COMPLETED'
+  const invoice = useQuery({ queryKey: invoiceKey, queryFn: ({ signal }) => getOwnerOrderInvoice(token, orderId, signal),
+    enabled: canViewInvoice && !query.isError, retry: false })
   const history = useQuery({ queryKey: ['owner-payment-history', tenantId, orderId], queryFn: ({ signal }) => getPaymentHistory(token, orderId, signal), retry: false,
     enabled: !!query.data && !query.isError, refetchOnWindowFocus: writes === 0,
     refetchInterval: value => writes === 0 && value.state.data?.payments.some(item => ['PENDING', 'PROCESSING'].includes(item.status)) ? 10000 : false })
@@ -72,12 +74,11 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
     await client.invalidateQueries({ queryKey: ['owner-survey-orders', tenantId] })
   }, [client, refetchOrder, tenantId])
   useEffect(() => { if (history.dataUpdatedAt) void refreshOrder() }, [history.dataUpdatedAt, refreshOrder])
-  async function refresh() { setAction(null); await Promise.all([refreshOrder(), history.refetch()]) }
+  async function refresh() { setAction(null); await Promise.all([refreshOrder(), history.refetch()]); await client.invalidateQueries({ queryKey: invoiceKey }) }
   const back = <Link className="back-link" to="/survey-payments"><ArrowLeftOutlined /> Đơn khảo sát & thanh toán</Link>
   if (query.isPending) return <>{back}<CommonState type="loading" title="Đang tải đơn khảo sát" /></>
   if (!query.data) return <>{back}<SurveyMutationError error={query.error} /><Button onClick={() => { void query.refetch() }}>Tải lại đơn</Button></>
   const order = query.data, appointment = order.currentAppointment
-  const showDeposit = order.depositAmount > 0 || order.status === 'AWAITING_DEPOSIT'
   const busy = query.isFetching || query.isError || writes > 0
   return <>{back}
     <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT & THANH TOÁN</span><h1>{order.farmName}</h1><p>{orderStatusLabels[order.status] ?? order.status}</p><CopyReference value={order.orderNumber} label="Sao chép mã đơn" /></div><Button icon={<ReloadOutlined />} disabled={writes > 0 || !!action} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button></section>
@@ -85,7 +86,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
     <SurveyMutationError error={query.isError ? query.error : null} />
     {!validOwnerVersion(order.orderVersion) ? <Alert className="workflow-notice" showIcon type="warning" title="Thông tin đơn chưa đầy đủ. Tải lại trước khi xác nhận lịch hoặc thanh toán." /> : null}
     <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Lịch bay</strong><span>{appointment ? 'Manager đề xuất, bạn xác nhận' : 'Chờ Manager đề xuất lịch'}</span></div>{appointment ? <Tag>{appointmentStatusLabels[appointment.status] ?? appointment.status}</Tag> : null}</div>
-      {appointment ? <><dl className="detail-list"><div><dt>Ngày bay</dt><dd>{appointmentScheduleLabel(appointment.scheduledDate, appointment.scheduledStartDate, appointment.scheduledEndDate, appointment.startAt, appointment.endAt)}</dd></div></dl>
+      {appointment ? <><dl className="detail-list"><div><dt>Ngày bay</dt><dd>{appointmentScheduleLabel(null, null, null, appointment.startAt, appointment.endAt)}</dd></div></dl>
         <Space wrap>{canConfirmOwnerAppointment(order) ? <Button type="primary" disabled={busy || !!action} onClick={() => { setNotice(''); setAction({ kind: 'confirm', snapshot: order }) }}>Xác nhận lịch</Button> : null}
           {canRescheduleOwnerAppointment(order) ? <Button disabled={busy || !!action} onClick={() => { setNotice(''); setAction({ kind: 'reschedule', snapshot: order }) }}>Yêu cầu đổi lịch</Button> : null}
         </Space>
@@ -94,8 +95,13 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
       </> : <p>Chờ Manager đề xuất lịch bay. Lịch chỉ chính thức khi bạn xác nhận.</p>}
     </section>
     <div className="workflow-section"><SurveyPaymentPanel order={order} history={history} refreshOrder={refreshOrder} disabled={busy || !!action} /></div>
-    {order.status === 'COMPLETED' && order.serviceType === 'PLANT_HEALTH' ? <OwnerQualityRefundPanel key={order.surveyOrderId} token={token} tenantId={tenantId} order={order} /> : null}
-    <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Chi phí khảo sát</strong><span>Hóa đơn được chốt sau khi Manager duyệt kết quả</span></div><CreditCardOutlined aria-hidden="true" /></div><dl className="detail-list">{showDeposit ? <div><dt>Cọc khảo sát</dt><dd>{money(order.depositAmount, order.currency)}</dd></div> : null}<SurveyInvoiceLines invoice={order} /><div><dt>Tổng tiền dịch vụ</dt><dd className={order.totalAmount === null ? 'is-pending' : undefined}>{money(order.totalAmount, order.currency)}</dd></div><div><dt>Số tiền còn lại</dt><dd className={order.remainingAmount === null ? 'is-pending' : undefined}>{money(order.remainingAmount, order.currency)}</dd></div></dl></section>
+    <section className="resource-panel workflow-section">
+      <div className="resource-panel-heading"><div><strong>Hóa đơn khảo sát</strong></div><CreditCardOutlined aria-hidden="true" /></div>
+      {canViewInvoice && invoice.isError ? <SurveyMutationError error={invoice.error} />
+        : canViewInvoice && invoice.data ? <SurveyInvoiceLines invoice={invoice.data} />
+        : canViewInvoice && invoice.isFetching ? <p>Đang tải hóa đơn…</p>
+        : <p className="form-hint">Hóa đơn được hiển thị sau khi chốt kết quả khảo sát.</p>}
+    </section>
     {action ? <OwnerAppointmentDialog token={token} tenantId={tenantId} action={action} current={order} disabled={query.isFetching || query.isError} close={() => { setAction(null); void refresh() }} done={async () => {
       setNotice(action.kind === 'confirm' ? 'Đã xác nhận lịch bay. Trả cọc nếu còn thiếu; khoản còn lại được chốt sau khi duyệt kết quả.' : 'Đã gửi yêu cầu đổi lịch. Chờ Manager đề xuất lại.')
       setAction(null); await refresh()
