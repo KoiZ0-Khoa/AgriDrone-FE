@@ -2,6 +2,8 @@ import { apiRequest } from '../../api/client'
 import type { Appointment, PaymentSession } from './orderTypes'
 import type { CaptureAppointmentBody, CaptureAppointmentOwnerBody, CaptureNoShowBody, CaptureNoShowResult, CaptureRescheduleBody, V3CaptureAttempt } from './v3Types'
 import type { FreezeCaptureInputBody, FrozenCaptureInput, V3CompleteFlightBody, V3FailFlightBody, V3FlightResult, V3StartFlightBody } from './v3Types'
+import type { QualityReflightBody, QualityReflightResult } from './v3Types'
+import type { ComboReviewResult, FreezeResult, FreezeResultBody, RecordComboReviewBody, ResultReview } from './v3Types'
 
 // Toàn bộ route api/v3/... của web. Mỗi giai đoạn thêm route của mình vào đây (xem docs/v3-migration-plan-2026-11-26.md).
 const managerOrders = '/api/v3/system-manager/survey-orders'
@@ -27,6 +29,17 @@ export const failCaptureFlight = (token: string, orderId: string, attemptId: str
   apiRequest<V3FlightResult>(`${captureFlightPath(orderId, attemptId)}/fail-flight`, { method: 'POST', token, body })
 export const freezeCaptureInput = (token: string, orderId: string, attemptId: string, body: FreezeCaptureInputBody) =>
   apiRequest<FrozenCaptureInput>(`${captureFlightPath(orderId, attemptId)}/input-manifest/freeze`, { method: 'POST', token, body })
+// G6 — bay lại từ lần bay lỗi / cần bay lại. BE tạo lần bay mới, nhiệm vụ mới và lịch Capture chờ Owner xác nhận.
+export const createQualityReflight = (token: string, orderId: string, parentAttemptId: string, body: QualityReflightBody) =>
+  apiRequest<QualityReflightResult>(`${captureFlightPath(orderId, parentAttemptId)}/quality-reflights`, { method: 'POST', token, body })
+
+// G7 — duyệt kết quả V3. Lỗi 409 (dữ liệu cũ) → tải lại GET result-review để người dùng xác nhận lại đúng phiên bản.
+export const getResultReview = (token: string, orderId: string, signal?: AbortSignal) =>
+  apiRequest<ResultReview>(`${managerOrderPath(orderId)}/result-review`, { token, signal, cache: 'no-store' })
+export const recordComboReview = (token: string, orderId: string, body: RecordComboReviewBody) =>
+  apiRequest<ComboReviewResult>(`${managerOrderPath(orderId)}/result-review/combo-reviews`, { method: 'POST', token, body })
+export const freezeResultReview = (token: string, orderId: string, body: FreezeResultBody) =>
+  apiRequest<FreezeResult>(`${managerOrderPath(orderId)}/result-review/freeze`, { method: 'POST', token, body })
 
 // G2 — lịch hẹn bay (Capture). Response dùng chung SurveyAppointmentApiResponse với route cũ; riêng orderStatus của response
 // bị BE viết liền không gạch dưới cho trạng thái V3 (vd. AWAITINGDEPOSIT), nên FE luôn tải lại đơn thay vì đọc trường này.

@@ -67,6 +67,40 @@ export function v3ServiceKind(serviceCode: string | null | undefined): V3Service
 export const v3ServiceLabels: Record<V3ServiceKind, string> = { MAP: 'Bản đồ và đếm trụ', COMBO: 'Bản đồ và sàng lọc bệnh' }
 export const screensDisease = (kind: V3ServiceKind | null) => kind === 'COMBO'
 
+// G6 — lịch sử chuyến bay. Tên thao tác là hằng số CaptureAttemptAction của BE (PascalCase).
+export const captureAttemptActionLabels: Record<string, string> = {
+  CreateInitial: 'Chuẩn bị lần bay',
+  CreateSuccessor: 'Tạo lần bay lại',
+  MarkPreflightReady: 'Hoàn tất kiểm tra trước bay',
+  InvalidatePreflight: 'Kiểm tra trước bay hết hiệu lực',
+  StartFlight: 'Bắt đầu bay',
+  RecordFlightCompleted: 'Kết thúc chuyến bay',
+  RecordFlightFailed: 'Báo lỗi chuyến bay',
+  MarkUploaded: 'Chốt bộ dữ liệu',
+  StartProcessing: 'Bắt đầu xử lý',
+  AcceptProcessing: 'Chấp nhận kết quả',
+  RequireReflight: 'Yêu cầu bay lại',
+  Cancel: 'Hủy lần bay',
+}
+// Lần bay có thể làm "cha" cho lần bay lại: BE (CaptureAttempt.CreateSuccessor) chỉ nhận FLIGHT_FAILED hoặc REFLIGHT_REQUIRED.
+const reflightParentStatuses: readonly CaptureAttemptStatus[] = ['FLIGHT_FAILED', 'REFLIGHT_REQUIRED']
+// Lần bay để bay lại: lần mới nhất của đơn, đang ở trạng thái cho phép, và đơn không còn lần bay nào đang hoạt động.
+export function reflightParentAttempt(attempts: readonly V3CaptureAttempt[]): V3CaptureAttempt | null {
+  if (activeCaptureAttempt(attempts)) return null
+  const latest = latestCaptureAttempt(attempts)
+  return latest && reflightParentStatuses.includes(latest.status) && Number.isSafeInteger(latest.version) && latest.version > 0 ? latest : null
+}
+export const canCreateQualityReflight = (orderStatus: string, attempts: readonly V3CaptureAttempt[]) =>
+  orderStatus === 'AWAITING_REFLIGHT_DECISION' && reflightParentAttempt(attempts) !== null
+
+// Drone cho lần bay lại phải có đủ khả năng của dịch vụ đã chốt (coordinator kiểm MapsPoles → BASELINE_MAPPING,
+// ScreensDisease → PLANT_HEALTH). MAP cần bản đồ; COMBO cần cả bản đồ lẫn sàng lọc bệnh.
+export function droneSupportsService(capabilities: readonly string[] | null | undefined, kind: V3ServiceKind | null) {
+  if (!kind) return false
+  const values = new Set((capabilities ?? []).map(value => value.toUpperCase()))
+  return values.has('BASELINE_MAPPING') && (kind === 'MAP' || values.has('PLANT_HEALTH'))
+}
+
 // Khóa chống gửi trùng cho thao tác ghi của coordinator V3: cùng nội dung thì giữ nguyên operationId và payloadFingerprint
 // (BE trả replay), nội dung đổi thì tạo khóa mới. Fingerprint = SHA-256 hex của JSON gửi đi (64 ký tự, BE cho tối đa 128).
 export type V3Operation = { payload: string; operationId: string; payloadFingerprint: string }
@@ -134,6 +168,44 @@ export const v3ErrorMessages: Record<string, string> = {
   'CaptureAttempts.Unauthorized': 'Phiên đăng nhập không hợp lệ. Hãy đăng nhập lại.',
   'CaptureAttempts.ConcurrencyConflict': 'Dữ liệu lần bay đang được cập nhật. Thử lại sau ít giây.',
   'Order.NotFound': 'Không tìm thấy đơn khảo sát V3 trong phạm vi được phân công.',
-  ACTIVE_CAPTURE_IN_FLIGHT: 'Không thể kết thúc phân công khi nông trại đang có lần bay chưa hạ cánh.',
+  // G7 — duyệt kết quả
+  'SurveyResultReview.ManagerForbidden': 'Bạn không còn là Manager được phân công cho đơn này.',
+  'SurveyResultReview.ConcurrencyConflict': 'Kết quả đang được cập nhật. Tải lại và thử lại.',
+  'SurveyOrder.VersionConflict': 'Đơn vừa được cập nhật. Tải lại dữ liệu duyệt và kiểm tra trước khi gửi lại.',
+  'SurveyOrder.StatusInvalid': 'Đơn không còn ở bước duyệt kết quả.',
+  'Operation.Conflict': 'Mã gửi này đã được dùng với nội dung khác. Tải lại và thử lại.',
+  'CaptureAttempt.NoActiveAttempt': 'Đơn không còn lần bay đang xử lý.',
+  'CountSnapshot.Missing': 'Chưa có số trụ đã xác minh. Cần hoàn tất bước gửi GPS cây và duyệt bản đồ trước.',
+  'CountSnapshot.NotFound': 'Chưa có số trụ đã xác minh. Cần hoàn tất bước gửi GPS cây và duyệt bản đồ trước.',
+  'CountSnapshot.Stale': 'Số trụ đã được cập nhật. Tải lại dữ liệu duyệt trước khi chốt.',
+  'CountSnapshot.FingerprintMismatch': 'Số trụ đã được cập nhật. Tải lại dữ liệu duyệt trước khi chốt.',
+  'ComboBatch.Stale': 'Kết quả phân tích COMBO đã có bản mới. Tải lại để duyệt bản mới.',
+  'ComboBatch.FingerprintMismatch': 'Kết quả phân tích COMBO đã thay đổi. Tải lại để duyệt bản mới.',
+  'ComboBatch.NotFound': 'Chưa có kết quả phân tích COMBO để duyệt.',
+  'ComboReview.Stale': 'Lần duyệt trước đã thay đổi. Tải lại dữ liệu duyệt.',
+  'ComboReview.ExpectedPreviousMismatch': 'Đã có lần duyệt mới hơn. Tải lại dữ liệu duyệt.',
+  'ComboReview.IncompleteFindings': 'Cần quyết định cho tất cả phát hiện.',
+  'ComboReview.IncompleteZones': 'Cần quyết định cho tất cả vùng bệnh.',
+  'ComboReview.IncompleteBlockers': 'Cần xử lý tất cả mục chặn.',
+  'ComboReview.UnresolvedBlockers': 'Còn mục chặn chưa xử lý nên chưa duyệt được kết quả.',
+  'ComboReview.ExclusionReasonRequired': 'Nhập lý do cho mỗi phát hiện bị loại.',
+  'ComboReview.ZoneReasonRequired': 'Nhập lý do cho mỗi vùng bị từ chối.',
+  'ComboReview.BlockerReasonRequired': 'Nhập giải trình cho mỗi mục chặn đã xử lý.',
+  'ComboReview.EvidenceRequired': 'Thiếu ảnh bằng chứng cho quyết định loại / từ chối / xử lý mục chặn.',
+  'ComboReview.GuidanceSelectionRequired': 'Chọn hướng dẫn xử lý cho mỗi vùng được duyệt.',
+  'ComboReview.ZoneMemberNotAccepted': 'Vùng được duyệt có phát hiện đã bị loại.',
+  'ComboReview.OutOfBoundaryCannotAccept': 'Phát hiện nằm ngoài ranh giới nông trại không được chấp nhận.',
+  'ComboReview.InvalidBlockerExclusion': 'Mục chặn được loại thì phát hiện liên quan cũng phải bị loại.',
+  'ComboReview.NegativeConfirmationRequired': 'Cần xác nhận "Không ghi nhận nghi bệnh" khi không chấp nhận phát hiện nào.',
+  'ComboReview.NegativeEvidenceRequired': 'Nhập bằng chứng cho kết luận không ghi nhận nghi bệnh.',
+  'ComboReview.InsufficientCoverageProof': 'Ảnh đầu vào chưa được phân tích đủ nên chưa thể kết luận không có nghi bệnh.',
+  'ComboReview.NotApproved': 'Lần duyệt COMBO gần nhất chưa được duyệt.',
+  'ComboReview.Missing': 'Cần duyệt kết quả COMBO trước khi chốt.',
+  'ComboJob.IncompleteCoverage': 'Lần phân tích chưa phủ hết ảnh đầu vào.',
+  'FreezeResult.AlreadyFrozen': 'Kết quả đã được chốt nội bộ.',
+  'FreezeResult.ComboTokensRequired': 'Thiếu thông tin lần duyệt COMBO. Tải lại dữ liệu duyệt.',
+  'FreezeResult.ComboTokensInvalidForMap': 'Đơn MAP không có phần duyệt COMBO.',
+  'FreezeResult.NegativeConfirmationRequired': 'Cần xác nhận kết luận không ghi nhận nghi bệnh trước khi chốt.',
+  ACTIVE_CAPTURE_IN_FLIGHT:'Không thể kết thúc phân công khi nông trại đang có lần bay chưa hạ cánh.',
 }
 export const v3ErrorMessage = (code: string | undefined) => code ? v3ErrorMessages[code] : undefined

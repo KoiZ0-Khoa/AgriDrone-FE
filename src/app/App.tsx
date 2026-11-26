@@ -66,6 +66,7 @@ const ManagerOrdersPage = lazy(() => import('../features/surveys/ManagerOrdersPa
 const ManagerOrderDetailPage = lazy(() => import('../features/surveys/ManagerOrdersPage').then(m => ({ default: m.ManagerOrderDetailPage })))
 const PlantHealthPage = lazy(() => import('../features/surveys/PlantHealthPage').then(m => ({ default: m.PlantHealthPage })))
 const ManagerHealthReviewPage = lazy(() => import('../features/surveys/ManagerHealthReviewPage').then(m => ({ default: m.ManagerHealthReviewPage })))
+const ManagerResultReviewPage = lazy(() => import('../features/surveys/ManagerResultReviewPage').then(m => ({ default: m.ManagerResultReviewPage })))
 const ManagerPlantHealthMapPage = lazy(() => import('../features/surveys/ManagerPlantHealthMapPage').then(m => ({ default: m.ManagerPlantHealthMapPage })))
 const ManagerMissionDetailPage = lazy(() => import('../features/missions/ManagerMissionDetailPage').then(m => ({ default: m.ManagerMissionDetailPage })))
 const DronesPage = lazy(() => import('../features/drones/DronesPage').then(m => ({ default: m.DronesPage })))
@@ -173,6 +174,7 @@ export function App() {
                         <Route path="/manager/orders" element={<ManagerOrdersPage />} />
                         <Route path="/manager/orders/:orderId" element={<ManagerOrderDetailPage />} />
                         <Route path="/manager/orders/:orderId/health-review" element={<ManagerHealthReviewPage />} />
+                        <Route path="/manager/orders/:orderId/result-review" element={<ManagerResultReviewPage />} />
                         <Route path="/manager/farms/:farmId/missions/:missionId" element={<ManagerMissionDetailPage />} />
                         <Route path="/manager/account" element={<AccountPage />} />
                       </Route>

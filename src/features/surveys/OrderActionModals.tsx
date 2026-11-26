@@ -1,15 +1,17 @@
 import { FormSubmit } from '../../components/FormSubmit'
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
-import { useMutation } from '@tanstack/react-query'
-import { Alert, Button, Form, Input, Modal } from 'antd'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { Alert, Button, Form, Input, Modal, Select } from 'antd'
 import { useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
+import { getAvailableDrones } from '../missions/missionApi'
+import { scheduleWindowForDate } from '../missions/missionWorkflow'
 import { verifyOrderBoundary } from './orderApi'
 import type { Appointment, AssignedOrder, OrderScope } from './orderTypes'
-import { captureAppointmentBody, captureNoShowBody, operationsDate, polygonFromPoints, type NoShowValues } from './orderWorkflow'
-import { proposeCaptureAppointment, recordCaptureNoShow } from './v3Api'
-import type { CaptureNoShowResult } from './v3Types'
-import { v3OperationFor, type V3Operation } from './v3Workflow'
+import { captureAppointmentBody, captureNoShowBody, operationsDate, polygonFromPoints, qualityReflightBody, type NoShowValues, type QualityReflightValues } from './orderWorkflow'
+import { createQualityReflight, proposeCaptureAppointment, recordCaptureNoShow } from './v3Api'
+import type { CaptureNoShowResult, QualityReflightResult, V3CaptureAttempt } from './v3Types'
+import { captureAttemptStatusLabels, droneSupportsService, reflightParentAttempt, v3OperationFor, v3ServiceKind, type V3Operation } from './v3Workflow'
 import { workflowError } from './workflow'
 import { intakeCoordinate } from './intakeNumbers'
 
@@ -79,6 +81,54 @@ export function BoundaryVerificationModal({ token, scope, close, done }: { token
       <FormSubmit disabled={mutation.isPending || locked} />
       <Form.List name="points">{(fields, { add, remove }) => <>{fields.map((field, index) => <fieldset className="workflow-checklist" key={field.key}><legend>Điểm {index + 1}</legend><div className="form-two-columns"><Form.Item name={[field.name, 'longitude']} label="Kinh độ" rules={[{ required: true, whitespace: true, message: 'Nhập kinh độ.' }, { validator: async (_, value: string | number | undefined) => { if (value !== undefined && value !== '') intakeCoordinate(value, 'longitude') } }]}><Input inputMode="decimal" placeholder="VD: 108,1234567" /></Form.Item><Form.Item name={[field.name, 'latitude']} label="Vĩ độ" rules={[{ required: true, whitespace: true, message: 'Nhập vĩ độ.' }, { validator: async (_, value: string | number | undefined) => { if (value !== undefined && value !== '') intakeCoordinate(value, 'latitude') } }]}><Input inputMode="decimal" placeholder="VD: 11,0123456" /></Form.Item></div><Button icon={<MinusCircleOutlined />} disabled={mutation.isPending || locked || fields.length <= 3} onClick={() => remove(field.name)}>Bỏ điểm {index + 1}</Button></fieldset>)}<Button icon={<PlusOutlined />} disabled={mutation.isPending || locked} onClick={() => add({})}>Thêm điểm ranh giới</Button></>}</Form.List>
       <Form.Item className="workflow-notice" name="reason" label="Lý do xác minh" rules={[{ required: true, whitespace: true }, { max: 2000 }]}><Input.TextArea rows={2} maxLength={2000} /></Form.Item><Form.Item name="evidenceReference" label="Tham chiếu bằng chứng (không bắt buộc)" rules={[{ max: 1000 }]}><Input maxLength={1000} /></Form.Item>
+    </Form>
+    <MutationError error={mutation.error} />
+  </Modal>
+}
+
+// G6 — bay lại khi đơn chờ quyết định bay lại. BE tạo lần bay mới, nhiệm vụ mới và lịch Capture cả ngày ở trạng thái chờ Owner
+// xác nhận; không thu thêm cọc. Danh sách drone tạm lấy từ API drone theo farm cho đúng ngày đã chọn (chờ BE-8 xác nhận nguồn),
+// lọc theo khả năng của dịch vụ đã chốt; coordinator vẫn kiểm lại drone lúc tạo.
+export function QualityReflightModal({ token, order, scope, attempts, close, done }: {
+  token: string; order: AssignedOrder; scope: OrderScope; attempts: readonly V3CaptureAttempt[]; close: () => void; done: (result: QualityReflightResult) => Promise<void>
+}) {
+  const [snapshot] = useState(() => ({ order, scope, attempts }))
+  const [form] = Form.useForm<QualityReflightValues>()
+  const scheduledDate = Form.useWatch('scheduledDate', form)
+  const operation = useRef<V3Operation | null>(null)
+  const parent = reflightParentAttempt(snapshot.attempts)
+  const kind = v3ServiceKind(snapshot.order.surveyServiceCode)
+  const validDate = typeof scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)
+  const drones = useQuery({
+    queryKey: ['reflight-drones', snapshot.order.farmId, scheduledDate, kind],
+    enabled: validDate,
+    queryFn: async ({ signal }) => {
+      const window = scheduleWindowForDate(scheduledDate!)
+      const items = await getAvailableDrones(token, snapshot.order.farmId, window.startAt, window.endAt, 'BaselineMapping', signal)
+      return items.filter(drone => droneSupportsService(drone.specifications?.capabilities, kind))
+    },
+  })
+  const mutation = useMutation({ retry: false, mutationFn: async (values: QualityReflightValues) => {
+    const { parentAttemptId, body } = qualityReflightBody(snapshot.order, snapshot.scope, snapshot.attempts, values)
+    operation.current = await v3OperationFor(operation.current, { parentAttemptId, ...body })
+    return createQualityReflight(token, snapshot.scope.surveyOrderId, parentAttemptId, { ...body, operationId: operation.current.operationId, payloadFingerprint: operation.current.payloadFingerprint })
+  }, onSuccess: done })
+  const locked = cannotRetry(mutation.error)
+  return <Modal open width={620} title="Tạo lần bay lại" okText="Tạo lần bay lại" okButtonProps={{ disabled: locked || !parent }} cancelText={locked ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
+    <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p>
+    {parent ? <p>Bay lại từ <strong>lần bay {parent.attemptIndex}</strong> ({captureAttemptStatusLabels[parent.status]}). Hệ thống tạo lần bay và nhiệm vụ mới; dữ liệu của lần trước được giữ nguyên trong lịch sử. Không thu thêm cọc.</p>
+      : <Alert type="warning" showIcon title="Không còn lần bay nào chờ bay lại. Đóng và tải lại để kiểm tra." />}
+    <p className="form-hint">Lịch bay mới ở trạng thái chờ Owner xác nhận. Sau khi Owner xác nhận, hoàn tất checklist trước bay trên nhiệm vụ mới rồi bắt đầu bay.</p>
+    <Form form={form} layout="vertical" disabled={mutation.isPending || locked || !parent} onFinish={values => { if (!mutation.isPending && !locked) mutation.mutate(values) }}>
+      <FormSubmit disabled={mutation.isPending || locked || !parent} />
+      <Form.Item name="scheduledDate" label="Ngày bay lại (giờ Việt Nam)" rules={[{ required: true, message: 'Chọn ngày bay lại.' }]}><Input type="date" min={operationsDate()} onChange={() => form.setFieldValue('droneId', undefined)} /></Form.Item>
+      <Form.Item name="droneId" label="Drone" extra={kind === 'COMBO' ? 'Chỉ hiện drone vừa bay bản đồ vừa sàng lọc bệnh được.' : 'Chỉ hiện drone bay bản đồ được.'} rules={[{ required: true, message: 'Chọn drone.' }]}>
+        <Select placeholder={validDate ? 'Chọn drone còn trống trong ngày' : 'Chọn ngày trước'} disabled={!validDate} loading={drones.isFetching}
+          notFoundContent={drones.isError ? workflowError(drones.error) : 'Không có drone phù hợp còn trống trong ngày này.'}
+          options={(drones.data ?? []).map(drone => ({ value: drone.id, label: `${drone.name} · ${drone.code}` }))} />
+      </Form.Item>
+      <Form.Item name="reason" label="Lý do bay lại" rules={[{ required: true, whitespace: true, message: 'Nhập lý do.' }, { max: 500 }]}><Input.TextArea rows={3} maxLength={500} showCount /></Form.Item>
+      <Form.Item name="technicalQualityEvidence" label="Bằng chứng kỹ thuật" extra="Ví dụ: mã sự cố, log bay, ảnh lỗi, kết quả kiểm tra drone." rules={[{ required: true, whitespace: true, message: 'Nhập bằng chứng kỹ thuật.' }, { max: 500 }]}><Input maxLength={500} /></Form.Item>
     </Form>
     <MutationError error={mutation.error} />
   </Modal>

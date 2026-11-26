@@ -1,8 +1,8 @@
 import type { AssignedOrder, OrderScope } from './orderTypes'
-import type { CaptureAppointmentBody, CaptureNoShowBody } from './v3Types'
+import type { CaptureAppointmentBody, CaptureNoShowBody, QualityReflightBody, V3CaptureAttempt } from './v3Types'
 import type { GeoJsonPolygon } from '../farms/types'
 import type { CaptureSample, CaptureSession, OrthophotoBody } from './orderTypes'
-import { v3OrderStageNotices, v3OrderStatusLabels } from './v3Workflow'
+import { canCreateQualityReflight, reflightParentAttempt, v3OrderStageNotices, v3OrderStatusLabels } from './v3Workflow'
 
 // Web chỉ chạy luồng V3: nhãn và hướng dẫn theo trạng thái đơn V3. Bộ lọc trạng thái ở các trang danh sách đơn lấy từ đây.
 export const orderStatusLabels: Record<string, string> = v3OrderStatusLabels
@@ -67,6 +67,25 @@ export function captureNoShowBody(order: AssignedOrder, scope: OrderScope, value
   if (!evidenceReference || evidenceReference.length > 500) throw new Error('Nhập tham chiếu bằng chứng từ 1 đến 500 ký tự.')
   const current = currentAppointment(order)!
   return { appointmentId: current.id, expectedOrderVersion: scope.orderVersion, expectedAppointmentVersion: current.version!, occurredAt: new Date(occurredAt).toISOString(), reason, evidenceReference }
+}
+
+// G6 — bay lại. Thân yêu cầu chưa có khóa thao tác (thêm bằng v3OperationFor lúc gửi). Phiên bản đơn và lần bay cha lấy
+// đúng từ dữ liệu đang hiển thị để BE từ chối nếu đã có thay đổi (REFLIGHT_VERSION_CONFLICT).
+export type QualityReflightValues = { droneId?: string; scheduledDate: string; reason: string; technicalQualityEvidence: string }
+export function qualityReflightBody(order: AssignedOrder, scope: OrderScope, attempts: readonly V3CaptureAttempt[], values: QualityReflightValues, now = Date.now()): { parentAttemptId: string; body: Omit<QualityReflightBody, 'operationId' | 'payloadFingerprint'> } {
+  if (!matchingOrderSnapshot(order, scope)) throw new Error('Dữ liệu đơn không đồng nhất hoặc thiếu version. Tải lại trước khi tạo lần bay lại.')
+  const parent = reflightParentAttempt(attempts)
+  if (!canCreateQualityReflight(scope.orderStatus, attempts) || !parent) throw new Error('Đơn không còn chờ quyết định bay lại hoặc lần bay trước đã thay đổi. Tải lại để kiểm tra.')
+  if (!values.droneId) throw new Error('Chọn drone cho lần bay lại.')
+  if (!isValidScheduledDate(values.scheduledDate)) throw new Error('Chọn ngày bay lại hợp lệ.')
+  if (values.scheduledDate < operationsDate(now) || Date.parse(`${values.scheduledDate}T23:55:00+07:00`) <= now) throw new Error('Chọn ngày bay lại từ hôm nay trở đi, còn thời gian thực hiện theo giờ Việt Nam.')
+  const reason = values.reason.trim(), technicalQualityEvidence = values.technicalQualityEvidence.trim()
+  if (!reason || reason.length > 500) throw new Error('Nhập lý do bay lại từ 1 đến 500 ký tự.')
+  if (!technicalQualityEvidence || technicalQualityEvidence.length > 500) throw new Error('Nhập bằng chứng kỹ thuật từ 1 đến 500 ký tự.')
+  return {
+    parentAttemptId: parent.captureAttemptId,
+    body: { droneId: values.droneId, scheduledDate: values.scheduledDate, expectedOrderVersion: scope.orderVersion, expectedParentAttemptVersion: parent.version, reason, technicalQualityEvidence },
+  }
 }
 
 export function polygonFromPoints(points: { longitude: number; latitude: number }[], interiorRings: number[][][] = []): GeoJsonPolygon {
