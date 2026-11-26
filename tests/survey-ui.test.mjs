@@ -38,30 +38,42 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
       }
       return renderToStaticMarkup(h(QueryClientProvider, { client }, h(MemoryRouter, { initialEntries: [path] }, h(AuthProvider, null, h(Routes, null, h(Route, { path: path.startsWith('/system/survey-requests/') ? '/system/survey-requests/:requestId' : path.startsWith('/manager/farms/') ? '/manager/farms/:farmId' : path.startsWith('/manager/orders/') ? '/manager/orders/:orderId' : '*', element: h(Component, props) }))))))
     }
-    const services = [{ surveyServiceId: 'service', code: 'PLANT_HEALTH', name: 'Plant Health', description: 'Khảo sát sức khỏe cây', serviceType: 'PLANT_HEALTH', status: 'ACTIVE', version: 123, currentPrice: { priceVersionId: 'price', amountPerPole: 1500, currency: 'VND', effectiveFrom: '2026-10-16T00:00:00Z', effectiveTo: null } }]
     const manager = { id: 'manager', userId: 'user', email: 'manager@example.test', fullName: 'Manager One', status: 'ACTIVE', availability: 'AVAILABLE', version: 7 }
     const managers = render(ManagersPage, 'SYSTEM_ADMIN', [[['system-managers', 1, { status: '', availability: '' }], { items: [manager], totalCount: 1 }]])
     assert.match(managers, /Manager One/)
     assert.doesNotMatch(managers, /Chứng chỉ|chứng chỉ/)
     assert.match(managers, /Mời System Manager/)
     assert.match(managers, /Phân công nông trại/)
-    const catalogue = render(ServicesPage, 'SYSTEM_ADMIN', [[['survey-services'], services]])
-    assert.match(catalogue, /Plant Health/)
-    assert.match(catalogue, /Đặt đơn giá/)
-    const policies = [
-      [['survey-services'], services],
-      [['survey-payment-policy', 'deposit'], { policyId: 'private-policy-id', versionNumber: 0, amountVnd: 0, effectiveFrom: '2026-11-13T00:00:00Z' }],
-      [['survey-payment-policy', 'combo'], { policyId: 'private-combo-id', versionNumber: 3, discountPercentage: 20.25, effectiveFrom: '2026-11-13T00:00:00Z' }],
-    ]
-    const configured = render(ServicesPage, 'SYSTEM_ADMIN', policies)
-    assert.match(configured, /Chính sách thanh toán/)
-    assert.match(configured, /Cần đặt cọc lớn hơn 0 để duyệt đơn mới/)
-    assert.match(configured, /20,25%/)
-    for (const label of ['Chỉnh tiền cọc', 'Chỉnh giảm giá', 'Lịch sử tiền cọc', 'Lịch sử giảm giá']) assert.match(configured, new RegExp(label))
-    assert.doesNotMatch(configured, /private-policy-id|private-combo-id|expectedVersion/)
-    const policyError = render(ServicesPage, 'SYSTEM_ADMIN', [[['survey-services'], services], [['survey-payment-policy', 'deposit'], new ApiError(500, 'Unavailable')], policies[2]])
-    assert.match(policyError, /Không thể tải dữ liệu/)
-    assert.match(policyError, /20,25%/)
+    const policyKey = ['v3-commercial-policies']
+    const emptyPolicy = { services: [], revisions: [], prices: [], deposits: [], claims: [], cancellations: [], bundles: [], activation: null }
+    const emptyCatalogue = render(ServicesPage, 'SYSTEM_ADMIN', [[policyKey, emptyPolicy]])
+    assert.match(emptyCatalogue, /Tạo dịch vụ MAP/)
+    assert.match(emptyCatalogue, /Tạo dịch vụ COMBO/)
+    assert.match(emptyCatalogue, /Đăng ký công khai đang đóng/)
+    assert.match(emptyCatalogue, /<button[^>]*disabled[^>]*>\s*<span>Ban hành gói chính sách<\/span><\/button>/)
+    const version = { versionNumber: 1, effectiveFrom: '2020-10-16T00:00:00Z', effectiveTo: null }
+    const commercial = {
+      services: [{ id: 'v3-map', code: 'MAP', name: 'Bản đồ', description: 'Mô tả', status: 'ACTIVE' }],
+      revisions: [{ ...version, id: 'revision', surveyServiceId: 'v3-map', name: 'Bản đồ nền đang cung cấp', description: 'Mô tả', mapsPoles: true, screensDisease: false }],
+      prices: [{ ...version, id: 'price', surveyServiceId: 'v3-map', pricePerPole: 1500, currency: 'VND' }],
+      deposits: [{ ...version, id: 'deposit', amount: 500000, currency: 'VND' }],
+      claims: [{ ...version, id: 'claim', calendarWindowDays: 7, excludeNoticeDate: true, timeZoneId: 'Asia/Ho_Chi_Minh' }],
+      cancellations: [{ ...version, id: 'cancel', refundableBeforeCapture: true, retainDepositAfterCapture: true, allowedFreeNoShowReschedules: 1, operationalPostponementRefundable: true, serviceFailureRefundable: true }],
+      bundles: [{ ...version, id: 'bundle', serviceRevisionIds: ['revision'], surveyDepositPolicyId: 'deposit', claimPolicyId: 'claim', cancellationPolicyId: 'cancel' }],
+      activation: { activeBusinessPolicyVersionId: 'bundle', lastDecisionId: 'decision', publicIntakeEnabled: true, captureEnabled: true, releaseEnabled: true },
+    }
+    const configured = render(ServicesPage, 'SYSTEM_ADMIN', [[policyKey, commercial]])
+    assert.match(configured, /Bản đồ nền đang cung cấp/)
+    assert.match(configured, /Đặt đơn giá/)
+    assert.match(configured, /500\.000/)
+    assert.match(configured, /7 ngày lịch/)
+    assert.match(configured, /Đăng ký công khai đang mở/)
+    assert.match(configured, /Cập nhật trạng thái hoạt động/)
+    const expiredBundle = { ...commercial, bundles: [{ ...commercial.bundles[0], effectiveTo: '2020-10-17T00:00:00Z' }] }
+    assert.match(render(ServicesPage, 'SYSTEM_ADMIN', [[policyKey, expiredBundle]]), /Đăng ký công khai đang đóng/)
+    const policyError = render(ServicesPage, 'SYSTEM_ADMIN', [[policyKey, new ApiError(405, 'Method Not Allowed')]])
+    assert.match(policyError, /Máy chủ chưa cung cấp API đọc chính sách thương mại V3/)
+    assert.doesNotMatch(policyError, /Tạo dịch vụ MAP/)
     const intakeCatalogue = { sharedDeposit: { amount: 500000, currency: 'VND' }, services: [{ surveyServiceId: 'v3-map', name: 'Chỉ bay bản đồ', description: 'Bản đồ và đếm trụ', pricePerPole: 1500, currency: 'VND', preliminaryLimitations: [] }] }
     const intake = render(SurveyIntakePage, null, [[['survey-intake-catalogue'], intakeCatalogue]])
     assert.match(intake, /Email nhận thông báo/)
