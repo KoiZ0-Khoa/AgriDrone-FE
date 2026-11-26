@@ -1,23 +1,15 @@
-import type { AppointmentBody, AssignedOrder, OrderScope } from './orderTypes'
+import type { AssignedOrder, OrderScope } from './orderTypes'
+import type { CaptureAppointmentBody, CaptureNoShowBody } from './v3Types'
 import type { ConfirmPricingBody } from './orderTypes'
 import type { FarmContext } from './farmOperationsApi'
 import type { GeoJsonPolygon } from '../farms/types'
 import type { CaptureSample, CaptureSession, OrthophotoBody } from './orderTypes'
+import { v3OrderStageNotices, v3OrderStatusLabels } from './v3Workflow'
 
-export const orderStatusLabels: Record<string, string> = {
-  AWAITING_BASELINE_DEPOSIT: 'Chờ thanh toán cọc bản đồ nền',
-  PENDING_BOUNDARY_VERIFICATION: 'Chờ xác minh ranh giới', AWAITING_BASELINE_APPOINTMENT: 'Chờ lịch khảo sát bản đồ',
-  AWAITING_BOUNDARY_CAPTURE: 'Chờ thu thập ranh giới', BASELINE_READY: 'Sẵn sàng bay bản đồ', BASELINE_IN_PROGRESS: 'Đang bay bản đồ', AWAITING_BASELINE_REVIEW: 'Chờ duyệt bản đồ',
-  AWAITING_PRICING: 'Chờ xử lý khảo sát', AWAITING_PAID_APPOINTMENT: 'Chờ lịch dịch vụ', AWAITING_PAYMENT: 'Chờ thanh toán còn lại', READY_FOR_PAID_SERVICE: 'Sẵn sàng dịch vụ', IN_PROGRESS: 'Đang thực hiện', PENDING_REVIEW: 'Chờ duyệt kết quả', COMPLETED: 'Hoàn tất', CANCELLED: 'Đã hủy',
-}
+// Web chỉ chạy luồng V3: nhãn và hướng dẫn theo trạng thái đơn V3. Bộ lọc trạng thái ở các trang danh sách đơn lấy từ đây.
+export const orderStatusLabels: Record<string, string> = v3OrderStatusLabels
+export const orderStageNotices: Record<string, { type: 'info' | 'warning'; title: string; description: string } | undefined> = v3OrderStageNotices
 export const appointmentStatusLabels: Record<string, string> = { PROPOSED: 'Chờ Owner xác nhận', CONFIRMED: 'Đã xác nhận', RESCHEDULE_REQUESTED: 'Owner yêu cầu đổi lịch', SUPERSEDED: 'Đã có lịch thay thế', CANCELLED: 'Đã hủy' }
-export const baselineStageNotices: Record<string, { type: 'info' | 'warning'; title: string; description: string }> = {
-  AWAITING_BASELINE_DEPOSIT: { type: 'info', title: 'Chờ Owner thanh toán cọc bản đồ nền', description: 'Sau khi khoản cọc được xác nhận, đơn chuyển sang bước chuẩn bị bay khảo sát bản đồ nền.' },
-  BASELINE_READY: { type: 'info', title: 'Đơn đã chuyển sang bước chuẩn bị bay bản đồ nền', description: 'Kiểm tra lịch hẹn, điều kiện vận hành và phạm vi khảo sát dự kiến trước khi thực hiện chuyến bay. Ranh giới chính thức sẽ được xác lập từ ảnh trực giao sau chuyến bay.' },
-  BASELINE_IN_PROGRESS: { type: 'info', title: 'Đang khảo sát và xử lý ảnh bản đồ nền', description: 'Khi ảnh trực giao đã sẵn sàng để xét duyệt, Manager sẽ xác minh ranh giới của nông trại.' },
-  AWAITING_BASELINE_REVIEW: { type: 'info', title: 'Chờ xác minh ranh giới từ ảnh trực giao', description: 'Đối chiếu ảnh đã xử lý, xác nhận bốn góc ranh giới, rồi kiểm tra các trụ và ngoại lệ trước khi công bố bản đồ nền.' },
-  AWAITING_BOUNDARY_CAPTURE: { type: 'warning', title: 'Đơn thuộc quy trình thu thập ranh giới cũ', description: 'Các điểm GNSS đã lưu được giữ trong lịch sử. Liên hệ quản trị hệ thống để tiếp tục đơn theo quy trình xác lập ranh giới từ ảnh trực giao.' },
-}
 export function matchingOrderSnapshot(order: AssignedOrder, scope: OrderScope) {
   return order.surveyOrderId === scope.surveyOrderId && order.farmId === scope.farmId && order.tenantId === scope.tenantId && order.orderVersion === scope.orderVersion && order.status === scope.orderStatus && order.requiresBaselineMapping === scope.requiresBaselineMapping && Number.isSafeInteger(scope.orderVersion) && scope.orderVersion > 0
 }
@@ -26,21 +18,24 @@ export const serviceIsReviewed = (scope: OrderScope) => typeof scope.serviceRevi
 // After internal publication the Order leaves PENDING_REVIEW; the review page stays reachable read-only.
 export const canOpenHealthReview = (serviceCode: string, scope: OrderScope) => serviceCode === 'PLANT_HEALTH' &&
   (['PENDING_REVIEW', 'COMPLETED'].includes(scope.orderStatus) || (['AWAITING_PRICING', 'AWAITING_PAYMENT'].includes(scope.orderStatus) && serviceIsReviewed(scope)))
-export function appointmentPurpose(scope: OrderScope): AppointmentBody['purpose'] | null {
-  if (scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' && scope.requiresBaselineMapping) return 'BASELINE_MAPPING'
-  if (scope.serviceReviewedAt === null && (scope.orderStatus === 'AWAITING_PAID_APPOINTMENT' || (scope.orderStatus === 'AWAITING_PRICING' && scope.requiresBaselineMapping))) return 'PAID_SERVICE'
-  return null
+// Lịch hẹn bay V3 (CAPTURE), khớp ProposeSurveyAppointmentCommandHandler + coordinator RecordNoShowAsync của BE.
+export function currentAppointment(order: AssignedOrder) {
+  return order.currentAppointmentId ? { id: order.currentAppointmentId, version: order.currentAppointmentVersion, status: order.currentAppointmentStatus } : null
 }
-export function proposalAppointment(order: AssignedOrder) {
-  return order.currentAppointmentId ? { id: order.currentAppointmentId, version: order.currentAppointmentVersion, status: order.currentAppointmentStatus, purpose: order.currentAppointmentPurpose } : null
+const validVersion = (value: number | null | undefined): value is number => Number.isSafeInteger(value) && value! > 0
+// Manager đề xuất lịch khi đơn chờ chốt lịch và chưa có lịch, hoặc Owner đã yêu cầu đổi lịch.
+// Lịch đang PROPOSED (chờ Owner) hay CONFIRMED thì BE từ chối (ActiveAppointmentExists).
+export function canProposeCaptureAppointment(order: AssignedOrder, scope: OrderScope) {
+  if (!matchingOrderSnapshot(order, scope) || scope.orderStatus !== 'AWAITING_APPOINTMENT') return false
+  const current = currentAppointment(order)
+  return current
+    ? current.status === 'RESCHEDULE_REQUESTED' && validVersion(current.version)
+    : order.currentAppointmentVersion === null && order.currentAppointmentStatus === null
 }
-export function canProposeAppointment(order: AssignedOrder, scope: OrderScope) {
-  const purpose = appointmentPurpose(scope)
-  const current = proposalAppointment(order)
-  return matchingOrderSnapshot(order, scope) && purpose !== null &&
-    (current ? current.purpose === purpose && Number.isSafeInteger(current.version) && current.version! > 0 &&
-      (current.status === 'RESCHEDULE_REQUESTED' || (purpose === 'PAID_SERVICE' && current.status === 'PROPOSED'))
-      : order.currentAppointmentVersion === null && order.currentAppointmentStatus === null && order.currentAppointmentPurpose === null)
+// Báo khách vắng mặt: đơn đã sẵn sàng bay và lịch đã được Owner xác nhận. BE kiểm thêm giờ vắng mặt nằm sau giờ bắt đầu lịch.
+export function canRecordCaptureNoShow(order: AssignedOrder, scope: OrderScope) {
+  const current = currentAppointment(order)
+  return matchingOrderSnapshot(order, scope) && scope.orderStatus === 'READY_FOR_CAPTURE' && !!current && current.status === 'CONFIRMED' && validVersion(current.version)
 }
 
 export function pricingSnapshotError(order: AssignedOrder, scope: OrderScope, farm: FarmContext): string | null {
@@ -74,16 +69,27 @@ function isValidScheduledDate(value: string): boolean {
 // Sends the chosen day as-is; BE (SurveyAppointmentWindow.TryResolveForDate) resolves it to the
 // full Asia/Ho_Chi_Minh day Prepare Mission Set expects, so FE no longer does its own UTC/timezone math.
 export const operationsDate = (now = Date.now()) => new Date(now + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
-export function appointmentBody(order: AssignedOrder, scope: OrderScope, scheduledDate: string, now = Date.now()): AppointmentBody {
+export function captureAppointmentBody(order: AssignedOrder, scope: OrderScope, scheduledDate: string, now = Date.now()): CaptureAppointmentBody {
   if (!matchingOrderSnapshot(order, scope)) throw new Error('Dữ liệu đơn không đồng nhất hoặc thiếu version. Tải lại trước khi đề xuất lịch.')
-  const purpose = appointmentPurpose(scope)
-  if (!purpose) throw new Error('Trạng thái đơn chưa cho phép đề xuất lịch.')
-  const current = proposalAppointment(order)
-  if (!canProposeAppointment(order, scope)) throw new Error('Đơn đã có lịch đang hoạt động hoặc thông tin mục đích/phiên bản lịch chưa đầy đủ. Tải lại để kiểm tra.')
-  if (!isValidScheduledDate(scheduledDate)) throw new Error('Chọn ngày khảo sát hợp lệ.')
-  // BE resolves today's date to now + 5 minutes; dates before today cannot be scheduled.
-  if (purpose === 'PAID_SERVICE' && (scheduledDate < operationsDate(now) || Date.parse(`${scheduledDate}T23:55:00+07:00`) <= now)) throw new Error('Chọn ngày bay bệnh còn thời gian thực hiện theo giờ Việt Nam.')
-  return { purpose, scheduledDate, expectedOrderVersion: scope.orderVersion, expectedCurrentAppointmentId: current?.id ?? null, expectedCurrentAppointmentVersion: current?.version ?? null }
+  if (!canProposeCaptureAppointment(order, scope)) throw new Error('Đơn chưa ở bước chốt lịch bay hoặc đang có lịch chờ Owner xác nhận. Tải lại để kiểm tra.')
+  if (!isValidScheduledDate(scheduledDate)) throw new Error('Chọn ngày bay hợp lệ.')
+  // BE (SurveyAppointmentWindow.TryResolveForDate) từ chối ngày đã qua; hôm nay thì bắt đầu từ hiện tại + 5 phút.
+  if (scheduledDate < operationsDate(now) || Date.parse(`${scheduledDate}T23:55:00+07:00`) <= now) throw new Error('Chọn ngày bay từ hôm nay trở đi, còn thời gian thực hiện theo giờ Việt Nam.')
+  const current = currentAppointment(order)
+  return { scheduledDate, expectedOrderVersion: scope.orderVersion, expectedCurrentAppointmentId: current?.id ?? null, expectedCurrentAppointmentVersion: current?.version ?? null }
+}
+
+export type NoShowValues = { occurredAt: string; reason: string; evidenceReference: string }
+// Thân yêu cầu báo vắng mặt, chưa có khóa thao tác (thêm bằng v3OperationFor lúc gửi).
+export function captureNoShowBody(order: AssignedOrder, scope: OrderScope, values: NoShowValues, now = Date.now()): Omit<CaptureNoShowBody, 'operationId' | 'payloadFingerprint'> {
+  if (!canRecordCaptureNoShow(order, scope)) throw new Error('Chỉ báo vắng mặt khi đơn sẵn sàng bay và lịch đã được Owner xác nhận. Tải lại để kiểm tra.')
+  const occurredAt = Date.parse(values.occurredAt)
+  if (!Number.isFinite(occurredAt) || occurredAt > now) throw new Error('Chọn thời điểm vắng mặt hợp lệ, không ở tương lai.')
+  const reason = values.reason.trim(), evidenceReference = values.evidenceReference.trim()
+  if (!reason || reason.length > 500) throw new Error('Nhập lý do từ 1 đến 500 ký tự.')
+  if (!evidenceReference || evidenceReference.length > 500) throw new Error('Nhập tham chiếu bằng chứng từ 1 đến 500 ký tự.')
+  const current = currentAppointment(order)!
+  return { appointmentId: current.id, expectedOrderVersion: scope.orderVersion, expectedAppointmentVersion: current.version!, occurredAt: new Date(occurredAt).toISOString(), reason, evidenceReference }
 }
 
 export function polygonFromPoints(points: { longitude: number; latitude: number }[], interiorRings: number[][][] = []): GeoJsonPolygon {

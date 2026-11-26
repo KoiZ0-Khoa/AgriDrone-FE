@@ -15,7 +15,6 @@ export type OrderScope = {
   currentApprovedBoundary: { farmBoundaryId: string; versionNumber: number; version: number; geometry: GeoJsonPolygon; source: string; evidenceReference: string | null; reviewedBy: string | null; reviewedAt: string | null } | null
   zones: { zoneId: string; code: string; name: string; boundary: GeoJsonPolygon | null; status: string; version: number }[]
 }
-export type AppointmentBody = { purpose: 'BASELINE_MAPPING' | 'PAID_SERVICE'; scheduledDate: string; expectedOrderVersion: number; expectedCurrentAppointmentId: string | null; expectedCurrentAppointmentVersion: number | null }
 export type Appointment = {
   surveyOrderId: string; appointmentId: string; purpose: string; revisionNumber: number; proposedStartAt: string; proposedEndAt: string; appointmentStatus: string; appointmentVersion: number; orderStatus: string; orderVersion: number
   scheduledDate: string | null; scheduledStartDate: string | null; scheduledEndDate: string | null

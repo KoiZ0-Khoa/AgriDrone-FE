@@ -7,7 +7,8 @@ const compile = file => ts.transpileModule(readFileSync(new URL(file, import.met
 const urlFor = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
 const client = urlFor(compile('../src/api/client.ts').replace('import.meta.env.VITE_API_BASE_URL', "'http://test.local'"))
 const api = await import(urlFor(compile('../src/features/surveys/api.ts').replace("'../../api/client'", JSON.stringify(client))))
-const workflow = await import(urlFor(compile('../src/features/surveys/workflow.ts').replace("'../../api/client'", JSON.stringify(client))))
+const v3WorkflowUrl = urlFor(compile('../src/features/surveys/v3Workflow.ts'))
+const workflow = await import(urlFor(compile('../src/features/surveys/workflow.ts').replace("'../../api/client'", JSON.stringify(client)).replace("'./v3Workflow'", JSON.stringify(v3WorkflowUrl))))
 const navigation = await import(urlFor(compile('../src/features/auth/navigation.ts')))
 const storage = await import(urlFor(compile('../src/features/auth/authStorage.ts')))
 const originalFetch = globalThis.fetch
@@ -115,8 +116,9 @@ test('service pricing sends both component rates, their sum and the observed ser
   assert.equal((await api.createServicePrice('admin', 's/1', body)).serviceVersion, 38)
 })
 
-test('catalogue reads use separate public, admin and price history routes', async () => {
-  const cases = [[() => api.getPublicServices(), '/api/public/survey-services', undefined], [() => api.getServices('admin'), '/api/system-admin/survey-services', 'Bearer admin'], [() => api.getPriceHistory('admin', 'service'), '/api/system-admin/survey-services/service/prices', 'Bearer admin']]
+test('catalogue reads use separate admin and price history routes', async () => {
+  assert.equal(api.getPublicServices, undefined)
+  const cases = [[() => api.getServices('admin'), '/api/system-admin/survey-services', 'Bearer admin'], [() => api.getPriceHistory('admin', 'service'), '/api/system-admin/survey-services/service/prices', 'Bearer admin']]
   for (const [run, path, auth] of cases) { globalThis.fetch = async (url, options) => { assert.equal(url, `http://test.local${path}`); assert.equal(options.headers.Authorization, auth); return Response.json([]) }; await run() }
 })
 
@@ -149,7 +151,8 @@ test('v7 review sends exactly four hyphenated answers; rejection can record fail
 
 test('request review sends actual checklist/version and approval idempotency key', async () => {
   const body = { expectedVersion: 419, reason: 'Reviewed', checklist, selectedSystemManagerProfileId: 'manager' }
-  globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system-admin/survey-requests/r%2F1/approve'); assert.equal(options.method, 'POST'); assert.equal(options.headers['Idempotency-Key'], 'same-operation'); assert.deepEqual(JSON.parse(options.body), body); return Response.json({ orderNumber: 'SO-1' }) }
+  // Phê duyệt đi route V3; nhận duyệt / từ chối chưa có bản V3 riêng nên vẫn dùng route chung.
+  globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/v3/system-admin/survey-requests/r%2F1/approve'); assert.equal(options.method, 'POST'); assert.equal(options.headers['Idempotency-Key'], 'same-operation'); assert.deepEqual(JSON.parse(options.body), body); return Response.json({ orderNumber: 'SO-1' }) }
   assert.equal((await api.approveRequest('admin', 'r/1', body, 'same-operation')).orderNumber, 'SO-1')
   globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/system-admin/survey-requests/r%2F1/start-review'); assert.deepEqual(JSON.parse(options.body), { expectedVersion: 418 }); return Response.json({ version: 419 }) }
   await api.startReview('admin', 'r/1', 418)
@@ -164,20 +167,13 @@ test('retries keep the operation key, edits create a new key', () => {
   assert.notEqual(workflow.operationFor(first, { amount: 2 }).key, first.key)
 })
 
-test('public intake includes the caller cookie without bearer auth', async () => {
-  const body = { surveyServiceId: 'service', tenantCode: 'ANPHU', tenantName: 'An Phu', applicantName: 'Customer', applicantEmail: 'customer@example.test', applicantPhone: '0901234567', farmName: 'Farm', farmAddress: 'Address', approximateAreaHa: 1, longitude: 108, latitude: 10, estimatedPoleCount: 100, preferredStartAt: null, preferredEndAt: null, notes: null }
-  globalThis.fetch = async (url, options) => { assert.equal(url, 'http://test.local/api/public/survey-requests'); assert.equal(options.credentials, 'include'); assert.equal(options.headers.Authorization, undefined); assert.equal(options.headers['Idempotency-Key'], 'intake-1'); assert.deepEqual(JSON.parse(options.body), body); return Response.json({ requestNumber: 'SR-1' }) }
-  assert.equal((await api.submitPublicRequest(body, 'intake-1')).requestNumber, 'SR-1')
+test('legacy intake routes are gone: only the V3 public and Owner submissions remain', () => {
+  for (const name of ['submitPublicRequest', 'submitNewFarmRequest', 'submitExistingFarmRequest']) assert.equal(api[name], undefined, name)
+  assert.equal(typeof api.submitPublicRequestV3, 'function')
+  assert.equal(typeof api.submitOwnerRequestV3, 'function')
 })
 
-test('Owner intake selects new-farm or existing-farm route with tenant bearer auth', async () => {
-  const common = { surveyServiceId: 'service', estimatedPoleCount: null, preferredStartAt: null, preferredEndAt: null, notes: null }
-  for (const [run, path, body] of [[() => api.submitNewFarmRequest('owner', { ...common, farmName: 'New farm' }, 'new-1'), '/api/tenant-owner/survey-requests/new-farm', { ...common, farmName: 'New farm' }], [() => api.submitExistingFarmRequest('owner', 'f/id', common, 'existing-1'), '/api/tenant-owner/farms/f%2Fid/survey-requests', common]]) {
-    globalThis.fetch = async (url, options) => { assert.equal(url, `http://test.local${path}`); assert.equal(options.headers.Authorization, 'Bearer owner'); assert.ok(options.headers['Idempotency-Key']); assert.deepEqual(JSON.parse(options.body), body); return Response.json({ status: 'SUBMITTED' }) }; await run()
-  }
-})
-
-test('Intake offers MAP and COMBO only for a bookable V3 catalogue and uses the legacy catalogue when V3 is closed', async () => {
+test('Intake offers MAP and COMBO only for a bookable V3 catalogue and never falls back to the legacy catalogue', async () => {
   const calls = []
   const controller = new AbortController()
   const sharedDeposit = { amount: 100000, currency: 'VND' }
@@ -197,20 +193,24 @@ test('Intake offers MAP and COMBO only for a bookable V3 catalogue and uses the 
     return Response.json([{ surveyServiceId: 'legacy', indicativePrice: { amountPerPole: 2000, currency: 'VND' } }])
   }
   const v3 = await api.getSurveyIntakeCatalogue(controller.signal)
-  assert.equal(v3.version, 'v3')
+  assert.equal(v3.version, undefined)
   assert.deepEqual(v3.sharedDeposit, sharedDeposit)
   assert.deepEqual(v3.services.map(service => service.surveyServiceId), ['v3-map', 'v3-combo'])
   assert.deepEqual(calls, ['/api/v3/catalog/survey-services'])
 
+  // Danh mục V3 đóng đăng ký: không có dịch vụ nào, không gọi danh mục cũ.
   isBookable = false
   calls.length = 0
-  assert.equal((await api.getSurveyIntakeCatalogue(controller.signal)).services[0].pricePerPole, 2000)
-  assert.deepEqual(calls, ['/api/v3/catalog/survey-services', '/api/public/survey-services'])
+  assert.deepEqual(await api.getSurveyIntakeCatalogue(controller.signal), { services: [] })
+  assert.deepEqual(calls, ['/api/v3/catalog/survey-services'])
 
-  status = 404
-  assert.equal((await api.getSurveyIntakeCatalogue(controller.signal)).version, 'legacy')
-  status = 500
-  await assert.rejects(api.getSurveyIntakeCatalogue(controller.signal), { status: 500 })
+  // Lỗi của danh mục V3 (kể cả 404) được báo ra, không còn quay về danh mục cũ.
+  isBookable = true
+  for (const failing of [404, 500]) {
+    status = failing
+    await assert.rejects(api.getSurveyIntakeCatalogue(controller.signal), { status: failing })
+  }
+  assert.ok(!calls.includes('/api/public/survey-services'))
 })
 
 test('V3 booking uses the catalogue service ID and sends the correct Owner or public credentials', async () => {
@@ -260,7 +260,7 @@ test('public intake requires both tenant fields and preserves an actionable dupl
   assert.doesNotThrow(() => workflow.validatePublicTenant({ tenantCode: 'ANPHU', tenantName: 'An Phu' }))
   for (const body of [{ tenantCode: ' ', tenantName: 'Name' }, { tenantCode: 'CODE', tenantName: '' }, { tenantCode: 'A'.repeat(51), tenantName: 'Name' }, { tenantCode: 'CODE', tenantName: 'A'.repeat(151) }]) assert.throws(() => workflow.validatePublicTenant(body))
   globalThis.fetch = async () => Response.json({ errorCode: 'SurveyRequest.TenantCodeUnavailable' }, { status: 409 })
-  await assert.rejects(api.submitPublicRequest({}, 'key'), error => /Mã đơn vị/.test(workflow.workflowError(error)))
+  await assert.rejects(api.submitPublicRequestV3({}, 'key'), error => /Mã đơn vị/.test(workflow.workflowError(error)))
 })
 
 test('conflict responses propagate without retry or false approval success', async () => {
@@ -272,7 +272,7 @@ test('conflict responses propagate without retry or false approval success', asy
 
 test('incomplete Farm profile conflicts explain the prerequisite instead of asking for a version reload', async () => {
   globalThis.fetch = async () => Response.json({ detail: 'The farm must contain a valid name, address, area and center point before submitting a survey request.', errorCode: 'SurveyRequest.FarmProfileIncomplete' }, { status: 409 })
-  await assert.rejects(api.submitExistingFarmRequest('owner', 'farm', { surveyServiceId: 'service' }, 'operation'), error => {
+  await assert.rejects(api.submitOwnerRequestV3('owner', { farmId: 'farm', surveyServiceId: 'service' }, 'operation'), error => {
     const message = workflow.workflowError(error)
     assert.match(message, /địa chỉ/)
     assert.match(message, /diện tích/)
@@ -284,5 +284,5 @@ test('incomplete Farm profile conflicts explain the prerequisite instead of aski
 
 test('unknown conflict details from BE remain visible instead of being replaced by a generic version message', async () => {
   globalThis.fetch = async () => Response.json({ detail: 'A specific business requirement was not satisfied.', errorCode: 'SurveyRequest.OtherConflict' }, { status: 409 })
-  await assert.rejects(api.submitExistingFarmRequest('owner', 'farm', { surveyServiceId: 'service' }, 'operation'), error => workflow.workflowError(error) === 'A specific business requirement was not satisfied.')
+  await assert.rejects(api.submitOwnerRequestV3('owner', { farmId: 'farm', surveyServiceId: 'service' }, 'operation'), error => workflow.workflowError(error) === 'A specific business requirement was not satisfied.')
 })

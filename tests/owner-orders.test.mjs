@@ -8,14 +8,20 @@ const compile = path => ts.transpileModule(readFileSync(new URL(path, import.met
 const dataUrl = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
 const clientUrl = dataUrl(compile('../src/api/client.ts').replace('import.meta.env.VITE_API_BASE_URL', "'http://test.local'"))
 const paymentWorkflowUrl = dataUrl(compile('../src/features/surveys/paymentWorkflow.ts'))
-const workflowUrl = dataUrl(compile('../src/features/surveys/ownerOrderWorkflow.ts').replaceAll("'./paymentWorkflow'", JSON.stringify(paymentWorkflowUrl)))
+const v3WorkflowUrl = dataUrl(compile('../src/features/surveys/v3Workflow.ts'))
+const workflowUrl = dataUrl(compile('../src/features/surveys/ownerOrderWorkflow.ts').replaceAll("'./paymentWorkflow'", JSON.stringify(paymentWorkflowUrl)).replace("'./v3Workflow'", JSON.stringify(v3WorkflowUrl)))
 const flow = await import(workflowUrl)
 const api = await import(dataUrl(compile('../src/features/surveys/ownerOrderApi.ts').replace("'../../api/client'", JSON.stringify(clientUrl)).replace("'./ownerOrderWorkflow'", JSON.stringify(workflowUrl))))
 const paymentApi = await import(dataUrl(compile('../src/features/surveys/orderApi.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
+const v3Api = await import(dataUrl(compile('../src/features/surveys/v3Api.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
 const readPaymentApi = await import(dataUrl(compile('../src/features/surveys/paymentApi.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 const base = 'http://test.local/api/tenant-owner/survey-orders'
+const v3Base = 'http://test.local/api/v3/tenant-owner/survey-orders'
+// Đơn V3 (G2): lịch CAPTURE. BE hiện trả purpose 'PAID_SERVICE' cho lịch CAPTURE của Owner (BE-6) nên FE không xét purpose.
+const v3Proposed = { ...ownerOrder, status: 'AWAITING_APPOINTMENT', currentAppointment: { ...ownerOrder.currentAppointment, purpose: 'PAID_SERVICE', status: 'PROPOSED' } }
+const v3Confirmed = { ...v3Proposed, status: 'AWAITING_DEPOSIT', orderVersion: 4166, currentAppointment: { ...v3Proposed.currentAppointment, status: 'CONFIRMED', appointmentVersion: 74 } }
 
 test('post-flight final accepts a past or absent appointment, including zero settlement, but still requires the paid deposit', () => {
   const paidDeposit = { ...history, payments: [{ ...paymentItem, status: 'PAID' }] }
@@ -36,15 +42,12 @@ test('post-flight final accepts a past or absent appointment, including zero set
   }
 })
 
-test('Health schedules are view-only for Owner; Manager takes over old proposed appointments', () => {
-  for (const status of ['AWAITING_PRICING', 'AWAITING_PAID_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'READY_FOR_PAID_SERVICE']) {
-    for (const appointmentStatus of ['PROPOSED', 'CONFIRMED', 'RESCHEDULE_REQUESTED']) {
-      const order = { ...ownerOrder, status, currentAppointment: { ...ownerOrder.currentAppointment, purpose: 'PAID_SERVICE', status: appointmentStatus } }
-      assert.equal(flow.canConfirmOwnerAppointment(order), false)
-      assert.equal(flow.canRescheduleOwnerAppointment(order, history), false)
-    }
+test('V3 Owner confirms a proposed capture appointment whatever purpose label BE sends', () => {
+  for (const purpose of ['CAPTURE', 'PAID_SERVICE', 'BASELINE_MAPPING']) {
+    assert.equal(flow.canConfirmOwnerAppointment({ ...v3Proposed, currentAppointment: { ...v3Proposed.currentAppointment, purpose } }), true, purpose)
   }
-  assert.equal(flow.canConfirmOwnerAppointment(ownerOrder), true)
+  // Trạng thái đơn của luồng cũ không còn được xác nhận lịch.
+  for (const status of ['AWAITING_BASELINE_APPOINTMENT', 'AWAITING_PAID_APPOINTMENT', 'AWAITING_DEPOSIT', 'READY_FOR_CAPTURE']) assert.equal(flow.canConfirmOwnerAppointment({ ...v3Proposed, status }), false, status)
 })
 
 test('Follow-up pays deposit after Manager confirms Health schedule, including an elapsed flight day', () => {
@@ -104,14 +107,16 @@ test('Owner list uses BE pagination/filter enum and bearer, never sends a tenant
     assert.equal(parsed.pathname, '/api/tenant-owner/survey-orders')
     assert.equal(parsed.searchParams.get('pageNumber'), '3')
     assert.equal(parsed.searchParams.get('pageSize'), '20')
-    assert.equal(parsed.searchParams.get('status'), 'AwaitingBaselineDeposit')
+    assert.equal(parsed.searchParams.get('status'), 'AwaitingReflightDecision')
     assert.equal(parsed.searchParams.has('tenantId'), false)
     assert.equal(options.headers.Authorization, 'Bearer owner')
     assert.equal(options.signal, abort.signal)
     return Response.json({ items: [confirmedOrder], pageNumber: 3, pageSize: 20, totalCount: 41 })
   }
-  assert.equal((await api.getOwnerOrders('owner', 3, 'AWAITING_BASELINE_DEPOSIT', abort.signal)).totalCount, 41)
+  assert.equal((await api.getOwnerOrders('owner', 3, 'AWAITING_REFLIGHT_DECISION', abort.signal)).totalCount, 41)
   assert.throws(() => api.getOwnerOrders('owner', 1, 'UNSUPPORTED'))
+  // Web chỉ lọc theo trạng thái V3: trạng thái của luồng cũ bị chặn trước khi gọi BE.
+  assert.throws(() => api.getOwnerOrders('owner', 1, 'AWAITING_BASELINE_DEPOSIT'))
 })
 
 test('Owner detail preserves actual totalAmount/startAt/endAt/status and rejects a different order', async () => {
@@ -122,31 +127,33 @@ test('Owner detail preserves actual totalAmount/startAt/endAt/status and rejects
   await assert.rejects(api.getOwnerOrder('owner', orderId), /không khớp/)
 })
 
-test('confirm/reschedule preserve exact observed versions and do not automatically retry conflict', async () => {
-  const body = flow.ownerAppointmentBody(ownerOrder)
+test('V3 confirm/reschedule use the capture-appointments routes with exact observed versions and do not retry a conflict', async () => {
+  assert.equal(api.confirmOwnerAppointment, undefined)
+  assert.equal(api.requestOwnerReschedule, undefined)
+  const body = flow.ownerAppointmentBody(v3Proposed)
   assert.deepEqual(body, { expectedOrderVersion: 4165, expectedAppointmentVersion: 73 })
   for (const [run, suffix, payload] of [
-    [() => api.confirmOwnerAppointment('owner', orderId, appointmentId, body), 'confirm', body],
-    [() => api.requestOwnerReschedule('owner', orderId, appointmentId, { ...body, reason: 'Change time' }), 'request-reschedule', { ...body, reason: 'Change time' }],
+    [() => v3Api.confirmCaptureAppointment('owner', orderId, appointmentId, body), 'confirm', body],
+    [() => v3Api.requestCaptureReschedule('owner', orderId, appointmentId, { ...body, reason: 'Change time' }), 'request-reschedule', { ...body, reason: 'Change time' }],
   ]) {
     let calls = 0
-    globalThis.fetch = async (url, options) => { calls++; assert.equal(url, base + '/' + orderId + '/appointments/' + appointmentId + '/' + suffix); assert.equal(options.method, 'POST'); assert.deepEqual(JSON.parse(options.body), payload); return Response.json({ errorCode: 'SurveyAppointment.VersionConflict', traceId: 'owner-trace' }, { status: 409 }) }
+    globalThis.fetch = async (url, options) => { calls++; assert.equal(url, v3Base + '/' + orderId + '/capture-appointments/' + appointmentId + '/' + suffix); assert.equal(options.method, 'POST'); assert.equal(options.headers.Authorization, 'Bearer owner'); assert.deepEqual(JSON.parse(options.body), payload); return Response.json({ errorCode: 'SurveyAppointment.VersionConflict', traceId: 'owner-trace' }, { status: 409 }) }
     await assert.rejects(run(), error => error.status === 409 && error.traceId === 'owner-trace')
     assert.equal(calls, 1)
   }
 })
 
-test('appointment conditions follow BE: proposed can confirm, expired cannot, reschedule closes after work starts or active paid-service payment', () => {
-  assert.equal(flow.canConfirmOwnerAppointment(ownerOrder), true)
-  assert.equal(flow.canConfirmOwnerAppointment(confirmedOrder), false)
-  assert.equal(flow.canConfirmOwnerAppointment(ownerOrder, Date.parse(ownerOrder.currentAppointment.endAt)), false)
-  for (const changes of [{ orderVersion: 0 }, { currentAppointment: null }, { status: 'COMPLETED' }, { currentAppointment: { ...ownerOrder.currentAppointment, appointmentVersion: undefined } }, { currentAppointment: { ...ownerOrder.currentAppointment, startAt: 'invalid' } }]) assert.equal(flow.canConfirmOwnerAppointment({ ...ownerOrder, ...changes }), false)
-  assert.equal(flow.canRescheduleOwnerAppointment(confirmedOrder, history), true)
-  assert.equal(flow.canRescheduleOwnerAppointment(paidServiceOrder, history), false)
-  assert.equal(flow.canRescheduleOwnerAppointment({ ...paidServiceOrder, status: 'READY_FOR_PAID_SERVICE' }, history), false)
-  assert.equal(flow.canRescheduleOwnerAppointment(paidServiceOrder, { ...history, payments: [{ ...paymentItem, status: 'PAID' }] }), false)
-  assert.equal(flow.canRescheduleOwnerAppointment({ ...confirmedOrder, status: 'BASELINE_IN_PROGRESS' }, history), false)
-  assert.equal(flow.canRescheduleOwnerAppointment(ownerOrder, undefined), false)
+test('V3 appointment conditions follow BE: proposed can confirm, expired cannot, reschedule closes once capture starts', () => {
+  assert.equal(flow.canConfirmOwnerAppointment(v3Proposed), true)
+  assert.equal(flow.canConfirmOwnerAppointment(v3Confirmed), false)
+  assert.equal(flow.canConfirmOwnerAppointment(v3Proposed, Date.parse(v3Proposed.currentAppointment.endAt)), false)
+  for (const changes of [{ orderVersion: 0 }, { currentAppointment: null }, { status: 'COMPLETED' }, { currentAppointment: { ...v3Proposed.currentAppointment, appointmentVersion: undefined } }, { currentAppointment: { ...v3Proposed.currentAppointment, startAt: 'invalid' } }]) assert.equal(flow.canConfirmOwnerAppointment({ ...v3Proposed, ...changes }), false)
+  // Đổi lịch: lịch chờ xác nhận hoặc đã xác nhận, đơn chưa bay.
+  assert.equal(flow.canRescheduleOwnerAppointment(v3Proposed), true)
+  assert.equal(flow.canRescheduleOwnerAppointment(v3Confirmed), true)
+  assert.equal(flow.canRescheduleOwnerAppointment({ ...v3Confirmed, status: 'READY_FOR_CAPTURE' }), true)
+  for (const status of ['CAPTURING', 'AWAITING_CAPTURE_UPLOAD', 'PROCESSING', 'COMPLETED', 'AWAITING_BASELINE_DEPOSIT']) assert.equal(flow.canRescheduleOwnerAppointment({ ...v3Confirmed, status }), false, status)
+  assert.equal(flow.canRescheduleOwnerAppointment({ ...v3Confirmed, currentAppointment: { ...v3Confirmed.currentAppointment, status: 'RESCHEDULE_REQUESTED' } }), false)
 })
 
 test('payment gating blocks duplicate/incomplete/expired contexts and keeps remainingAmount=0 without falling back to totalAmount', () => {
@@ -190,7 +197,7 @@ test('full mocked baseline flow reads proposed schedule, confirms, re-reads new 
     calls.push((options.method ?? 'GET') + ' ' + url)
     assert.equal(options.headers.Authorization, 'Bearer owner')
     if (url === base + '/' + orderId && !options.method) return Response.json(current)
-    if (url.endsWith('/confirm')) {
+    if (url === v3Base + '/' + orderId + '/capture-appointments/' + appointmentId + '/confirm') {
       assert.deepEqual(JSON.parse(options.body), { expectedOrderVersion: 4165, expectedAppointmentVersion: 73 })
       current = structuredClone(confirmedOrder)
       return Response.json({ surveyOrderId: orderId, orderVersion: 4166, appointmentVersion: 74, appointmentStatus: 'CONFIRMED' })
@@ -204,7 +211,7 @@ test('full mocked baseline flow reads proposed schedule, confirms, re-reads new 
     throw new Error('Unexpected request: ' + url)
   }
   let order = await api.getOwnerOrder('owner', orderId)
-  await api.confirmOwnerAppointment('owner', orderId, appointmentId, flow.ownerAppointmentBody(order))
+  await v3Api.confirmCaptureAppointment('owner', orderId, appointmentId, flow.ownerAppointmentBody(order))
   order = await api.getOwnerOrder('owner', orderId)
   const before = await readPaymentApi.getPaymentHistory('owner', orderId)
   const checkout = await paymentApi.initiateSurveyPayment('owner', orderId, flow.ownerPaymentBody(order, before))

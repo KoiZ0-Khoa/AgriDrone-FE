@@ -6,7 +6,8 @@ import ts from 'typescript'
 const compile = file => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2023 } }).outputText
 const urlFor = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
 const client = urlFor(compile('../src/api/client.ts').replace('import.meta.env.VITE_API_BASE_URL', "'http://test.local'"))
-const surveyWorkflow = urlFor(compile('../src/features/surveys/workflow.ts').replace("'../../api/client'", JSON.stringify(client)))
+const v3WorkflowUrl = urlFor(compile('../src/features/surveys/v3Workflow.ts'))
+const surveyWorkflow = urlFor(compile('../src/features/surveys/workflow.ts').replace("'../../api/client'", JSON.stringify(client)).replace("'./v3Workflow'", JSON.stringify(v3WorkflowUrl)))
 const api = await import(urlFor(compile('../src/features/reports/revenueApi.ts').replace("'../../api/client'", JSON.stringify(client))))
 const workflow = await import(urlFor(compile('../src/features/reports/revenueWorkflow.ts')
   .replace("'../../api/client'", JSON.stringify(client)).replace("'../surveys/workflow'", JSON.stringify(surveyWorkflow))))

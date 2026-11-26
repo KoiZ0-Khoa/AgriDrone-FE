@@ -1,5 +1,6 @@
 import { ApiError } from '../../api/client'
 import type { ExistingFarmIntake, Manager, NewFarmIntake, PublicIntake, ReviewChecklist, ReviewCode } from './types'
+import { v3ErrorMessage } from './v3Workflow'
 
 export const requestStatusLabels: Record<string, string> = { SUBMITTED: 'Chờ xét duyệt', UNDER_REVIEW: 'Đang xét duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Đã từ chối', WITHDRAWN: 'Đã rút' }
 export const requestKindLabels: Record<string, string> = { NEW_CUSTOMER: 'Khách hàng mới', EXISTING_TENANT_NEW_FARM: 'Nông trại mới', EXISTING_FARM_SURVEY: 'Khảo sát nông trại hiện có' }
@@ -54,6 +55,8 @@ export function workflowError(error: unknown) {
       'SurveyRequest.TenantCodeUnavailable': 'Mã đơn vị đã được sử dụng hoặc giữ chỗ bởi yêu cầu khác. Chọn mã khác trước khi gửi lại.',
     }
     if (error.code && messages[error.code]) return messages[error.code]
+    const v3Message = v3ErrorMessage(error.code)
+    if (v3Message) return v3Message
     if (error.status === 409 && (error.code?.endsWith('VersionConflict') || error.code?.includes('ConcurrentUpdate'))) return 'Dữ liệu đã được cập nhật. Tải lại và kiểm tra trước khi tiếp tục.'
   }
   if (error instanceof ApiError && error.status === 403) return 'Bạn không có quyền thực hiện thao tác này.'

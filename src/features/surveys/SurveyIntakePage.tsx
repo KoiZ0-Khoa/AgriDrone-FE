@@ -27,10 +27,10 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
   const farms = useQuery({ queryKey: ['farms', session?.tenant?.id, farmPage], queryFn: () => getFarms(session!.accessToken, farmPage), enabled: owner && session?.role === 'OWNER' && mode === 'existing' })
   const serviceId = Form.useWatch('surveyServiceId', form)
   const selectedService = catalogue.data?.services.find(service => service.surveyServiceId === serviceId)
-  const v3 = catalogue.data?.version === 'v3'
-  const maxFarmAddress = v3 ? 500 : 2000
-  const maxPoleCount = v3 ? 1_000_000 : 2_147_483_647
-  const maxNotes = v3 ? 2000 : 4000
+  // Giới hạn theo SubmitNewCustomerSurveyRequestV3ApiRequest / SubmitTenantOwnerSurveyRequestV3ApiRequest.
+  const maxFarmAddress = 500
+  const maxPoleCount = 1_000_000
+  const maxNotes = 2000
   const mutation = useMutation({ mutationFn: async (values: IntakeValues): Promise<SurveyIntakeReceipt> => {
     if (!catalogue.data?.services.some(service => service.surveyServiceId === values.surveyServiceId)) throw new Error('Hãy chọn lại dịch vụ khảo sát đang được cung cấp.')
     const [preferredStartAt, preferredEndAt] = preferredWindowForDate(values.preferredDate ?? '')
@@ -39,19 +39,17 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
     if (owner && mode === 'existing') {
       if (!values.farmId) throw new Error('Hãy chọn nông trại.')
       const existing = { farmId: values.farmId, ...common }
-      operation.current = operationFor(operation.current, { v3, ...existing })
-      if (v3) return api.submitOwnerRequestV3(session!.accessToken, existing, operation.current.key)
-      return api.submitExistingFarmRequest(session!.accessToken, values.farmId, common, operation.current.key)
+      operation.current = operationFor(operation.current, existing)
+      return api.submitOwnerRequestV3(session!.accessToken, existing, operation.current.key)
     }
     const newFarm = { ...common, farmName: values.farmName.trim(), farmAddress: values.farmAddress.trim(), approximateAreaHa: intakeArea(values.approximateAreaHa), longitude: intakeCoordinate(values.longitude, 'longitude'), latitude: intakeCoordinate(values.latitude, 'latitude') }
     validateIntake(newFarm)
     const body = owner ? newFarm : { ...newFarm, tenantCode: values.tenantCode.trim(), tenantName: values.tenantName.trim(), applicantName: values.applicantName.trim(), applicantEmail: values.applicantEmail.trim(), applicantPhone: values.applicantPhone.trim() }
     if (!owner) validatePublicTenant(body as PublicIntake)
-    operation.current = operationFor(operation.current, { v3, ...body })
-    if (v3) return owner
+    operation.current = operationFor(operation.current, body)
+    return owner
       ? api.submitOwnerRequestV3(session!.accessToken, { ...newFarm, farmId: null }, operation.current.key)
       : api.submitPublicRequestV3(body as PublicIntake, operation.current.key)
-    return owner ? api.submitNewFarmRequest(session!.accessToken, newFarm, operation.current.key) : api.submitPublicRequest(body as PublicIntake, operation.current.key)
   } })
   if (owner && session?.role !== 'OWNER') return <CommonState type="forbidden" description="Chủ đơn vị gửi yêu cầu khảo sát cho nông trại." />
   const newFarm = !owner || mode === 'new'
@@ -92,7 +90,7 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
                 rules={[{ required: true, whitespace: true, message: 'Nhập diện tích nông trại.' }, { validator: async (_, value: string | number | undefined) => {
                   if (value === undefined || value === '') return
                   const area = intakeArea(value)
-                  if (v3 && (area < 0.01 || area > 10_000)) throw new Error('Nhập diện tích từ 0,01 đến 10.000 ha.')
+                  if (area < 0.01 || area > 10_000) throw new Error('Nhập diện tích từ 0,01 đến 10.000 ha.')
                 } }]}>
                 <Input inputMode="decimal" placeholder="Ví dụ: 2,5123" />
               </Form.Item>

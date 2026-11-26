@@ -1,5 +1,6 @@
 export type OwnerAppointment = {
-  appointmentId: string; purpose: 'BASELINE_MAPPING' | 'PAID_SERVICE'; startAt: string; endAt: string; status: string; appointmentVersion: number
+  // purpose: BE trả 'PAID_SERVICE' cả với lịch CAPTURE của đơn V3 (BE-6), FE không dùng.
+  appointmentId: string; purpose: string; startAt: string; endAt: string; status: string; appointmentVersion: number
   scheduledDate: string | null; scheduledStartDate: string | null; scheduledEndDate: string | null
 }
 export type OwnerSurveyOrder = {
@@ -11,4 +12,3 @@ export type OwnerSurveyOrder = {
   serviceType: string
   depositAmount: number; totalAmount: number | null; remainingAmount: number | null; currency: string; currentAppointment: OwnerAppointment | null
 }
-export type OwnerAppointmentBody = { expectedOrderVersion: number; expectedAppointmentVersion: number }

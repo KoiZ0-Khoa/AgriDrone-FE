@@ -9,7 +9,8 @@ const clientUrl = dataUrl(compile('../src/api/client.ts').replace('import.meta.e
 const loadApi = file => import(dataUrl(compile(file).replace("'../../api/client'", JSON.stringify(clientUrl))))
 const farms = await loadApi('../src/features/surveys/farmOperationsApi.ts')
 const orders = await loadApi('../src/features/surveys/orderApi.ts')
-const workflow = await import(dataUrl(compile('../src/features/surveys/orderWorkflow.ts')))
+const v3WorkflowUrl = dataUrl(compile('../src/features/surveys/v3Workflow.ts'))
+const workflow = await import(dataUrl(compile('../src/features/surveys/orderWorkflow.ts').replace("'./v3Workflow'", JSON.stringify(v3WorkflowUrl))))
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 

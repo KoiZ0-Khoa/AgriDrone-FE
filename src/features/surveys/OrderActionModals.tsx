@@ -2,11 +2,14 @@ import { FormSubmit } from '../../components/FormSubmit'
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
 import { Alert, Button, Form, Input, Modal } from 'antd'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
-import { proposeAppointment, verifyOrderBoundary } from './orderApi'
+import { verifyOrderBoundary } from './orderApi'
 import type { Appointment, AssignedOrder, OrderScope } from './orderTypes'
-import { appointmentBody, appointmentPurpose, operationsDate, polygonFromPoints } from './orderWorkflow'
+import { captureAppointmentBody, captureNoShowBody, operationsDate, polygonFromPoints, type NoShowValues } from './orderWorkflow'
+import { proposeCaptureAppointment, recordCaptureNoShow } from './v3Api'
+import type { CaptureNoShowResult } from './v3Types'
+import { v3OperationFor, type V3Operation } from './v3Workflow'
 import { workflowError } from './workflow'
 import { intakeCoordinate } from './intakeNumbers'
 
@@ -18,15 +21,39 @@ const cannotRetry = (error: Error | null) => error instanceof ApiError && [403, 
 export function AppointmentModal({ token, order, scope, close, done }: { token: string; order: AssignedOrder; scope: OrderScope; close: () => void; done: (result: Appointment) => Promise<void> }) {
   const [snapshot] = useState(() => ({ order, scope }))
   const [form] = Form.useForm<{ date: string }>()
-  const mutation = useMutation({ retry: false, mutationFn: (values: { date: string }) => proposeAppointment(token, snapshot.scope.surveyOrderId, appointmentBody(snapshot.order, snapshot.scope, values.date)), onSuccess: done })
+  const mutation = useMutation({ retry: false, mutationFn: (values: { date: string }) => proposeCaptureAppointment(token, snapshot.scope.surveyOrderId, captureAppointmentBody(snapshot.order, snapshot.scope, values.date)), onSuccess: done })
   const locked = cannotRetry(mutation.error)
-  const health = appointmentPurpose(snapshot.scope) === 'PAID_SERVICE'
-  return <Modal open title={health ? 'Lên lịch bay bệnh' : 'Đề xuất lịch khảo sát bản đồ'} okText={health ? 'Lưu lịch bay bệnh' : 'Gửi đề xuất lịch'} cancelText={locked ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
-    <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p><p>{health ? 'Thống nhất thời gian với Owner trước khi lưu. Manager chốt lịch bay bệnh trên hệ thống; Owner xem lịch và không cần xác nhận.' : 'Đề xuất lịch bay bản đồ nền. Lịch chỉ chính thức khi Owner xác nhận.'}</p><p>Chọn ngày theo giờ Việt Nam. Nếu chọn hôm nay, thời gian bắt đầu do hệ thống điều chỉnh theo thời gian còn lại trong ngày.</p>
-    {health && snapshot.order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="info" title="Lịch dịch vụ cũ đang chờ xác nhận" description="Lưu lại để Manager chốt lịch bay bệnh. Hệ thống kiểm tra đúng phiên bản lịch đang có." /> : null}
+  const rescheduling = snapshot.order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED'
+  return <Modal open title={rescheduling ? 'Đề xuất lịch bay mới' : 'Đề xuất lịch bay'} okText="Gửi đề xuất lịch" cancelText={locked ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} okButtonProps={{ disabled: locked }} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
+    <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p><p>Lịch chỉ chính thức khi Owner xác nhận. Sau khi xác nhận, Owner trả cọc (nếu chưa đủ) rồi đơn chuyển sang bước sẵn sàng bay.</p><p>Chọn ngày theo giờ Việt Nam. Nếu chọn hôm nay, thời gian bắt đầu do hệ thống điều chỉnh theo thời gian còn lại trong ngày.</p>
     <Form form={form} layout="vertical" disabled={mutation.isPending || locked} onFinish={values => { if (!mutation.isPending && !locked) mutation.mutate(values) }}>
       <FormSubmit disabled={mutation.isPending || locked} />
-      <Form.Item name="date" label="Ngày khảo sát (giờ Việt Nam)" rules={[{ required: true }]}><Input type="date" min={health ? operationsDate() : undefined} /></Form.Item>
+      <Form.Item name="date" label="Ngày bay (giờ Việt Nam)" rules={[{ required: true }]}><Input type="date" min={operationsDate()} /></Form.Item>
+    </Form>
+    <MutationError error={mutation.error} />
+  </Modal>
+}
+
+// Giờ địa phương của trình duyệt cho <input type="datetime-local"> (không có múi giờ).
+const localDateTimeValue = (time: number) => { const date = new Date(time); date.setSeconds(0, 0); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) }
+export function NoShowModal({ token, order, scope, close, done }: { token: string; order: AssignedOrder; scope: OrderScope; close: () => void; done: (result: CaptureNoShowResult) => Promise<void> }) {
+  const [snapshot] = useState(() => ({ order, scope }))
+  const [form] = Form.useForm<NoShowValues>()
+  const operation = useRef<V3Operation | null>(null)
+  const mutation = useMutation({ retry: false, mutationFn: async (values: NoShowValues) => {
+    const body = captureNoShowBody(snapshot.order, snapshot.scope, values)
+    operation.current = await v3OperationFor(operation.current, body)
+    return recordCaptureNoShow(token, snapshot.scope.surveyOrderId, { ...body, operationId: operation.current.operationId, payloadFingerprint: operation.current.payloadFingerprint })
+  }, onSuccess: done })
+  const locked = cannotRetry(mutation.error)
+  return <Modal open title="Báo khách vắng mặt" okText="Ghi nhận vắng mặt" okButtonProps={{ danger: true, disabled: locked }} cancelText={locked ? 'Đóng và tải lại' : 'Hủy'} confirmLoading={mutation.isPending} onOk={() => form.submit()} onCancel={() => { if (!mutation.isPending) close() }} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }}>
+    <p><strong>{snapshot.order.farmName}</strong> · {snapshot.order.surveyServiceName}</p>
+    <p>Ghi nhận Owner không có mặt theo lịch bay đã xác nhận. Lịch hiện tại chuyển sang "đổi lịch" và đơn quay về bước chốt lịch bay. Nếu còn trong số lần vắng mặt được miễn phí, Manager đề xuất lịch mới ngay; nếu vượt, đơn cần System Admin xem xét.</p>
+    <Form form={form} layout="vertical" disabled={mutation.isPending || locked} initialValues={{ occurredAt: localDateTimeValue(Date.now()) }} onFinish={values => { if (!mutation.isPending && !locked) mutation.mutate(values) }}>
+      <FormSubmit disabled={mutation.isPending || locked} />
+      <Form.Item name="occurredAt" label="Thời điểm ghi nhận vắng mặt" extra="Phải sau giờ bắt đầu lịch hẹn và không ở tương lai." rules={[{ required: true, message: 'Chọn thời điểm.' }]}><Input type="datetime-local" max={localDateTimeValue(Date.now())} /></Form.Item>
+      <Form.Item name="reason" label="Lý do" rules={[{ required: true, whitespace: true, message: 'Nhập lý do.' }, { max: 500 }]}><Input.TextArea rows={3} maxLength={500} showCount /></Form.Item>
+      <Form.Item name="evidenceReference" label="Tham chiếu bằng chứng" extra="Ví dụ: mã cuộc gọi, ảnh chụp hiện trường, tin nhắn." rules={[{ required: true, whitespace: true, message: 'Nhập tham chiếu bằng chứng.' }, { max: 500 }]}><Input maxLength={500} /></Form.Item>
     </Form>
     <MutationError error={mutation.error} />
   </Modal>

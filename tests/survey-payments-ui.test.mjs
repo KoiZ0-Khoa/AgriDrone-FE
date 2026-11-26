@@ -39,12 +39,17 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
       return html
     }
     const button = (html, label) => [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0]).find(value => value.includes('>' + label + '<'))
-    const proposed = render('OWNER', [], { order: ownerOrder })
+    // G2 — đơn V3 chờ chốt lịch; BE trả purpose 'PAID_SERVICE' cho lịch CAPTURE (BE-6), FE vẫn cho xác nhận.
+    const v3Proposed = { ...ownerOrder, status: 'AWAITING_APPOINTMENT', currentAppointment: { ...ownerOrder.currentAppointment, purpose: 'PAID_SERVICE' } }
+    const proposed = render('OWNER', [], { order: v3Proposed })
     assert.match(proposed, /Sao chép mã đơn/)
     assert.match(proposed, /Long An/)
     assert.match(proposed, /01\/01\/2099|1\/1\/2099/)
     assert.ok(button(proposed, 'Xác nhận lịch'))
     assert.doesNotMatch(button(proposed, 'Xác nhận lịch'), /disabled=""/)
+    assert.ok(button(proposed, 'Yêu cầu đổi lịch'))
+    assert.match(proposed, /Lịch bay/)
+    assert.doesNotMatch(proposed, /Bay bệnh|Manager chốt lịch bay bệnh|Khảo sát bản đồ nền/)
     assert.doesNotMatch(proposed, /Chưa thể tạo thanh toán mới|Thông tin đơn và lịch hẹn chưa sẵn sàng/)
     const ready = render('OWNER', [])
     assert.doesNotMatch(button(ready, 'Thanh toán'), /disabled=""/)
@@ -73,12 +78,20 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     assert.doesNotMatch(deposit, /Xác nhận lịch hẹn trước khi thanh toán/)
     const healthOrder = { ...followUp, status: 'AWAITING_BASELINE_DEPOSIT', currentAppointment: { ...confirmedOrder.currentAppointment, purpose: 'PAID_SERVICE' } }
     const healthDeposit = render('OWNER', [], { order: healthOrder })
-    assert.match(healthDeposit, /Manager đã chốt lịch bay bệnh/)
+    // Trạng thái đơn của luồng cũ: không còn nút xác nhận hay đổi lịch. (Phần thanh toán cũ gỡ ở G3.)
     assert.doesNotMatch(healthDeposit, /<span>Xác nhận lịch<\/span>|<span>Yêu cầu đổi lịch<\/span>|Xác nhận lịch.*trước khi thanh toán/)
     assert.doesNotMatch(button(healthDeposit, 'Thanh toán'), /disabled=""/)
-    const oldHealthProposal = render('OWNER', [], { order: { ...healthOrder, status: 'AWAITING_PAID_APPOINTMENT', currentAppointment: { ...healthOrder.currentAppointment, status: 'PROPOSED' } } })
-    assert.match(oldHealthProposal, /Chờ Manager chốt lịch/)
-    assert.doesNotMatch(oldHealthProposal, /Chờ Owner xác nhận|<span>Xác nhận lịch<\/span>|<span>Yêu cầu đổi lịch<\/span>/)
+    // V3: lịch đã xác nhận, chờ cọc → còn đổi được lịch, không xác nhận lại.
+    const v3Confirmed = render('OWNER', [], { order: { ...v3Proposed, status: 'AWAITING_DEPOSIT', currentAppointment: { ...v3Proposed.currentAppointment, status: 'CONFIRMED' } } })
+    assert.match(v3Confirmed, /Đã xác nhận/)
+    assert.ok(button(v3Confirmed, 'Yêu cầu đổi lịch'))
+    assert.equal(button(v3Confirmed, 'Xác nhận lịch'), undefined)
+    // V3: đã yêu cầu đổi lịch / vắng mặt → chờ Manager đề xuất lại, không còn nút.
+    const v3Reschedule = render('OWNER', [], { order: { ...v3Proposed, currentAppointment: { ...v3Proposed.currentAppointment, status: 'RESCHEDULE_REQUESTED' } } })
+    assert.match(v3Reschedule, /Chờ Manager đề xuất thời gian mới/)
+    assert.doesNotMatch(v3Reschedule, /<span>Xác nhận lịch<\/span>|<span>Yêu cầu đổi lịch<\/span>/)
+    // V3: đã bắt đầu bay → hết đổi lịch.
+    assert.equal(button(render('OWNER', [], { order: { ...v3Proposed, status: 'CAPTURING', currentAppointment: { ...v3Proposed.currentAppointment, status: 'CONFIRMED' } } }), 'Yêu cầu đổi lịch'), undefined)
     const finalPaid = { ...paymentItem, purpose: 'FINAL_BALANCE', status: 'PAID', amount: paidServiceOrder.remainingAmount }
     const synchronize = render('OWNER', [finalPaid], { order: paidServiceOrder })
     assert.doesNotMatch(button(synchronize, 'Đồng bộ trạng thái đơn'), /disabled=""/)
