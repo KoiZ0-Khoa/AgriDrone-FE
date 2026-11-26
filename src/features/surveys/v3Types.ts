@@ -87,3 +87,103 @@ export type FrozenCaptureInput = V3FlightResult & {
   totalFileCount: number
   totalSizeBytes: number
 }
+
+// G6 — CreateV3QualityReflightRequest. Ngày bay lại theo giờ Việt Nam (yyyy-MM-dd); BE tự tạo lịch Capture cả ngày, ở trạng thái
+// chờ Owner xác nhận. Lý do và bằng chứng kỹ thuật 1–500 ký tự. Không thu thêm cọc.
+export type QualityReflightBody = {
+  droneId: string
+  scheduledDate: string
+  expectedOrderVersion: number
+  expectedParentAttemptVersion: number
+  reason: string
+  technicalQualityEvidence: string
+  operationId: string
+  payloadFingerprint: string
+}
+// CreateQualityReflightResult — status là ToString() của C# (PascalCase).
+export type QualityReflightResult = {
+  success: boolean
+  successorAttemptId: string
+  successorAttemptIndex: number
+  newMissionId: string
+  status: string
+  version: number
+}
+
+// G7 — duyệt kết quả V3 (GET/POST api/v3/system-manager/survey-orders/{orderId}/result-review...).
+export type GeoJsonPolygonV3 = { type: 'Polygon'; coordinates: number[][][] }
+export type ComboPendingFinding = {
+  findingId: string; findingVersion: number; plantProfileId: string | null; mappingCandidateId: string | null
+  longitude: number; latitude: number; observedAt: string; suspectedClassCode: string; classificationNature: string
+  confidence: number; uncertainty: string; limitations: string[]; evidenceMediaIds: string[]
+}
+export type ComboPendingBoundaryException = {
+  sourceReferenceId: string; longitude: number; latitude: number; boundaryClassification: string
+  measuredBoundaryDistanceM: number; boundaryThresholdM: number; evidenceMediaIds: string[]
+}
+export type ComboPendingGuidanceCandidate = { guidanceId: string; versionNumber: number; code: string; sourceReference: string }
+export type ComboPendingZone = {
+  sourceProposalId: string; geometry: GeoJsonPolygonV3; suspectedClassCode: string; membershipVersion: number
+  memberships: { findingId: string; plantProfileId: string | null; mappingCandidateId: string | null; confidence: number }[]
+  guidanceCandidates: ComboPendingGuidanceCandidate[]; evidenceMediaIds: string[]
+}
+export type ComboPendingBatch = {
+  batchId: string; jobId: string; sourceRevision: number; canonicalFingerprint: string; producedAt: string; importedAt: string
+  // blockingReasons: mỗi mục dạng "SourceType:SourceId:ReasonCode" (SurveyComboPendingReadPort).
+  blockingCount: number; blockingReasons: string[]; status: string; resultNature: string; limitationNotice: string
+  findings: ComboPendingFinding[]; boundaryExceptions: ComboPendingBoundaryException[]; diseaseZones: ComboPendingZone[]
+}
+export type ComboFindingDecisionValue = 'Accept' | 'Exclude'
+export type ComboZoneDecisionValue = 'Approve' | 'Reject' | 'Adjust'
+export type ComboBlockerResolutionValue = 'Resolved' | 'AcceptedWithJustification' | 'Excluded' | 'Corrected' | 'Unresolved'
+export type ComboFindingDecision = { findingId: string; decision: ComboFindingDecisionValue; reason: string | null; evidenceMediaIds: string[] }
+export type ComboZoneDecision = {
+  sourceProposalId: string; decision: ComboZoneDecisionValue; reviewedGeometry: GeoJsonPolygonV3 | null; reviewedFindingIds: string[] | null
+  selectedGuidanceId: string | null; selectedGuidanceVersionNumber: number | null; reason: string | null; evidenceMediaIds: string[]
+}
+export type ComboBlockerResolution = { sourceType: string; sourceId: string; reasonCode: string; resolution: ComboBlockerResolutionValue; reason: string | null; evidenceMediaIds: string[] }
+export type ComboReviewSummary = {
+  reviewRevisionId: string; revisionNumber: number; predecessorReviewId: string | null; outcome: string; reviewReason: string
+  confirmNoDiseaseObserved: boolean; negativeResultConfirmationEvidence: string | null; reviewedBy: string; reviewedAt: string; decisionFingerprint: string
+  findingsCount: number; acceptedFindingsCount: number; excludedFindingsCount: number; zonesCount: number; approvedZonesCount: number; rejectedZonesCount: number
+  blockersCount: number; resolvedBlockersCount: number; unresolvedBlockersCount: number
+  findingDecisions: ComboFindingDecision[]; zoneDecisions: ComboZoneDecision[]; blockerResolutions: ComboBlockerResolution[]
+}
+export type ExpectedFreezeTokens = {
+  orderId: string; expectedOrderVersion: number; expectedAttemptId: string; expectedCountSnapshotId: string; expectedCountFingerprint: string
+  expectedComboBatchId: string | null; expectedComboSourceRevision: number | null; expectedComboBatchFingerprint: string | null
+  expectedComboReviewRevisionId: string | null; expectedComboReviewFingerprint: string | null
+}
+export type ResultReview = {
+  orderId: string; tenantId: string; farmId: string; orderVersion: number; orderStatus: string; serviceCode: string; screensDisease: boolean
+  mappingKind: string; captureAttemptId: string; captureAttemptVersion: number; captureAttemptStatus: string; missionId: string
+  farmBaseMapVersionId: string; baselineMapVersionId: string; farmBoundaryVersionId: string; mappingCandidateBatchId: string
+  verifiedPoleCountSnapshotId: string; verifiedBillablePoleCount: number; countSnapshotFingerprint: string; countSnapshotRevision: number
+  currentApprovedResultRevisionId: string | null; currentApprovedResultFingerprint: string | null
+  comboPendingBatch: ComboPendingBatch | null; currentComboReview: ComboReviewSummary | null; expectedFreezeTokens: ExpectedFreezeTokens
+}
+export type ComboReviewOutcome = 'Approved' | 'Rejected'
+export type RecordComboReviewBody = {
+  operationId: string; expectedOrderVersion: number; expectedBatchId: string; expectedSourceRevision: number; expectedBatchFingerprint: string
+  expectedPreviousReviewId: string | null; outcome: ComboReviewOutcome; reviewReason: string
+  findingDecisions: ComboFindingDecision[]; zoneDecisions: ComboZoneDecision[]; blockerResolutions: ComboBlockerResolution[]
+  confirmNoDiseaseObserved: boolean; negativeResultConfirmationEvidence: string | null
+}
+export type ComboReviewResult = {
+  orderId: string; batchId: string; sourceRevision: number; reviewRevisionId: string; reviewRevisionNumber: number; predecessorReviewId: string | null
+  decisionFingerprint: string; outcome: string; unresolvedBlockersCount: number; unresolvedBlockers: string[]; reviewedAt: string; isReplay: boolean
+}
+// FreezeV3InternalResultRequest. reviewDecision: Approved | ApprovedWithObservations (BE còn nhận InternalApproved).
+export type FreezeResultReviewDecision = 'Approved' | 'ApprovedWithObservations'
+export type FreezeResultBody = {
+  operationId: string; expectedOrderVersion: number; expectedAttemptId: string; expectedCountSnapshotId: string; expectedCountFingerprint: string
+  reviewDecision: FreezeResultReviewDecision; freezeReason: string
+  expectedComboBatchId: string | null; expectedComboSourceRevision: number | null; expectedComboBatchFingerprint: string | null
+  expectedComboReviewRevisionId: string | null; expectedComboReviewFingerprint: string | null
+}
+export type FreezeResult = {
+  orderId: string; orderVersion: number; orderStatus: string; serviceCode: string; screensDisease: boolean
+  approvedResultRevisionId: string; approvedResultRevisionNumber: number; approvedResultFingerprint: string; reviewDecision: string
+  healthAssessmentStatus: string; limitationNotice: string | null; attemptId: string; attemptStatus: string
+  verifiedBillablePoleCount: number; frozenAt: string; isReplay: boolean
+}

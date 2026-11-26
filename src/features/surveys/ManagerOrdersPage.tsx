@@ -11,10 +11,11 @@ import { getAssignedOrder, getAssignedOrders, getOrderScope } from './orderApi'
 import type { Appointment, AssignedOrder } from './orderTypes'
 import { appointmentStatusLabels, orderStageNotices, matchingOrderSnapshot, orderStatusLabels, canOpenHealthReview, canProposeCaptureAppointment, canRecordCaptureNoShow } from './orderWorkflow'
 import { appointmentScheduleLabel, dateTime, workflowError } from './workflow'
-import { AppointmentModal, BoundaryVerificationModal, NoShowModal } from './OrderActionModals'
-import type { CaptureNoShowResult } from './v3Types'
+import { AppointmentModal, BoundaryVerificationModal, NoShowModal, QualityReflightModal } from './OrderActionModals'
+import { CaptureAttemptHistory } from './CaptureAttemptHistory'
+import type { CaptureNoShowResult, QualityReflightResult } from './v3Types'
 import { getCaptureAttempts } from './v3Api'
-import { captureAttemptStatusLabels, v3ServiceKind } from './v3Workflow'
+import { canCreateQualityReflight, v3ServiceKind } from './v3Workflow'
 import { BoundaryCapturePanel } from './BoundaryCapturePanel'
 import { OrthophotoCornersModal } from './BaselineModals'
 import { findMissionsBySurveyOrder } from '../missions/missionApi'
@@ -49,9 +50,10 @@ export function ManagerOrderDetailPage() {
   const token = session.accessToken
   const { orderId = '' } = useParams()
   const client = useQueryClient()
-  const [action, setAction] = useState<'appointment' | 'no-show' | 'boundary' | 'corners' | 'prepare-mission' | null>(null)
+  const [action, setAction] = useState<'appointment' | 'no-show' | 'reflight' | 'boundary' | 'corners' | 'prepare-mission' | null>(null)
   const [appointment, setAppointment] = useState<Appointment | null>(null)
   const [noShow, setNoShow] = useState<CaptureNoShowResult | null>(null)
+  const [reflight, setReflight] = useState<(QualityReflightResult & { orderId: string }) | null>(null)
   const context = useQuery({ queryKey: ['manager-order-context', orderId], queryFn: ({ signal }) => getAssignedOrder(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.status) ? 10000 : false })
   const query = useQuery({ queryKey: ['manager-order-scope', orderId], queryFn: ({ signal }) => getOrderScope(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.orderStatus) ? 10000 : false })
   const v3Order = v3ServiceKind(context.data?.surveyServiceCode) !== null
@@ -69,6 +71,7 @@ export function ManagerOrderDetailPage() {
   const rescheduleRequested = order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED'
   const canPropose = canProposeCaptureAppointment(order, scope)
   const canNoShow = canRecordCaptureNoShow(order, scope)
+  const canReflight = consistent && v3Order && attempts.isSuccess && canCreateQualityReflight(scope.orderStatus, attempts.data)
   const missionPurpose = consistent && !v3Order ? missionPurposeFor(order, scope.orderStatus) : null
   return <>
     {back}
@@ -83,32 +86,29 @@ export function ManagerOrderDetailPage() {
       <dl className="detail-list"><div><dt>Nông trại</dt><dd><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}`}>{order.farmName}</Link></dd></div><div><dt>Lịch bay</dt><dd>{order.currentAppointmentStatus ? appointmentStatusLabels[order.currentAppointmentStatus] ?? order.currentAppointmentStatus : 'Chưa có lịch hiện tại'}</dd></div><div><dt>Ranh giới đã xác minh</dt><dd>{scope.currentApprovedBoundary ? `Phiên bản ${scope.currentApprovedBoundary.versionNumber}` : 'Chưa có'}</dd></div><div><dt>Cập nhật</dt><dd>{dateTime(order.updatedAt)}</dd></div></dl>
       <Space wrap>{canPropose ? <Button type="primary" disabled={busy} onClick={() => { setNoShow(null); setAction('appointment') }}>{rescheduleRequested ? 'Đề xuất lịch bay mới' : 'Đề xuất lịch bay'}</Button> : null}
         {canNoShow ? <Button danger disabled={busy} onClick={() => { setAppointment(null); setAction('no-show') }}>Báo khách vắng mặt</Button> : null}
+        {canReflight ? <Button type="primary" disabled={busy || attempts.isFetching} onClick={() => { setReflight(null); setAction('reflight') }}>Bay lại</Button> : null}
         {consistent && !scope.requiresBaselineMapping && scope.orderStatus === 'PENDING_BOUNDARY_VERIFICATION' ? <Button type="primary" disabled={busy} onClick={() => setAction('boundary')}>Xác minh ranh giới</Button> : null}
         {consistent && scope.requiresBaselineMapping && scope.orderStatus === 'AWAITING_BASELINE_REVIEW' ? <Button type="primary" disabled={busy} onClick={() => setAction('corners')}>Đánh dấu 4 góc trên ảnh trực giao</Button> : null}
         {missionPurpose ? <Button disabled={busy} onClick={() => setAction('prepare-mission')}>Chuẩn bị nhiệm vụ bay · {missionPurposeLabels[missionPurpose]}</Button> : null}</Space>
-      {v3Order && attempts.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách lần bay" description={workflowError(attempts.error)} /> : null}
-      {v3Order && attempts.isSuccess ? <div className="form-hint">
-        <strong>Lần bay: </strong>
-        {attempts.data.length === 0 ? 'Chưa có lần bay.' : <Space wrap split="·">{attempts.data.map(attempt => {
-          const label = `Lần ${attempt.attemptIndex} (${captureAttemptStatusLabels[attempt.status] ?? attempt.status})`
-          return attempt.missionId ? <Link key={attempt.captureAttemptId} className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(attempt.missionId)}?orderId=${encodeURIComponent(orderId)}`}>{label} →</Link> : <span key={attempt.captureAttemptId}>{label}</span>
-        })}</Space>}
-      </div> : null}
+      {reflight?.orderId === orderId ? <Alert className="workflow-notice" showIcon type="success" title={`Đã tạo lần bay lại (lần ${reflight.successorAttemptIndex})`} description={<>Lịch bay mới đang chờ Owner xác nhận. Sau khi xác nhận, hoàn tất checklist trên nhiệm vụ mới rồi bắt đầu bay. <Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(reflight.newMissionId)}?orderId=${encodeURIComponent(orderId)}`}>Mở nhiệm vụ mới →</Link></>} /> : null}
       {!v3Order && missionsQuery.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách nhiệm vụ bay của đơn này" description={workflowError(missionsQuery.error)} /> : null}
       {!v3Order && missionsQuery.data && missionsQuery.data.length > 0 ? <div className="form-hint">
         <strong>Nhiệm vụ bay: </strong>
         <Space wrap split="·">{missionsQuery.data.map(mission => <Link key={mission.id} className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(mission.id)}`}>{readableCode(mission.missionCode)} ({missionStatusLabel(mission.status)}) →</Link>)}</Space>
       </div> : null}
-      {canOpenHealthReview(order.surveyServiceCode, scope) ? <p><Link className="workflow-detail-link" to={`/manager/orders/${encodeURIComponent(orderId)}/health-review`}>{scope.orderStatus === 'PENDING_REVIEW' ? 'Kiểm duyệt kết quả sức khỏe cây →' : 'Xem kết quả kiểm duyệt sức khỏe cây →'}</Link></p> : null}
+      {v3Order && ['PROCESSING', 'AWAITING_SETTLEMENT', 'COMPLETED'].includes(scope.orderStatus) ? <p><Link className="workflow-detail-link" to={`/manager/orders/${encodeURIComponent(orderId)}/result-review`}>{scope.orderStatus === 'PROCESSING' ? 'Duyệt và chốt kết quả →' : 'Xem kết quả đã chốt →'}</Link></p> : null}
+      {!v3Order && canOpenHealthReview(order.surveyServiceCode, scope) ?<p><Link className="workflow-detail-link" to={`/manager/orders/${encodeURIComponent(orderId)}/health-review`}>{scope.orderStatus === 'PENDING_REVIEW' ? 'Kiểm duyệt kết quả sức khỏe cây →' : 'Xem kết quả kiểm duyệt sức khỏe cây →'}</Link></p> : null}
       {scope.requiresBaselineMapping ? <>{stage || scope.orderStatus === 'AWAITING_BASELINE_APPOINTMENT' ? <p className="form-hint">Chốt lịch khảo sát bản đồ trước. Owner xác nhận lịch và thanh toán cọc trước khi thực hiện. Sau khi có ảnh trực giao, đối chiếu bốn góc ranh giới trước khi duyệt bản đồ nền.</p> : null}<Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/base-map-drafts?surveyOrderId=${encodeURIComponent(order.surveyOrderId)}`}>Duyệt bản đồ nền →</Link></> : null}
       {consistent && order.currentAppointmentStatus === 'PROPOSED' && !appointment ? <p className="form-hint">Lịch bay đang chờ Owner xác nhận.</p> : null}
       {appointment?.surveyOrderId === orderId && appointment.appointmentId === order.currentAppointmentId && order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch bay, chờ Owner xác nhận" description={appointmentScheduleLabel(appointment.scheduledDate, appointment.scheduledStartDate, appointment.scheduledEndDate, appointment.proposedStartAt, appointment.proposedEndAt)} /> : null}
     </section>
     {stage ? <Alert className="workflow-notice" type={stage.type} showIcon title={stage.title} description={stage.description} /> : null}
+    {v3Order ? <CaptureAttemptHistory attempts={attempts.data} error={attempts.isError ? attempts.error : null} loading={attempts.isPending} farmId={order.farmId} orderId={orderId} /> : null}
     {consistent && order.boundaryCaptureSessionId ? <BoundaryCapturePanel key={orderId} token={token} orderId={orderId} farmId={order.farmId} sessionId={order.boundaryCaptureSessionId} /> : null}
     {consistent && scope.orderStatus === 'COMPLETED' && order.surveyServiceCode === 'PLANT_HEALTH' ? <ManagerQualityRefundPanel key={orderId} token={token} actor={session.email} orderId={orderId} /> : null}
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Phạm vi khu vực</strong><span>Các khu vực được trả về trong phạm vi đơn khảo sát</span></div></div><Table rowKey="zoneId" dataSource={scope.zones} pagination={false} scroll={{ x: 500 }} locale={{ emptyText: 'Chưa có khu vực trong phạm vi đơn.' }} columns={[{ title: 'Mã', dataIndex: 'code' }, { title: 'Khu vực', dataIndex: 'name' }, { title: 'Trạng thái', render: (_, zone) => zone.status === 'ACTIVE' ? 'Đang hoạt động' : zone.status }]} /></section>
     {action === 'appointment' ? <AppointmentModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setAppointment(result); setAction(null); await refresh() }} /> : null}
+    {action === 'reflight' && attempts.data ? <QualityReflightModal token={token} order={order} scope={scope} attempts={attempts.data} close={() => { setAction(null); void refresh() }} done={async result => { setReflight({ ...result, orderId }); setAction(null); await refresh() }} /> : null}
     {action === 'no-show' ? <NoShowModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setNoShow(result); setAction(null); await refresh() }} /> : null}
     {action === 'boundary' ? <BoundaryVerificationModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
     {action === 'corners' ? <OrthophotoCornersModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}

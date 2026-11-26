@@ -155,9 +155,31 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     const v3Flight = renderOrder({ ...ready, surveyServiceCode: 'MAP' }, readyScope, [[['capture-attempts', 'order'], [
       { captureAttemptId: 'a', attemptIndex: 1, status: 'PLANNED', missionId: 'capture-mission' },
     ]]])
-    assert.match(v3Flight, /Lần 1 \(Đã chuẩn bị\)/)
+    // G6 — lịch sử chuyến bay thay cho danh sách một dòng.
+    assert.match(v3Flight, /Lịch sử chuyến bay/)
+    assert.match(v3Flight, /Lần bay 1/)
+    assert.match(v3Flight, /Đã chuẩn bị/)
     assert.match(v3Flight, /href="\/manager\/farms\/farm\/missions\/capture-mission\?orderId=order"/)
     assert.doesNotMatch(v3Flight, /Chuẩn bị nhiệm vụ bay ·/)
+    assert.doesNotMatch(v3Flight, /<span>Bay lại<\/span>/)
+    const failedHistory = [{ transitionSequence: 2, action: 'StartFlight', fromStatus: 'PREFLIGHT_READY', toStatus: 'IN_FLIGHT', reason: 'Bắt đầu', createdAt: '2026-11-20T01:00:00Z' }, { transitionSequence: 3, action: 'RecordFlightFailed', fromStatus: 'IN_FLIGHT', toStatus: 'FLIGHT_FAILED', reason: 'Mất tín hiệu GPS', createdAt: '2026-11-20T01:30:00Z' }]
+    const reflightOrder = { ...ready, status: 'AWAITING_REFLIGHT_DECISION', surveyServiceCode: 'COMBO' }
+    const reflightScope = { ...scope, orderStatus: 'AWAITING_REFLIGHT_DECISION' }
+    const failedAttempt = { captureAttemptId: 'a1', attemptIndex: 1, status: 'FLIGHT_FAILED', version: 7, missionId: 'failed-mission', parentAttemptId: null, startedAt: '2026-11-20T01:00:00Z', endedAt: '2026-11-20T01:30:00Z', history: failedHistory }
+    const reflightPage = renderOrder(reflightOrder, reflightScope, [[['capture-attempts', 'order'], [failedAttempt]]])
+    assert.match(reflightPage, /<button[^>]*><span>Bay lại<\/span><\/button>/)
+    assert.match(reflightPage, /Bay lỗi/)
+    assert.match(reflightPage, /Báo lỗi chuyến bay/)
+    assert.match(reflightPage, /Mất tín hiệu GPS/)
+    assert.match(reflightPage, /Đang bay → Bay lỗi/)
+    // Đã có lần bay lại (lần 2 đang hoạt động): không cho tạo thêm; lần 2 ghi rõ bay lại từ lần 1.
+    const afterReflight = renderOrder({ ...reflightOrder, status: 'AWAITING_APPOINTMENT' }, { ...reflightScope, orderStatus: 'AWAITING_APPOINTMENT' }, [[['capture-attempts', 'order'], [failedAttempt, { captureAttemptId: 'a2', attemptIndex: 2, status: 'PLANNED', version: 1, missionId: 'new-mission', parentAttemptId: 'a1', startedAt: null, endedAt: null, history: [] }]]])
+    assert.doesNotMatch(afterReflight, /<span>Bay lại<\/span>/)
+    assert.match(afterReflight, /Bay lại từ lần 1/)
+    assert.match(afterReflight, /Đang hoạt động/)
+    assert.match(afterReflight, /missions\/new-mission\?orderId=order/)
+    // Đơn khác trạng thái chờ bay lại: không có nút dù lần mới nhất bị lỗi.
+    assert.doesNotMatch(renderOrder({ ...reflightOrder, status: 'CANCELLED' }, { ...reflightScope, orderStatus: 'CANCELLED' }, [[['capture-attempts', 'order'], [failedAttempt]]]), /<span>Bay lại<\/span>/)
     const v3OrderId = '809340af-0243-46a8-ad75-383c0217569b'
     const flightProps = { token: 'test-token', orderId: v3OrderId, farmId: 'farm', missionId: 'capture-mission', scheduled: true, preflightSuitable: true, refreshMission: async () => {} }
     const flightOrder = { ...ready, surveyOrderId: v3OrderId, surveyServiceCode: 'MAP' }
