@@ -1,6 +1,6 @@
 import { ReloadOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
-import { Alert, App, Button, Input, Modal, Space } from 'antd'
+import { Alert, App, Button, Form, Input, Modal, Space } from 'antd'
 import { useRef, useState } from 'react'
 import { ownerGuid, validOwnerVersion } from '../surveys/ownerOrderWorkflow'
 import { mutationNeedsReload, SurveyMutationError } from '../surveys/SurveyMutationError'
@@ -93,6 +93,7 @@ export function CaptureInputReview({ token, orderId, orderVersion, attempt, refr
       <Button type="primary" disabled={busy || !canApprove} onClick={() => open('approve')}>Duyệt bộ dữ liệu</Button>
     </Space>
     <Modal open={!!dialog} title={label} okText={label} cancelText="Quay lại"
+      styles={{ footer: { paddingBlockStart: 12 } }}
       confirmLoading={review.isPending} closable={!review.isPending} mask={{ closable: !review.isPending }}
       cancelButtonProps={{ disabled: review.isPending }}
       okButtonProps={{ disabled: busy || reloadNeeded || (reopening ? !canReopen || !comment.trim() : !canApprove) }}
@@ -103,9 +104,11 @@ export function CaptureInputReview({ token, orderId, orderVersion, attempt, refr
         review.mutate(dialog.action)
       }}>
       <p>{reopening ? 'Sau khi mở lại, bạn có thể bổ sung ảnh hoặc nhập telemetry Blackbox rồi chốt lại.' : 'Kiểm tra ảnh và telemetry của bộ dữ liệu này trước khi duyệt.'}</p>
-      <label htmlFor="capture-review-comment">{reopening ? 'Lý do mở lại (bắt buộc)' : 'Ghi chú (không bắt buộc)'}</label>
-      <Input.TextArea id="capture-review-comment" value={comment} onChange={event => setComment(event.target.value)}
-        maxLength={500} showCount disabled={review.isPending} />
+      <Form.Item layout="vertical" htmlFor="capture-review-comment"
+        label={reopening ? 'Lý do mở lại (bắt buộc)' : 'Ghi chú (không bắt buộc)'}>
+        <Input.TextArea id="capture-review-comment" rows={3} value={comment} onChange={event => setComment(event.target.value)}
+          maxLength={500} showCount disabled={review.isPending} />
+      </Form.Item>
       {snapshotChanged ? <Alert showIcon type="warning" title="Dữ liệu vừa thay đổi. Đóng hộp thoại và kiểm tra lại." /> : null}
       <SurveyMutationError error={review.error} />
     </Modal>

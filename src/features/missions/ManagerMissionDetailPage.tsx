@@ -1,6 +1,6 @@
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Button, Checkbox, Divider, Form, Input, InputNumber, Modal, Radio, Space, Steps, Table, Tag } from 'antd'
+import { Alert, App, Button, Checkbox, Divider, Flex, Form, Input, InputNumber, Modal, Radio, Space, Steps, Table, Tag } from 'antd'
 import { useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
@@ -598,7 +598,7 @@ export function ManagerMissionDetailPage() {
         : captureOrder.isError || captureAttempts.isError ? <SurveyMutationError error={captureOrder.error ?? captureAttempts.error} />
         : captureOrder.isPending || captureAttempts.isPending ? <CommonState type="loading" />
         : !linkedCapture ? <Alert showIcon type="warning" title="Nhiệm vụ không thuộc lần bay của đơn này." />
-        : captureAttempt?.status === 'UPLOADED' || (frozenInput && captureAwaitingUpload) ? <>
+        : captureAttempt?.status === 'UPLOADED' || (frozenInput && captureAwaitingUpload) ? <Flex vertical gap="middle">
           <Alert showIcon type="info" title="Đã chốt bộ dữ liệu · Chờ duyệt đầu vào"
             description={frozenInput ? `${frozenInput.totalFileCount} tệp · ${fileSizeLabel(frozenInput.totalSizeBytes)}` : undefined} />
           {captureAwaitingReview && captureOrder.data && captureAttempt
@@ -607,17 +607,17 @@ export function ManagerMissionDetailPage() {
               refreshing={freezeMutation.isPending || captureOrder.isFetching || captureAttempts.isFetching}
               refresh={async () => { await refreshCaptureInput(); setLatest(null) }}
               onReopened={() => { freezeMutation.reset(); freezeOperation.current = null }} />
-            : <Button icon={<ReloadOutlined />} loading={captureOrder.isFetching || captureAttempts.isFetching}
-              onClick={() => { void refreshCaptureInput() }}>Kiểm tra lại</Button>}
-        </>
-        : captureFrozen ? <>
+            : <Space><Button icon={<ReloadOutlined />} loading={captureOrder.isFetching || captureAttempts.isFetching}
+              onClick={() => { void refreshCaptureInput() }}>Kiểm tra lại</Button></Space>}
+        </Flex>
+        : captureFrozen ? <Flex vertical gap="middle">
           <Alert showIcon type="success" title="Đã duyệt bộ dữ liệu đầu vào" />
           {captureCanProcess && !orthophotoEligible ? <Alert showIcon type="info" title="Chờ nhiệm vụ sẵn sàng ghép bản đồ"
             description={`Trạng thái nhiệm vụ: ${missionStatusLabel(status ?? mission.status)}.`}
             action={<Button icon={<ReloadOutlined />} loading={missionQuery.isFetching}
               onClick={async () => { await refreshCaptureInput(); setLatest(null) }}>Kiểm tra lại</Button>} /> : null}
-        </>
-        : captureAwaitingUpload ? <>
+        </Flex>
+        : captureAwaitingUpload ? <Flex vertical gap="middle">
           {readinessQuery.isPending ? <CommonState type="loading" /> : null}
           {readinessQuery.isError ? <SurveyMutationError error={readinessQuery.error} /> : null}
           {readinessQuery.isSuccess && readiness ? <>
@@ -639,7 +639,7 @@ export function ManagerMissionDetailPage() {
               })
             }}>Chốt bộ dữ liệu</Button>
           </Space>
-        </> : <p className="form-hint">Lần bay đang ở bước {captureAttempt?.status ? captureAttemptStatusLabels[captureAttempt.status] : 'chưa xác định'}.</p>}
+        </Flex> : <p className="form-hint">Lần bay đang ở bước {captureAttempt?.status ? captureAttemptStatusLabels[captureAttempt.status] : 'chưa xác định'}.</p>}
       {!confirmFreeze ? <SurveyMutationError error={freezeMutation.error} /> : null}
     </StepSection> : null}
     <Modal open={!!confirmFreeze} title="Chốt bộ dữ liệu đầu vào" okText="Chốt bộ dữ liệu" cancelText="Quay lại"
@@ -742,7 +742,7 @@ export function ManagerMissionDetailPage() {
         </>}
       </> : null}
     </StepSection> : null}
-    {!isPlantHealth ? <section className="resource-panel">
+    {!isPlantHealth ? <section className="resource-panel workflow-section">
       <div className="resource-panel-heading"><div><strong>GPS cây (lưu nháp)</strong><span>Bước lưu nháp trước khi đưa vào hệ thống chính thức (xem mục Publish ở màn kết quả nhận diện cây). Lưu sẽ thay toàn bộ danh sách hiện có, không cộng dồn.</span></div>
         <Button disabled={publishPlantGpsMutation.isPending} onClick={() => setPastingPlantGps(true)}>Dán danh sách cây</Button>
       </div>
