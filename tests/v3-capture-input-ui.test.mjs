@@ -42,10 +42,10 @@ test('G5 reviews the current manifest and restores the telemetry requirement aft
         role: 'SYSTEM_MANAGER', fullName: 'Manager', accessToken: 'test-token', expiresAt: '2099-01-01T00:00:00Z',
       }) },
     })
-    const render = ({ orderStatus = 'AWAITING_CAPTURE_UPLOAD', pointCount = 0, attempt = {} } = {}) => {
+    const render = ({ orderStatus = 'AWAITING_CAPTURE_UPLOAD', pointCount = 0, attempt = {}, missionCode = 'V3CAP-TEST', orderParam = orderId } = {}) => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } } })
       client.setQueryData(['mission-detail', farmId, missionId], {
-        id: missionId, farmId, missionCode: 'V3CAP-TEST', status: 'UPLOADING',
+        id: missionId, farmId, missionCode, status: 'UPLOADING',
         version: 42, droneId: 'drone', preflightConfirmedAt: '2026-11-26T08:00:00Z',
       })
       client.setQueryData(['manager-order-context', orderId], {
@@ -60,7 +60,7 @@ test('G5 reviews the current manifest and restores the telemetry requirement aft
       })
       try {
         return renderToStaticMarkup(h(QueryClientProvider, { client },
-          h(MemoryRouter, { initialEntries: ['/missions/' + farmId + '/' + missionId + '?orderId=' + orderId] },
+          h(MemoryRouter, { initialEntries: ['/missions/' + farmId + '/' + missionId + (orderParam ? '?orderId=' + orderParam : '')] },
             h(AuthProvider, null, h(Routes, null, h(Route, {
               path: '/missions/:farmId/:missionId', element: h(ManagerMissionDetailPage),
             }))))))
@@ -78,6 +78,18 @@ test('G5 reviews the current manifest and restores the telemetry requirement aft
     assert.match(withTelemetry, /<span>Chốt bộ dữ liệu<\/span>/)
     assert.doesNotMatch(withTelemetry, disabledButton('Chốt bộ dữ liệu'))
     assert.doesNotMatch(withTelemetry, /Cần nhập telemetry trước khi chốt/)
+
+    const orderHex = orderId.replaceAll('-', '')
+    for (const prefix of ['V3CAP', 'V3R2']) {
+      const directLink = render({ missionCode: prefix + '-' + orderHex, orderParam: '' })
+      assert.match(directLink, /Chọn tệp/)
+      assert.match(directLink, /Decode &amp; Import Telemetry/)
+      assert.doesNotMatch(directLink, /Mở nhiệm vụ từ đơn khảo sát để tải dữ liệu lần bay/)
+    }
+
+    const mismatchedAttempt = render({ missionCode: 'V3CAP-' + orderHex, orderParam: '', attempt: { missionId: 'another-mission' } })
+    assert.match(mismatchedAttempt, /Nhiệm vụ không thuộc lần bay của đơn này/)
+    assert.doesNotMatch(mismatchedAttempt, /Chọn tệp|Decode &amp; Import Telemetry/)
 
     const review = attempt => render({ orderStatus: 'AWAITING_INPUT_REVIEW', attempt })
     const oldManifest = review({ ...frozen, processingJobId: null })

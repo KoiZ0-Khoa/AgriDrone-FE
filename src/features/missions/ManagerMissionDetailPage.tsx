@@ -95,7 +95,7 @@ export function ManagerMissionDetailPage() {
   const token = useAuth().session!.accessToken
   const { farmId = '', missionId = '' } = useParams()
   const [params] = useSearchParams()
-  const orderId = params.get('orderId') ?? ''
+  const orderIdParam = params.get('orderId') ?? ''
   const client = useQueryClient()
   const [answers, setAnswers] = useState<Record<string, boolean>>({})
   const [suitableForFlight, setSuitableForFlight] = useState(false)
@@ -133,7 +133,6 @@ export function ManagerMissionDetailPage() {
 
   const missionQuery = useQuery({ queryKey: ['mission-detail', farmId, missionId], queryFn: ({ signal }) => api.findMissionById(token, farmId, missionId, signal) })
   const mission = missionQuery.data
-  // Direct links from the farm list have no order context. The prefix identifies the workflow only.
   const v3Capture = !!mission && (toScreamingSnakeCase(latest?.purpose ?? '') === 'CAPTURE' || /^V3(?:CAP|R\d+)-/i.test(mission.missionCode))
   const status = latest?.status ?? mission?.status
   const version = latest?.version ?? mission?.version
@@ -158,7 +157,9 @@ export function ManagerMissionDetailPage() {
   const farmBoundaryMissing = farmContextQuery.data ? !farmContextQuery.data.approvedBoundary : false
   const postFlight = ['FLIGHT_COMPLETED', 'UPLOADING', 'READY_FOR_PROCESSING', 'PROCESSING', 'AWAITING_REVIEW', 'COMPLETED'].includes(status ?? '')
     || (v3Capture && ['UPLOAD_FAILED', 'PROCESSING_FAILED'].includes(status ?? ''))
-  const captureOrderId = latest?.surveyOrderId ?? orderId
+  // Farm links omit orderId. Use the mission's order and verify the farm and attempt through the API.
+  const captureOrderId = (latest?.id === missionId ? latest.surveyOrderId : null) ??
+    (mission && surveyOrderIdFromMissionCode(mission.missionCode)) ?? orderIdParam
   const readCapture = v3Capture && postFlight && ownerGuid(captureOrderId)
   const captureOrder = useQuery({
     queryKey: ['manager-order-context', captureOrderId],
@@ -521,7 +522,7 @@ export function ManagerMissionDetailPage() {
     </StepSection> : null}
     {scheduled && !preflightDone ? <Alert className="workflow-notice" type="info" showIcon message="Hoàn tất checklist trước khi bay để mở bước &quot;Bắt đầu bay&quot;." /> : null}
     {v3Capture && ((scheduled && preflightDone) || inFlight) ? <StepSection title={scheduled ? 'Bắt đầu bay' : 'Kết thúc chuyến bay'} status="active">
-      <V3CaptureFlightActions key={`${orderId}:${missionId}`} token={token} orderId={orderId} farmId={farmId} missionId={missionId} scheduled={scheduled} preflightSuitable={preflightSuitable}
+      <V3CaptureFlightActions key={`${captureOrderId}:${missionId}`} token={token} orderId={captureOrderId} farmId={farmId} missionId={missionId} scheduled={scheduled} preflightSuitable={preflightSuitable}
         refreshMission={async () => { await missionQuery.refetch(); setLatest(null) }} />
     </StepSection> : null}
     {!v3Capture && preflightDone ? <StepSection title="Bắt đầu bay" status={scheduled ? 'active' : 'done'} summary="Đã bắt đầu bay.">
