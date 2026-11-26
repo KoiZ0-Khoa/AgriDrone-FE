@@ -6,6 +6,9 @@ import { checkApiHealth } from '../api/client'
 import { DashboardHeading, DashboardMetric, DashboardSectionHeading, DashboardState, dashboardNumber } from '../components/dashboard/DashboardUI'
 import { useAuth } from '../features/auth/AuthContext'
 import * as surveyApi from '../features/surveys/api'
+import { isEffective } from '../features/surveys/commercialPolicyActions'
+import { getCommercialServicePricing } from '../features/surveys/commercialPoliciesApi'
+import { v3ServiceKind } from '../features/surveys/v3Workflow'
 import { getSystemOrders } from '../features/surveys/systemOrderApi'
 import { orderStatusLabels } from '../features/surveys/orderWorkflow'
 import { dateTime, requestKindLabels, workflowError } from '../features/surveys/workflow'
@@ -20,12 +23,18 @@ export function SystemDashboardPage() {
   const requests = useQuery({ queryKey: ['survey-requests', 1, { status: 'SUBMITTED' }], queryFn: ({ signal }) => surveyApi.getRequests(token, 1, { status: 'SUBMITTED' }, signal) })
   const reviewing = useQuery({ queryKey: ['survey-requests', 1, { status: 'UNDER_REVIEW' }], queryFn: ({ signal }) => surveyApi.getRequests(token, 1, { status: 'UNDER_REVIEW' }, signal) })
   const orders = useQuery({ queryKey: ['system-survey-orders', 1, { status: '', tenantId: '', farmId: '' }], queryFn: ({ signal }) => getSystemOrders(token, 1, {}, signal) })
-  const services = useQuery({ queryKey: ['survey-services'], queryFn: ({ signal }) => surveyApi.getServices(token, signal) })
+  const services = useQuery({ queryKey: ['v3-commercial-service-pricing'], queryFn: ({ signal }) => getCommercialServicePricing(token, signal) })
   const queries = [health, tenants, managers, requests, reviewing, orders, services]
   const refreshing = queries.some(query => query.isFetching)
   const refresh = () => { void Promise.all(queries.map(query => query.refetch())) }
   const hasDataError = queries.slice(1).some(query => query.isError)
-  const activeServices = services.data?.filter(service => service.status === 'ACTIVE' && service.currentPrice !== null).length
+  const now = Date.now()
+  const [catalogue, prices] = services.data ?? [undefined, []]
+  const activeServices = catalogue?.filter(service =>
+    v3ServiceKind(service.code) && service.status === 'ACTIVE' &&
+    prices.some(price => price.surveyServiceId === service.id && isEffective(price, now)),
+  ).length
+  const requestsToReview = requests.data && reviewing.data ? requests.data.totalCount + reviewing.data.totalCount : undefined
   const pending = requests.data?.items ?? []
   const recentOrders = orders.data?.items ?? []
 
@@ -34,7 +43,7 @@ export function SystemDashboardPage() {
     {hasDataError ? <div className="dw-notice" role="alert"><span>Một số dữ liệu chưa tải được.</span><button type="button" className="dw-text-button" onClick={refresh}>Tải lại</button></div> : null}
 
     <section className="dw-metrics" aria-label="Chỉ số vận hành toàn hệ thống">
-      <DashboardMetric label="Chờ xét duyệt" value={requests.data?.totalCount} detail="Yêu cầu mới cần tiếp nhận" icon={<FileSearchOutlined />} to="/system/survey-requests" loading={requests.isPending} error={requests.isError} />
+      <DashboardMetric label="Yêu cầu cần xử lý" value={requestsToReview} detail="Yêu cầu mới và đang xét duyệt" icon={<FileSearchOutlined />} to="/system/survey-requests" loading={requests.isPending || reviewing.isPending} error={requests.isError || reviewing.isError} />
       <DashboardMetric label="Đơn khảo sát" value={orders.data?.totalCount} detail="Tất cả trạng thái" icon={<FileTextOutlined />} to="/system/survey-orders" loading={orders.isPending} error={orders.isError} />
       <DashboardMetric label="System Manager" value={managers.data?.totalCount} detail="Hồ sơ nhân sự vận hành" icon={<TeamOutlined />} to="/system/managers" loading={managers.isPending} error={managers.isError} />
       <DashboardMetric label="Đơn vị" value={tenants.data?.totalCount} detail="Phạm vi toàn hệ thống" icon={<BankOutlined />} to="/system/tenants" loading={tenants.isPending} error={tenants.isError} />
@@ -43,7 +52,7 @@ export function SystemDashboardPage() {
     <div className="dw-main-grid">
       <section className="dw-panel">
         <DashboardSectionHeading title="Yêu cầu mới" to="/system/survey-requests" />
-        {!requests.data && requests.isPending ? <DashboardState loading empty="" /> : !requests.data && requests.isError ? <DashboardState empty="" error={workflowError(requests.error)} retry={() => { void requests.refetch() }} /> : !pending.length ? <DashboardState empty="Đã xử lý hết yêu cầu mới"><p>Yêu cầu mới gửi sẽ xuất hiện tại đây để bạn tiếp nhận.</p><Link className="dw-text-link" to="/system/survey-requests">Xem các yêu cầu đã nhận <ArrowRightOutlined aria-hidden="true" /></Link></DashboardState> : <div className="dw-request-list">{pending.slice(0, 4).map(request => <Link className="dw-request-row" to={'/system/survey-requests/' + encodeURIComponent(request.id)} key={request.id}>
+        {!requests.data && requests.isPending ? <DashboardState loading empty="" /> : !requests.data && requests.isError ? <DashboardState empty="" error={workflowError(requests.error)} retry={() => { void requests.refetch() }} /> : !pending.length ? <DashboardState empty="Chưa có yêu cầu mới"><p>Yêu cầu mới gửi sẽ xuất hiện tại đây để bạn tiếp nhận.</p><Link className="dw-text-link" to="/system/survey-requests">Xem các yêu cầu đã nhận <ArrowRightOutlined aria-hidden="true" /></Link></DashboardState> : <div className="dw-request-list">{pending.slice(0, 4).map(request => <Link className="dw-request-row" to={'/system/survey-requests/' + encodeURIComponent(request.id)} key={request.id}>
           <span className="dw-request-mark" aria-hidden="true"><FileSearchOutlined /></span><span className="dw-row-copy"><span className="dw-row-code">{readableCode(request.requestNumber) ?? dateTime(request.createdAt)}</span><strong>{request.farmName}</strong><small>{request.tenantName ?? request.tenantCode ?? 'Khách hàng mới'} · {request.surveyServiceCode}</small></span><span className="dw-request-meta"><span className="dw-badge is-amber">Chờ xét duyệt</span><small>{requestKindLabels[request.kind] ?? request.kind}</small></span><ArrowRightOutlined className="dw-row-arrow" aria-hidden="true" />
         </Link>)}</div>}
         {requests.data && pending.length ? <div className="dw-panel-footer"><span>{Math.min(pending.length, 4)} yêu cầu mới nhất</span></div> : null}

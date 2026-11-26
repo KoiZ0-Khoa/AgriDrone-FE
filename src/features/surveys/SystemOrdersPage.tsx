@@ -5,14 +5,20 @@ import { Button, Pagination, Select, Space, Table, Tag } from 'antd'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
+import { ActionModal } from '../../management/ActionModal'
+import type { Action } from '../../management/actions'
 import { useAuth } from '../auth/AuthContext'
+import { readAuthUserId } from '../auth/authStorage'
 import { orderStatusLabels } from './orderWorkflow'
 import * as api from './systemOrderApi'
+import { canCancelSystemOrder, systemOrderCancellationAction } from './systemOrderActions'
 import type { SystemOrder } from './systemOrderTypes'
 import { dateTime, workflowError } from './workflow'
 
 export function SystemOrdersPage() {
   const token = useAuth().session!.accessToken
+  const requesterId = readAuthUserId(token)
+  const [action, setAction] = useState<Action | null>(null)
   const [page, setPage] = useState(1)
   const [params, setParams] = useSearchParams()
   const filters = { status: params.get('status') ?? '', tenantId: params.get('tenantId') ?? '', farmId: params.get('farmId') ?? '' }
@@ -23,7 +29,7 @@ export function SystemOrdersPage() {
     setPage(1); setParams(next)
   }
   return <>
-    <section className="resource-page-heading"><div><span className="page-kicker">QUẢN LÝ KHẢO SÁT</span><h1>Đơn khảo sát</h1><p>Theo dõi tiến độ khảo sát trên toàn hệ thống.</p></div><Space wrap><Link className="workflow-detail-link" to="/system/survey-orders/quality-refunds">Hồ sơ hoàn tiền</Link><Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => { void query.refetch() }}>Tải lại</Button></Space></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">QUẢN LÝ KHẢO SÁT</span><h1>Đơn khảo sát</h1><p>Theo dõi tiến độ khảo sát trên toàn hệ thống.</p></div><Space wrap><Link className="workflow-detail-link" to="/system/survey-orders/quality-refunds">Hồ sơ hoàn tiền cũ</Link><Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => { void query.refetch() }}>Tải lại</Button></Space></section>
     <section className="resource-panel">
       <div className="workflow-toolbar">
         <Select aria-label="Trạng thái đơn khảo sát" value={filters.status} onChange={value => filter('status', value)} options={[{ value: '', label: 'Tất cả trạng thái' }, ...Object.entries(orderStatusLabels).map(([value, label]) => ({ value, label }))]} />
@@ -36,10 +42,15 @@ export function SystemOrdersPage() {
           { title: 'Dịch vụ', dataIndex: 'surveyServiceName' },
           { title: 'Trạng thái', render: (_, order) => <Tag>{orderStatusLabels[order.status] ?? order.status}</Tag> },
           { title: 'Cập nhật', render: (_, order) => dateTime(order.updatedAt) },
-          { title: 'Thao tác', render: (_, order) => <Space orientation="vertical" align="start"><Space wrap><Button size="small" onClick={() => filter('farmId', order.farmId)}>Cùng nông trại</Button><Button size="small" onClick={() => { const next = new URLSearchParams(params); next.set('tenantId', order.tenantId); next.delete('farmId'); setPage(1); setParams(next) }}>Cùng đơn vị</Button></Space></Space> },
+          { title: 'Thao tác', render: (_, order) => <Space wrap>
+            <Button size="small" onClick={() => filter('farmId', order.farmId)}>Cùng nông trại</Button>
+            <Button size="small" onClick={() => { const next = new URLSearchParams(params); next.set('tenantId', order.tenantId); next.delete('farmId'); setPage(1); setParams(next) }}>Cùng đơn vị</Button>
+            {requesterId && canCancelSystemOrder(order) ? <Button size="small" danger onClick={() => setAction(systemOrderCancellationAction(token, requesterId, order))}>Hủy đơn</Button> : null}
+          </Space> },
         ]} />
         <Pagination current={page} pageSize={20} total={query.data?.totalCount ?? 0} onChange={setPage} showSizeChanger={false} />
       </>}
     </section>
+    {action ? <ActionModal action={action} close={() => setAction(null)} /> : null}
   </>
 }

@@ -6,12 +6,13 @@ test('Admin V3 uses the commercial-policy API and sends versioned configuration'
   const server = await createServer({ configFile: false, logLevel: 'silent', server: { middlewareMode: true, hmr: false, watch: null }, optimizeDeps: { noDiscovery: true, include: [] } })
   const originalFetch = globalThis.fetch
   try {
-    const { getCommercialPolicies } = await server.ssrLoadModule('/src/features/surveys/commercialPoliciesApi.ts')
+    const { getCommercialPolicies, getCommercialServicePricing } = await server.ssrLoadModule('/src/features/surveys/commercialPoliciesApi.ts')
     const { activationAction, bundleAction, createServiceAction, policyActions, priceAction, revisionAction } =
       await server.ssrLoadModule('/src/features/surveys/commercialPolicyActions.ts')
 
     const root = '/api/v3/system-admin/commercial-policies/'
     const requests = []
+    const reads = []
     let hasReadApi = true
     globalThis.fetch = async (input, options) => {
       const url = new URL(input, 'http://test.local')
@@ -22,6 +23,7 @@ test('Admin V3 uses the commercial-policy API and sends versioned configuration'
         requests.push([resource, JSON.parse(options.body)])
         return Response.json({})
       }
+      reads.push(resource)
       if (resource === 'activations') return new Response(null, { status: 404 })
       if (!hasReadApi) return new Response(null, { status: 405 })
       if (resource === 'bundle-versions') assert.equal(url.searchParams.get('streamKey'), 'DEFAULT_BUNDLE')
@@ -33,6 +35,9 @@ test('Admin V3 uses the commercial-policy API and sends versioned configuration'
     }
 
     const token = 'admin-token'
+    const [, pricing] = await getCommercialServicePricing(token, new AbortController().signal)
+    assert.equal(pricing.length, 101)
+    assert.deepEqual(reads.sort(), ['prices', 'prices', 'services'])
     const empty = await getCommercialPolicies(token, new AbortController().signal)
     assert.equal(empty.activation, null)
     assert.equal(empty.prices.length, 101)

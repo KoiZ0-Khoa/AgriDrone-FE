@@ -74,6 +74,13 @@ async function list<T>(resource: Exclude<keyof WriteRequests, 'activations'>, to
   }
 }
 
+export function getCommercialServicePricing(token: string, signal: AbortSignal) {
+  return Promise.all([
+    list<CommercialService>('services', token, signal),
+    list<Price>('prices', token, signal),
+  ])
+}
+
 async function getActivation(token: string, signal: AbortSignal) {
   try {
     return await apiRequest<Activation>(`${endpoint}/activations`, { token, signal, cache: 'no-store' })
@@ -84,10 +91,9 @@ async function getActivation(token: string, signal: AbortSignal) {
 }
 
 export async function getCommercialPolicies(token: string, signal: AbortSignal) {
-  const [services, revisions, prices, deposits, claims, cancellations, bundles, activation] = await Promise.all([
-    list<CommercialService>('services', token, signal),
+  const [[services, prices], revisions, deposits, claims, cancellations, bundles, activation] = await Promise.all([
+    getCommercialServicePricing(token, signal),
     list<Revision>('revisions', token, signal),
-    list<Price>('prices', token, signal),
     list<DepositPolicy>('deposit-policies', token, signal),
     list<ClaimPolicy>('claim-policies', token, signal),
     list<CancellationPolicy>('cancellation-policies', token, signal),

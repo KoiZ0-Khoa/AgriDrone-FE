@@ -71,7 +71,10 @@ test('Dashboards render real query shapes, scoped role actions, empty/error/part
 
     const request = { id: 'request-a', requestNumber: 'SR-2026-0012', kind: 'NEW_CUSTOMER', status: 'SUBMITTED', tenantName: 'Canh tác An Phú', farmName: 'Vườn thanh long Hàm Liêm', surveyServiceCode: 'PLANT_HEALTH', createdAt: '2026-10-26T08:00:00Z' }
     const order = { surveyOrderId: 'order-a', farmId: 'farm-a', orderNumber: 'SO-2026-0038', farmName: 'Nông trại An Phú', surveyServiceName: 'Khảo sát sức khỏe cây', status: 'AWAITING_BASELINE_APPOINTMENT', createdAt: '2026-10-25T08:00:00Z' }
-    const adminData = [[['api-health'], true], [['system-tenants', 1], { totalCount: 18, items: [] }], [['system-managers', 1, {}], { totalCount: 6, items: [] }], [['survey-requests', 1, { status: 'SUBMITTED' }], { totalCount: 12, items: [request, { ...request, id: 'request-b', requestNumber: 'SR-2026-0011', farmName: 'Nông trại Tân An', tenantName: 'Canh tác Tân An' }, { ...request, id: 'request-c', requestNumber: 'SR-2026-0010', farmName: 'Vườn thanh long ruột đỏ', kind: 'EXISTING_TENANT_NEW_FARM' }] }], [['survey-requests', 1, { status: 'UNDER_REVIEW' }], { totalCount: 5, items: [] }], [['system-survey-orders', 1, { status: '', tenantId: '', farmId: '' }], { totalCount: 38, items: [order, { ...order, surveyOrderId: 'order-b', orderNumber: 'SO-2026-0037', farmName: 'Nông trại Hàm Thuận', status: 'AWAITING_BASELINE_DEPOSIT' }, { ...order, surveyOrderId: 'order-c', orderNumber: 'SO-2026-0036', farmName: 'Nông trại Tân An', status: 'COMPLETED' }] }], [['survey-services'], [{ status: 'ACTIVE', currentPrice: { amountPerPole: 1500 } }]]]
+    const adminData = [[['api-health'], true], [['system-tenants', 1], { totalCount: 18, items: [] }], [['system-managers', 1, {}], { totalCount: 6, items: [] }], [['survey-requests', 1, { status: 'SUBMITTED' }], { totalCount: 12, items: [request, { ...request, id: 'request-b', requestNumber: 'SR-2026-0011', farmName: 'Nông trại Tân An', tenantName: 'Canh tác Tân An' }, { ...request, id: 'request-c', requestNumber: 'SR-2026-0010', farmName: 'Vườn thanh long ruột đỏ', kind: 'EXISTING_TENANT_NEW_FARM' }] }], [['survey-requests', 1, { status: 'UNDER_REVIEW' }], { totalCount: 5, items: [] }], [['system-survey-orders', 1, { status: '', tenantId: '', farmId: '' }], { totalCount: 38, items: [order, { ...order, surveyOrderId: 'order-b', orderNumber: 'SO-2026-0037', farmName: 'Nông trại Hàm Thuận', status: 'AWAITING_BASELINE_DEPOSIT' }, { ...order, surveyOrderId: 'order-c', orderNumber: 'SO-2026-0036', farmName: 'Nông trại Tân An', status: 'COMPLETED' }] }], [['v3-commercial-service-pricing'], [
+      [{ id: 'map', code: 'MAP', status: 'ACTIVE' }, { id: 'combo', code: 'COMBO', status: 'ACTIVE' }],
+      [{ surveyServiceId: 'map', effectiveFrom: '2020-01-01T00:00:00Z', effectiveTo: null }, { surveyServiceId: 'combo', effectiveFrom: '2019-01-01T00:00:00Z', effectiveTo: '2020-01-01T00:00:00Z' }],
+    ]]]
     const admin = render(SystemDashboardPage, 'SYSTEM_ADMIN', adminData, true)
     assert.match(admin, /Tổng quan vận hành/)
     assert.match(admin, /SR-2026-0012/)
@@ -79,10 +82,22 @@ test('Dashboards render real query shapes, scoped role actions, empty/error/part
     assert.match(admin, /href="\/system\/survey-orders\?farmId=farm-a"/)
     assert.match(admin, /38/)
     assert.match(admin, /Đang xét duyệt/)
+    assert.match(admin, /aria-label="Yêu cầu cần xử lý: 17"/)
+    const reviewingOnly = adminData.map(([key, value]) => [
+      key,
+      key[0] === 'survey-requests' ? { items: [], totalCount: key[2].status === 'UNDER_REVIEW' ? 1 : 0 } : value,
+    ])
+    const withReviewInProgress = render(SystemDashboardPage, 'SYSTEM_ADMIN', reviewingOnly, true)
+    assert.match(withReviewInProgress, /aria-label="Yêu cầu cần xử lý: 1"/)
+    assert.match(withReviewInProgress, /Chưa có yêu cầu mới/)
+    assert.match(withReviewInProgress, /<strong>Chờ xét duyệt<\/strong><\/div><b[^>]*>0<\/b>/)
+    assert.match(withReviewInProgress, /<strong>Đang xét duyệt<\/strong><\/div><b[^>]*>1<\/b>/)
+    assert.match(admin, /1 dịch vụ hoạt động, đã có giá/)
     const failure = new ApiError(503, 'Dịch vụ đang tạm gián đoạn.', 'Service.Unavailable')
     const partialData = adminData.map(([key, value]) => [key, key[0] === 'survey-requests' && key[2]?.status === 'SUBMITTED' ? failure : value])
     const partial = render(SystemDashboardPage, 'SYSTEM_ADMIN', partialData, true)
     assert.match(partial, /Một số dữ liệu chưa tải được/)
+    assert.match(partial, /aria-label="Yêu cầu cần xử lý: chưa có dữ liệu"/)
     assert.match(partial, /Dịch vụ đang tạm gián đoạn/)
     assert.match(partial, /SO-2026-0038/)
     const emptyData = ownerData.map(([key, value]) => [key, key[0] === 'farms' ? { items: [], totalCount: 0 } : value])

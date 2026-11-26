@@ -26,7 +26,8 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     const { V3CaptureFlightActions } = await server.ssrLoadModule('/src/features/missions/V3CaptureFlightActions.tsx')
     const { PlantHealthPage } = await server.ssrLoadModule('/src/features/surveys/PlantHealthPage.tsx')
     const { ApiError } = await server.ssrLoadModule('/src/api/client.ts')
-    const sessionFor = role => ({ role, fullName: 'Test user', email: 'test@example.test', phone: null, accessToken: 'test-token', expiresAt: '2099-01-01T00:00:00Z', tenant: role === 'OWNER' || role === 'MEMBER' ? { id: 'tenant', code: 'TEST', name: 'Test tenant' } : null })
+    const adminToken = 'header.' + Buffer.from(JSON.stringify({ sub: '8394b473-54c7-44b9-84c7-b25f95127d2a' })).toString('base64url') + '.signature'
+    const sessionFor = role => ({ role, fullName: 'Test user', email: 'test@example.test', phone: null, accessToken: role === 'SYSTEM_ADMIN' ? adminToken : 'test-token', expiresAt: '2099-01-01T00:00:00Z', tenant: role === 'OWNER' || role === 'MEMBER' ? { id: 'tenant', code: 'TEST', name: 'Test tenant' } : null })
     const clients = []
     function render(Component, role, data, props = {}, path = '/') {
       Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => role ? JSON.stringify(sessionFor(role)) : null } })
@@ -144,7 +145,13 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(adminOrders, /SO-TEST/)
     assert.match(adminOrders, /Farm One/)
     assert.doesNotMatch(adminOrders, /authorizations|Quản lý giấy tờ/)
-    assert.doesNotMatch(adminOrders, /Thanh toán SePay|Cất cánh/)
+    assert.doesNotMatch(adminOrders, /Thanh toán SePay|Cất cánh|<span>Hủy đơn<\/span>/)
+    const renderAdminOrder = nextOrder => render(SystemOrdersPage, 'SYSTEM_ADMIN', [[['system-survey-orders', 1, { status: '', tenantId: '', farmId: '' }], { items: [nextOrder], totalCount: 1 }]])
+    const cancelable = { ...order, surveyServiceCode: 'MAP', status: 'AWAITING_REFLIGHT_DECISION' }
+    assert.match(renderAdminOrder(cancelable), /<span>Hủy đơn<\/span>/)
+    for (const status of ['CAPTURING', 'COMPLETED', 'CANCELLED']) {
+      assert.doesNotMatch(renderAdminOrder({ ...cancelable, status }), /<span>Hủy đơn<\/span>/)
+    }
     const orders = render(ManagerOrdersPage, 'SYSTEM_MANAGER', [[['manager-orders', 1, ''], { items: [order], totalCount: 1 }]])
     assert.match(orders, /SO-TEST/)
     assert.match(orders, /href="\/manager\/orders\/order"/)

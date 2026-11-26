@@ -4,10 +4,15 @@ import type { CaptureAppointmentBody, CaptureAppointmentOwnerBody, CaptureNoShow
 import type { FreezeCaptureInputBody, FrozenCaptureInput, V3CompleteFlightBody, V3FailFlightBody, V3FlightResult, V3StartFlightBody } from './v3Types'
 import type { QualityReflightBody, QualityReflightResult } from './v3Types'
 import type { ComboReviewResult, FreezeResult, FreezeResultBody, RecordComboReviewBody, ResultReview } from './v3Types'
+import type { AdminCancellationBody } from './systemOrderTypes'
 
 // Toàn bộ route api/v3/... của web. Mỗi giai đoạn thêm route của mình vào đây (xem docs/v3-migration-plan-2026-11-26.md).
 const managerOrders = '/api/v3/system-manager/survey-orders'
 const ownerOrders = '/api/v3/tenant-owner/survey-orders'
+const adminOrders = '/api/v3/system-admin/survey-orders'
+
+export const decideOrderCancellation = (token: string, orderId: string, body: AdminCancellationBody) =>
+  apiRequest<unknown>(`${adminOrders}/${encodeURIComponent(orderId)}/cancellation-decisions`, { method: 'POST', token, body })
 const managerOrderPath = (orderId: string) => `${managerOrders}/${encodeURIComponent(orderId)}`
 const ownerOrderPath = (orderId: string) => `${ownerOrders}/${encodeURIComponent(orderId)}`
 const ownerAppointmentPath = (orderId: string, appointmentId: string) => `${ownerOrderPath(orderId)}/capture-appointments/${encodeURIComponent(appointmentId)}`

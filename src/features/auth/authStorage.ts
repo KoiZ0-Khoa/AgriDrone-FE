@@ -14,28 +14,33 @@ const tenantRoleMap: Record<string | number, TenantRole> = {
   MEMBER: 'MEMBER',
 }
 
-function readJwtRole(token: string): AppRole | undefined {
+type JwtClaims = { system_role?: string | string[]; tenant_role?: string; sub?: unknown }
+
+function readJwtClaims(token: string): JwtClaims | undefined {
   try {
     const payloadPart = token.split('.')[1]
     if (!payloadPart) return undefined
 
     const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/')
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    const payload = JSON.parse(atob(padded)) as {
-      system_role?: string | string[]
-      tenant_role?: string
-    }
-    const systemRoles = Array.isArray(payload.system_role)
-      ? payload.system_role
-      : [payload.system_role]
-
-    if (systemRoles.includes('SYSTEM_ADMIN')) return 'SYSTEM_ADMIN'
-    if (systemRoles.includes('SYSTEM_MANAGER')) return 'SYSTEM_MANAGER'
-    if (payload.tenant_role) return tenantRoleMap[payload.tenant_role]
-    return undefined
+    return JSON.parse(atob(padded)) as JwtClaims
   } catch {
     return undefined
   }
+}
+
+function readJwtRole(token: string): AppRole | undefined {
+  const claims = readJwtClaims(token)
+  const systemRoles = Array.isArray(claims?.system_role) ? claims.system_role : [claims?.system_role]
+  if (systemRoles.includes('SYSTEM_ADMIN')) return 'SYSTEM_ADMIN'
+  if (systemRoles.includes('SYSTEM_MANAGER')) return 'SYSTEM_MANAGER'
+  return claims?.tenant_role ? tenantRoleMap[claims.tenant_role] : undefined
+}
+
+export function readAuthUserId(token: string) {
+  const sub = readJwtClaims(token)?.sub
+  if (typeof sub !== 'string' || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(sub) || sub === '00000000-0000-0000-0000-000000000000') return null
+  return sub
 }
 
 export function toAuthSession(response: LoginUserResponse): AuthSession | null {
