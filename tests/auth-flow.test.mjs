@@ -51,3 +51,100 @@ test('membership access denial and network failures do not invalidate selection 
   assert.match(errors.getAuthErrorMessage(denied, 'tenant-selection'), /quyền vào đơn vị/)
   assert.match(errors.getAuthErrorMessage(new TypeError('Failed to fetch'), 'tenant-selection'), /Không kết nối/)
 })
+
+const client = await import(clientUrl)
+
+test('login and tenant selection ask BE for a refresh cookie (session header + credentials include)', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, credentials: options.credentials, session: options.headers['X-AgriDrone-Session'] })
+    return Response.json({ session: { accessToken: 'access-token' }, tenantSelection: null })
+  }
+  await auth.loginUser({ email: 'test@example.test', password: 'test-only' })
+  await auth.selectTenant('selection', 'tenant-a')
+  assert.deepEqual(calls, [
+    { url: 'http://test.local/api/auth/login', credentials: 'include', session: '1' },
+    { url: 'http://test.local/api/auth/select-tenant', credentials: 'include', session: '1' },
+  ])
+})
+
+test('login still works without a refresh cookie when BE rejects the origin for cookie sessions', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push(options.headers['X-AgriDrone-Session'])
+    return options.headers['X-AgriDrone-Session']
+      ? Response.json({ errorCode: 'Authentication.InvalidOrigin', detail: 'Request origin is not permitted for cookie authentication.' }, { status: 403 })
+      : Response.json({ session: { accessToken: 'access-token' }, tenantSelection: null })
+  }
+  const response = await auth.loginUser({ email: 'test@example.test', password: 'test-only' })
+  assert.equal(response.session.accessToken, 'access-token')
+  assert.deepEqual(calls, ['1', undefined])
+})
+
+test('wrong password is not retried as a cookie-origin problem', async () => {
+  let count = 0
+  globalThis.fetch = async () => { count++; return Response.json({ errorCode: 'Authentication.InvalidCredentials' }, { status: 401 }) }
+  await assert.rejects(() => auth.loginUser({ email: 'test@example.test', password: 'wrong' }), error => error.status === 401)
+  assert.equal(count, 1)
+})
+
+test('refresh and logout POST to the cookie routes with the session header and no bearer token', async () => {
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, method: options.method, credentials: options.credentials, session: options.headers['X-AgriDrone-Session'], auth: options.headers.Authorization })
+    return url.endsWith('/logout') ? new Response(null, { status: 204 }) : Response.json({ session: { accessToken: 'next' } })
+  }
+  const refreshed = await auth.refreshSession()
+  assert.equal(refreshed.session.accessToken, 'next')
+  await auth.logoutSession()
+  assert.deepEqual(calls, [
+    { url: 'http://test.local/api/auth/refresh', method: 'POST', credentials: 'include', session: '1', auth: undefined },
+    { url: 'http://test.local/api/auth/logout', method: 'POST', credentials: 'include', session: '1', auth: undefined },
+  ])
+})
+
+test('a 401 with a bearer token refreshes once and retries the same request with the new token', async () => {
+  const seen = []
+  const refreshedFor = []
+  client.setAccessTokenRefresher(async expired => { refreshedFor.push(expired); return 'fresh-token' })
+  try {
+    globalThis.fetch = async (url, options) => {
+      seen.push(options.headers.Authorization)
+      return options.headers.Authorization === 'Bearer fresh-token' ? Response.json({ ok: true }) : new Response(null, { status: 401 })
+    }
+    assert.deepEqual(await client.apiRequest('/api/things', { token: 'stale-token' }), { ok: true })
+    assert.deepEqual(seen, ['Bearer stale-token', 'Bearer fresh-token'])
+    assert.deepEqual(refreshedFor, ['stale-token'])
+  } finally {
+    client.setAccessTokenRefresher(null)
+  }
+})
+
+test('when refresh fails the original 401 surfaces; anonymous 401s never trigger a refresh', async () => {
+  let refreshCalls = 0
+  client.setAccessTokenRefresher(async () => { refreshCalls++; return null })
+  try {
+    globalThis.fetch = async () => new Response(null, { status: 401 })
+    await assert.rejects(() => client.apiRequest('/api/things', { token: 'stale-token' }), error => error.status === 401)
+    await assert.rejects(() => client.apiRequest('/api/public', {}), error => error.status === 401)
+    assert.equal(refreshCalls, 1)
+  } finally {
+    client.setAccessTokenRefresher(null)
+  }
+})
+
+test('concurrent refresh calls share one request so BE never sees the same refresh cookie twice', async () => {
+  let count = 0
+  let release
+  globalThis.fetch = async () => { count++; await new Promise(resolve => { release = resolve }); return Response.json({ session: { accessToken: 'next' } }) }
+  const first = auth.refreshSession()
+  const second = auth.refreshSession()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  release()
+  assert.equal((await first).session.accessToken, 'next')
+  assert.equal((await second).session.accessToken, 'next')
+  assert.equal(count, 1)
+  globalThis.fetch = async () => { count++; return Response.json({ session: { accessToken: 'later' } }) }
+  assert.equal((await auth.refreshSession()).session.accessToken, 'later')
+  assert.equal(count, 2)
+})

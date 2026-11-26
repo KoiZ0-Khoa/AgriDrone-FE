@@ -24,6 +24,7 @@ export function TenantRoute() {
 }
 
 export function AuthenticatedHome() {
-  const { session } = useAuth()
+  const { session, restoring } = useAuth()
+  if (!session && restoring) return <CommonState type="loading" title="Đang khôi phục phiên đăng nhập" />
   return <Navigate to={session ? homeForRole(session.role) : '/login'} replace />
 }
