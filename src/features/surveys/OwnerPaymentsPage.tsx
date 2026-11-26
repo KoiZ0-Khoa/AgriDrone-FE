@@ -77,7 +77,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
   if (query.isPending) return <>{back}<CommonState type="loading" title="Đang tải đơn khảo sát" /></>
   if (!query.data) return <>{back}<SurveyMutationError error={query.error} /><Button onClick={() => { void query.refetch() }}>Tải lại đơn</Button></>
   const order = query.data, appointment = order.currentAppointment
-  const showDeposit = order.depositAmount > 0 || ['AWAITING_BASELINE_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'AWAITING_BOUNDARY_CAPTURE', 'BASELINE_READY', 'BASELINE_IN_PROGRESS', 'AWAITING_BASELINE_REVIEW'].includes(order.status) || history.data?.payments.some(item => item.purpose === 'BASELINE_DEPOSIT')
+  const showDeposit = order.depositAmount > 0 || order.status === 'AWAITING_DEPOSIT'
   const busy = query.isFetching || query.isError || writes > 0
   return <>{back}
     <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT & THANH TOÁN</span><h1>{order.farmName}</h1><p>{orderStatusLabels[order.status] ?? order.status}</p><CopyReference value={order.orderNumber} label="Sao chép mã đơn" /></div><Button icon={<ReloadOutlined />} disabled={writes > 0 || !!action} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button></section>

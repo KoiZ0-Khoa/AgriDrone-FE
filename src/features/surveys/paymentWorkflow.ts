@@ -8,10 +8,10 @@ export type PaymentHistoryItem = {
 }
 export type PaymentHistory = { surveyOrderId: string; payments: PaymentHistoryItem[] }
 
-export const paymentPurposeLabels: Record<string, string> = { BASELINE_DEPOSIT: 'Cọc khảo sát', FINAL_BALANCE: 'Thanh toán còn lại' }
+export const paymentPurposeLabels: Record<string, string> = { ORDER_DEPOSIT: 'Cọc khảo sát', FINAL_BALANCE: 'Thanh toán còn lại' }
 export const paymentStatusLabels: Record<string, string> = {
   PENDING: 'Chờ thanh toán', PROCESSING: 'Đang xử lý', PAID: 'Đã thanh toán', CONFIRMED: 'Đã thanh toán',
-  FAILED: 'Không thành công', REFUNDED: 'Đã hoàn tiền', ADJUSTMENT_REQUIRED: 'Cần đối soát',
+  FAILED: 'Không thành công', REFUNDED: 'Đã hoàn tiền', ADJUSTMENT_REQUIRED: 'Cần đối soát', INVALIDATED: 'Đã vô hiệu hóa',
 }
 export function money(amount: number | null, currency = 'VND') {
   return amount === null ? 'Chưa xác định' : new Intl.NumberFormat('vi-VN', { style: 'currency', currency }).format(amount)

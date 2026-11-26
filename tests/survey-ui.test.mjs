@@ -23,6 +23,7 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     const { ManagerFarmsPage } = await server.ssrLoadModule('/src/features/surveys/ManagerFarmsPage.tsx')
     const { ManagerFarmDetailPage } = await server.ssrLoadModule('/src/features/surveys/ManagerFarmDetailPage.tsx')
     const { ManagerOrdersPage, ManagerOrderDetailPage } = await server.ssrLoadModule('/src/features/surveys/ManagerOrdersPage.tsx')
+    const { V3CaptureFlightActions } = await server.ssrLoadModule('/src/features/missions/V3CaptureFlightActions.tsx')
     const { PlantHealthPage } = await server.ssrLoadModule('/src/features/surveys/PlantHealthPage.tsx')
     const { ApiError } = await server.ssrLoadModule('/src/api/client.ts')
     const sessionFor = role => ({ role, fullName: 'Test user', email: 'test@example.test', phone: null, accessToken: 'test-token', expiresAt: '2099-01-01T00:00:00Z', tenant: role === 'OWNER' || role === 'MEMBER' ? { id: 'tenant', code: 'TEST', name: 'Test tenant' } : null })
@@ -137,15 +138,6 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     assert.match(orders, /href="\/manager\/orders\/order"/)
     const scope = { surveyOrderId: 'order', orderNumber: 'SO-TEST', tenantId: 'tenant', farmId: 'farm', orderStatus: order.status, orderVersion: 51, requiresBaselineMapping: true, currentApprovedBoundary: null, zones: [], serviceReviewedAt: null }
     const renderOrder = (nextOrder, nextScope, extra = []) => render(ManagerOrderDetailPage, 'SYSTEM_MANAGER', [[['manager-order-context', 'order'], nextOrder], [['manager-order-scope', 'order'], nextScope], ...extra], {}, '/manager/orders/order')
-    const pricingOrder = { ...order, status: 'AWAITING_PRICING' }, pricingScope = { ...scope, orderStatus: 'AWAITING_PRICING', serviceReviewedAt: '2026-11-16T03:00:00Z' }
-    const beforeReview = renderOrder(pricingOrder, { ...pricingScope, serviceReviewedAt: null })
-    assert.doesNotMatch(beforeReview, /Đề xuất lịch bay/)
-    assert.doesNotMatch(beforeReview, /<button[^>]*><span>Xác nhận số trụ và giá<\/span><\/button>/)
-    const missingReviewState = renderOrder(pricingOrder, { ...pricingScope, serviceReviewedAt: undefined })
-    assert.match(missingReviewState, /API chưa trả thông tin duyệt kết quả/)
-    assert.doesNotMatch(missingReviewState, /<button[^>]*><span>Xác nhận số trụ và giá<\/span><\/button>/)
-    assert.match(renderOrder(pricingOrder, pricingScope), /<button[^>]*>[\s\S]*?Xác nhận số trụ và giá[\s\S]*?<\/button>/)
-    assert.doesNotMatch(renderOrder({ ...pricingOrder, orderVersion: 50 }, pricingScope), />Xác nhận số trụ và giá<\/span>/)
     assert.doesNotMatch(renderOrder(order, scope), />Xác nhận số trụ và giá<\/span>/)
     // G2 — lịch bay V3 (CAPTURE): Manager đề xuất khi đơn chờ chốt lịch, báo vắng mặt khi đơn sẵn sàng bay.
     const firstProposal = renderOrder(order, scope)
@@ -160,6 +152,26 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     const readyPage = renderOrder(ready, readyScope)
     assert.match(readyPage, /<button[^>]*><span>Báo khách vắng mặt<\/span><\/button>/)
     assert.doesNotMatch(readyPage, /Đề xuất lịch bay/)
+    const v3Flight = renderOrder({ ...ready, surveyServiceCode: 'MAP' }, readyScope, [[['capture-attempts', 'order'], [
+      { captureAttemptId: 'a', attemptIndex: 1, status: 'PLANNED', missionId: 'capture-mission' },
+    ]]])
+    assert.match(v3Flight, /Lần 1 \(Đã chuẩn bị\)/)
+    assert.match(v3Flight, /href="\/manager\/farms\/farm\/missions\/capture-mission\?orderId=order"/)
+    assert.doesNotMatch(v3Flight, /Chuẩn bị nhiệm vụ bay ·/)
+    const v3OrderId = '809340af-0243-46a8-ad75-383c0217569b'
+    const flightProps = { token: 'test-token', orderId: v3OrderId, farmId: 'farm', missionId: 'capture-mission', scheduled: true, preflightSuitable: true, refreshMission: async () => {} }
+    const flightOrder = { ...ready, surveyOrderId: v3OrderId, surveyServiceCode: 'MAP' }
+    const flightAttempt = { captureAttemptId: '9d5d1c31-4e96-418f-9ed1-26feee1319a6', version: 4, status: 'PLANNED', missionId: flightProps.missionId }
+    const flightData = (nextOrder, attempt) => [[['manager-order-context', v3OrderId], nextOrder], [['capture-attempts', v3OrderId], [attempt]]]
+    const renderFlight = (props, nextOrder = flightOrder, attempt = flightAttempt) => render(V3CaptureFlightActions, 'SYSTEM_MANAGER', flightData(nextOrder, attempt), { ...flightProps, ...props })
+    assert.match(renderFlight({}), /<button(?![^>]*disabled)[^>]*>\s*<span>Bắt đầu bay<\/span><\/button>/)
+    assert.match(renderFlight({ preflightSuitable: false }), /<button[^>]*disabled[^>]*>\s*<span>Bắt đầu bay<\/span><\/button>/)
+    const differentMission = renderFlight({ missionId: 'foreign-mission' })
+    assert.match(differentMission, /Nhiệm vụ không thuộc lần bay/)
+    assert.doesNotMatch(differentMission, /Bắt đầu bay/)
+    const capturing = renderFlight({ scheduled: false }, { ...flightOrder, status: 'CAPTURING' }, { ...flightAttempt, status: 'IN_FLIGHT' })
+    assert.match(capturing, /Kết thúc chuyến bay/)
+    assert.match(capturing, /Báo lỗi chuyến bay/)
     assert.doesNotMatch(renderOrder({ ...ready, status: 'AWAITING_DEPOSIT' }, { ...scope, orderStatus: 'AWAITING_DEPOSIT' }), /Báo khách vắng mặt/)
     const rescheduleOrder = { ...order, currentAppointmentId: 'old-appointment', currentAppointmentVersion: 73, currentAppointmentStatus: 'RESCHEDULE_REQUESTED', currentAppointmentPurpose: 'CAPTURE' }
     const rescheduleList = render(ManagerOrdersPage, 'SYSTEM_MANAGER', [[['manager-orders', 1, ''], { items: [rescheduleOrder], totalCount: 1 }]])

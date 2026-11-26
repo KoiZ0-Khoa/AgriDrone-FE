@@ -8,19 +8,18 @@ import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { ManagerQualityRefundPanel } from './ManagerQualityRefundPanel'
 import { getAssignedOrder, getAssignedOrders, getOrderScope } from './orderApi'
-import type { Appointment, AssignedOrder, ConfirmedPricing } from './orderTypes'
-import { appointmentStatusLabels, orderStageNotices, matchingOrderSnapshot, orderStatusLabels, canOpenHealthReview, canProposeCaptureAppointment, canRecordCaptureNoShow, serviceIsReviewed } from './orderWorkflow'
-import { appointmentScheduleLabel, dateTime, priceLabel, workflowError } from './workflow'
+import type { Appointment, AssignedOrder } from './orderTypes'
+import { appointmentStatusLabels, orderStageNotices, matchingOrderSnapshot, orderStatusLabels, canOpenHealthReview, canProposeCaptureAppointment, canRecordCaptureNoShow } from './orderWorkflow'
+import { appointmentScheduleLabel, dateTime, workflowError } from './workflow'
 import { AppointmentModal, BoundaryVerificationModal, NoShowModal } from './OrderActionModals'
 import type { CaptureNoShowResult } from './v3Types'
+import { getCaptureAttempts } from './v3Api'
+import { captureAttemptStatusLabels, v3ServiceKind } from './v3Workflow'
 import { BoundaryCapturePanel } from './BoundaryCapturePanel'
 import { OrthophotoCornersModal } from './BaselineModals'
 import { findMissionsBySurveyOrder } from '../missions/missionApi'
 import { PrepareMissionModal } from '../missions/PrepareMissionModal'
 import { missionPurposeFor, missionPurposeLabels, missionStatusLabel } from '../missions/missionWorkflow'
-import { PricingConfirmationModal } from './PricingConfirmationModal'
-import { money } from './paymentWorkflow'
-import { SurveyInvoiceLines } from './SurveyInvoiceLines'
 
 export function ManagerOrdersPage() {
   const token = useAuth().session!.accessToken
@@ -50,17 +49,15 @@ export function ManagerOrderDetailPage() {
   const token = session.accessToken
   const { orderId = '' } = useParams()
   const client = useQueryClient()
-  const [action, setAction] = useState<'appointment' | 'no-show' | 'boundary' | 'corners' | 'prepare-mission' | 'pricing' | null>(null)
+  const [action, setAction] = useState<'appointment' | 'no-show' | 'boundary' | 'corners' | 'prepare-mission' | null>(null)
   const [appointment, setAppointment] = useState<Appointment | null>(null)
   const [noShow, setNoShow] = useState<CaptureNoShowResult | null>(null)
-  const [pricing, setPricing] = useState<ConfirmedPricing | null>(null)
   const context = useQuery({ queryKey: ['manager-order-context', orderId], queryFn: ({ signal }) => getAssignedOrder(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.status) ? 10000 : false })
   const query = useQuery({ queryKey: ['manager-order-scope', orderId], queryFn: ({ signal }) => getOrderScope(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.orderStatus) ? 10000 : false })
-  // "Chuẩn bị nhiệm vụ bay" only shows while missionPurposeFor() is truthy (order still at the schedulable step) — once the
-  // order moves past that, the only other link to a Mission's detail page disappears, so look missions up independently.
-  // Must stay above the early returns below (Rules of Hooks) — gated by `enabled` instead, same as the rest of this hook set.
-  const missionsQuery = useQuery({ queryKey: ['order-missions', context.data?.farmId, orderId], queryFn: ({ signal }) => findMissionsBySurveyOrder(token, context.data!.farmId, orderId, signal), enabled: Boolean(context.data) })
-  async function refresh() { await Promise.all([client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['manager-order-scope', orderId] }), client.invalidateQueries({ queryKey: ['manager-orders'] })]) }
+  const v3Order = v3ServiceKind(context.data?.surveyServiceCode) !== null
+  const attempts = useQuery({ queryKey: ['capture-attempts', orderId], queryFn: ({ signal }) => getCaptureAttempts(token, orderId, signal), enabled: v3Order, retry: false })
+  const missionsQuery = useQuery({ queryKey: ['order-missions', context.data?.farmId, orderId], queryFn: ({ signal }) => findMissionsBySurveyOrder(token, context.data!.farmId, orderId, signal), enabled: Boolean(context.data) && !v3Order })
+  async function refresh() { await Promise.all([client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['manager-order-scope', orderId] }), client.invalidateQueries({ queryKey: ['manager-orders'] }), client.invalidateQueries({ queryKey: ['capture-attempts', orderId] })]) }
   const back = <Link className="back-link" to="/manager/orders"><ArrowLeftOutlined /> Đơn khảo sát được giao</Link>
   if (query.isPending || context.isPending) return <>{back}<CommonState type="loading" /></>
   if (query.isError || context.isError) return <>{back}<CommonState type="error" description={workflowError(query.error ?? context.error)} retry={refresh} /></>
@@ -72,10 +69,7 @@ export function ManagerOrderDetailPage() {
   const rescheduleRequested = order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED'
   const canPropose = canProposeCaptureAppointment(order, scope)
   const canNoShow = canRecordCaptureNoShow(order, scope)
-  const canPrice = consistent && scope.orderStatus === 'AWAITING_PRICING' && serviceIsReviewed(scope)
-  const reviewStateKnown = scope.serviceReviewedAt === null || serviceIsReviewed(scope)
-  const pricingStage = scope.orderStatus === 'AWAITING_PRICING' ? serviceIsReviewed(scope) ? 'Chờ xác nhận số trụ và giá' : scope.serviceReviewedAt === null ? 'Chờ lên lịch bay bệnh' : 'Đang chờ thông tin duyệt kết quả' : null
-  const missionPurpose = consistent ? missionPurposeFor(order, scope.orderStatus) : null
+  const missionPurpose = consistent && !v3Order ? missionPurposeFor(order, scope.orderStatus) : null
   return <>
     {back}
     <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT</span><h1>{order.farmName}</h1><p>{order.surveyServiceName} · {dateTime(order.createdAt)}</p><CopyReference value={scope.orderNumber} label="Sao chép mã đơn" /></div><Space wrap><Button icon={<CopyOutlined />} onClick={async () => {
@@ -85,16 +79,23 @@ export function ManagerOrderDetailPage() {
     {!consistent ? <Alert className="workflow-notice" type="warning" showIcon title="Dữ liệu đơn vừa thay đổi. Tải lại trước khi thao tác." /> : null}
     {consistent && rescheduleRequested ? <Alert className="workflow-notice" type="warning" showIcon title="Cần đề xuất lịch bay mới" description="Owner đã yêu cầu đổi lịch hoặc đã ghi nhận vắng mặt. Đề xuất thời gian mới bằng nút bên dưới; Owner cần xác nhận lại lịch trước khi tiếp tục." /> : null}
     {noShow?.orderId === orderId ? <Alert className="workflow-notice" showIcon type={noShow.disposition === 'FreeReschedule' ? 'success' : 'warning'} title={`Đã ghi nhận vắng mặt lần ${noShow.occurrenceIndex}`} description={noShow.disposition === 'FreeReschedule' ? 'Trong số lần được đổi lịch miễn phí. Đề xuất lịch bay mới cho Owner.' : 'Đã vượt số lần đổi lịch miễn phí theo chính sách của đơn. System Admin sẽ xem xét trước khi tiếp tục.'} /> : null}
-    <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Tiến độ khảo sát</strong><span>{pricingStage ?? orderStatusLabels[scope.orderStatus] ?? scope.orderStatus}</span></div><Tag>{scope.requiresBaselineMapping ? 'Cần bản đồ nền' : 'Đã có bản đồ nền'}</Tag></div>
+    <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Tiến độ khảo sát</strong><span>{orderStatusLabels[scope.orderStatus] ?? scope.orderStatus}</span></div><Tag>{scope.requiresBaselineMapping ? 'Cần bản đồ nền' : 'Đã có bản đồ nền'}</Tag></div>
       <dl className="detail-list"><div><dt>Nông trại</dt><dd><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}`}>{order.farmName}</Link></dd></div><div><dt>Lịch bay</dt><dd>{order.currentAppointmentStatus ? appointmentStatusLabels[order.currentAppointmentStatus] ?? order.currentAppointmentStatus : 'Chưa có lịch hiện tại'}</dd></div><div><dt>Ranh giới đã xác minh</dt><dd>{scope.currentApprovedBoundary ? `Phiên bản ${scope.currentApprovedBoundary.versionNumber}` : 'Chưa có'}</dd></div><div><dt>Cập nhật</dt><dd>{dateTime(order.updatedAt)}</dd></div></dl>
       <Space wrap>{canPropose ? <Button type="primary" disabled={busy} onClick={() => { setNoShow(null); setAction('appointment') }}>{rescheduleRequested ? 'Đề xuất lịch bay mới' : 'Đề xuất lịch bay'}</Button> : null}
         {canNoShow ? <Button danger disabled={busy} onClick={() => { setAppointment(null); setAction('no-show') }}>Báo khách vắng mặt</Button> : null}
         {consistent && !scope.requiresBaselineMapping && scope.orderStatus === 'PENDING_BOUNDARY_VERIFICATION' ? <Button type="primary" disabled={busy} onClick={() => setAction('boundary')}>Xác minh ranh giới</Button> : null}
         {consistent && scope.requiresBaselineMapping && scope.orderStatus === 'AWAITING_BASELINE_REVIEW' ? <Button type="primary" disabled={busy} onClick={() => setAction('corners')}>Đánh dấu 4 góc trên ảnh trực giao</Button> : null}
-        {canPrice ? <Button type="primary" disabled={busy} onClick={() => setAction('pricing')}>Xác nhận số trụ và giá</Button> : null}
         {missionPurpose ? <Button disabled={busy} onClick={() => setAction('prepare-mission')}>Chuẩn bị nhiệm vụ bay · {missionPurposeLabels[missionPurpose]}</Button> : null}</Space>
-      {missionsQuery.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách nhiệm vụ bay của đơn này" description={workflowError(missionsQuery.error)} /> : null}
-      {missionsQuery.data && missionsQuery.data.length > 0 ? <div className="form-hint">
+      {v3Order && attempts.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách lần bay" description={workflowError(attempts.error)} /> : null}
+      {v3Order && attempts.isSuccess ? <div className="form-hint">
+        <strong>Lần bay: </strong>
+        {attempts.data.length === 0 ? 'Chưa có lần bay.' : <Space wrap split="·">{attempts.data.map(attempt => {
+          const label = `Lần ${attempt.attemptIndex} (${captureAttemptStatusLabels[attempt.status] ?? attempt.status})`
+          return attempt.missionId ? <Link key={attempt.captureAttemptId} className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(attempt.missionId)}?orderId=${encodeURIComponent(orderId)}`}>{label} →</Link> : <span key={attempt.captureAttemptId}>{label}</span>
+        })}</Space>}
+      </div> : null}
+      {!v3Order && missionsQuery.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách nhiệm vụ bay của đơn này" description={workflowError(missionsQuery.error)} /> : null}
+      {!v3Order && missionsQuery.data && missionsQuery.data.length > 0 ? <div className="form-hint">
         <strong>Nhiệm vụ bay: </strong>
         <Space wrap split="·">{missionsQuery.data.map(mission => <Link key={mission.id} className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(mission.id)}`}>{readableCode(mission.missionCode)} ({missionStatusLabel(mission.status)}) →</Link>)}</Space>
       </div> : null}
@@ -103,9 +104,7 @@ export function ManagerOrderDetailPage() {
       {consistent && order.currentAppointmentStatus === 'PROPOSED' && !appointment ? <p className="form-hint">Lịch bay đang chờ Owner xác nhận.</p> : null}
       {appointment?.surveyOrderId === orderId && appointment.appointmentId === order.currentAppointmentId && order.currentAppointmentStatus === 'PROPOSED' ? <Alert className="workflow-notice" showIcon type="success" title="Đã đề xuất lịch bay, chờ Owner xác nhận" description={appointmentScheduleLabel(appointment.scheduledDate, appointment.scheduledStartDate, appointment.scheduledEndDate, appointment.proposedStartAt, appointment.proposedEndAt)} /> : null}
     </section>
-    {consistent && scope.orderStatus === 'AWAITING_PRICING' ? <Alert className="workflow-notice" showIcon type={reviewStateKnown ? 'info' : 'warning'} title={!reviewStateKnown ? 'API chưa trả thông tin duyệt kết quả. Cập nhật BE và tải lại đơn.' : serviceIsReviewed(scope) ? 'Kết quả đã được duyệt. Xác nhận số trụ và giá để Owner thanh toán còn lại.' : 'Manager lên lịch bay bệnh. Hóa đơn được chốt sau khi bay và duyệt kết quả bệnh.'} /> : null}
     {stage ? <Alert className="workflow-notice" type={stage.type} showIcon title={stage.title} description={stage.description} /> : null}
-    {pricing?.surveyOrderId === orderId ? <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Đã xác nhận số trụ và giá</strong><span>{dateTime(pricing.confirmedAt)}</span></div></div><dl className="detail-list"><SurveyInvoiceLines invoice={pricing} />{pricing.confirmedMappingPoleCount == null ? <><div><dt>Số trụ chính thức</dt><dd>{pricing.confirmedSurveyPoleCount.toLocaleString('vi-VN')} trụ</dd></div><div><dt>Đơn giá</dt><dd>{priceLabel(pricing.pricePerPole, pricing.currency)}</dd></div></> : null}<div><dt>Tổng tiền dịch vụ</dt><dd>{money(pricing.finalPrice, pricing.currency)}</dd></div></dl><p className="form-hint">Owner thanh toán khoản còn lại để hoàn tất đơn và mở kết quả khảo sát.</p></section> : null}
     {consistent && order.boundaryCaptureSessionId ? <BoundaryCapturePanel key={orderId} token={token} orderId={orderId} farmId={order.farmId} sessionId={order.boundaryCaptureSessionId} /> : null}
     {consistent && scope.orderStatus === 'COMPLETED' && order.surveyServiceCode === 'PLANT_HEALTH' ? <ManagerQualityRefundPanel key={orderId} token={token} actor={session.email} orderId={orderId} /> : null}
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Phạm vi khu vực</strong><span>Các khu vực được trả về trong phạm vi đơn khảo sát</span></div></div><Table rowKey="zoneId" dataSource={scope.zones} pagination={false} scroll={{ x: 500 }} locale={{ emptyText: 'Chưa có khu vực trong phạm vi đơn.' }} columns={[{ title: 'Mã', dataIndex: 'code' }, { title: 'Khu vực', dataIndex: 'name' }, { title: 'Trạng thái', render: (_, zone) => zone.status === 'ACTIVE' ? 'Đang hoạt động' : zone.status }]} /></section>
@@ -114,9 +113,5 @@ export function ManagerOrderDetailPage() {
     {action === 'boundary' ? <BoundaryVerificationModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
     {action === 'corners' ? <OrthophotoCornersModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
     {action === 'prepare-mission' ? <PrepareMissionModal token={token} order={order} orderStatus={scope.orderStatus} close={() => { setAction(null); void refresh() }} /> : null}
-    {action === 'pricing' ? <PricingConfirmationModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => {
-      setPricing(result); setAction(null)
-      await Promise.all([refresh(), client.invalidateQueries({ queryKey: ['manager-farm-context', order.farmId] }), client.invalidateQueries({ queryKey: ['owner-survey-orders'] }), client.invalidateQueries({ queryKey: ['owner-survey-order'] })])
-    }} /> : null}
   </>
 }

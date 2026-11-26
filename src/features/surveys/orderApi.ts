@@ -1,8 +1,7 @@
 import { apiRequest } from '../../api/client'
 import type { Page } from './types'
 import type { AssignedOrder, OrderScope, VerifiedBoundary, VerifyBoundaryBody } from './orderTypes'
-import type { ConfirmedPricing, ConfirmPricingBody } from './orderTypes'
-import type { ApproveRouteBody, CaptureSample, CaptureSession, OrthophotoBody, PaymentPurpose, PaymentSession } from './orderTypes'
+import type { ApproveRouteBody, CaptureSample, CaptureSession, OrthophotoBody } from './orderTypes'
 
 const base = '/api/system-manager/survey-orders'
 export async function getAssignedOrders(token: string, page = 1, status = '', signal?: AbortSignal) {
@@ -29,7 +28,6 @@ export async function getAssignedOrder(token: string, orderId: string, signal?: 
 }
 export const getOrderScope = (token: string, orderId: string, signal?: AbortSignal) => apiRequest<OrderScope>(`${base}/${encodeURIComponent(orderId)}/boundary-scope`, { token, signal })
 export const verifyOrderBoundary = (token: string, orderId: string, body: VerifyBoundaryBody) => apiRequest<VerifiedBoundary>(`${base}/${encodeURIComponent(orderId)}/boundary-scope/verify`, { method: 'POST', token, body })
-export const confirmOrderPricing = (token: string, orderId: string, body: ConfirmPricingBody) => apiRequest<ConfirmedPricing>(`${base}/${encodeURIComponent(orderId)}/pole-count/confirm`, { method: 'POST', token, body })
 
 const capturePath = (orderId: string, sessionId?: string) => `${base}/${encodeURIComponent(orderId)}/boundary-capture-sessions${sessionId ? `/${encodeURIComponent(sessionId)}` : ''}`
 export const getCaptureSession = (token: string, orderId: string, sessionId: string, signal?: AbortSignal) => apiRequest<CaptureSession>(capturePath(orderId, sessionId), { token, signal })
@@ -40,13 +38,3 @@ export const abortCapture = (token: string, orderId: string, sessionId: string, 
 /** @deprecated Legacy API; the current Baseline UI uses orthophoto marking after flight. */
 export const approveBaselineRoute = (token: string, orderId: string, routePlanId: string, body: ApproveRouteBody) => apiRequest<CaptureSession>(`${base}/${encodeURIComponent(orderId)}/baseline-route-plans/${encodeURIComponent(routePlanId)}/approve`, { method: 'POST', token, body })
 export const markOrthophotoCorners = (token: string, orderId: string, body: OrthophotoBody) => apiRequest(`${base}/${encodeURIComponent(orderId)}/farm-boundary/mark-orthophoto-corners`, { method: 'POST', token, body })
-// Owner payment amounts and confirmation always come from the server, never from FE input.
-export async function initiateSurveyPayment(token: string, orderId: string, body: { expectedOrderVersion: number; purpose: PaymentPurpose }): Promise<PaymentSession> {
-  const payment = await apiRequest<PaymentSession>(`/api/tenant-owner/survey-orders/${encodeURIComponent(orderId)}/payments`, { method: 'POST', token, body })
-  return {
-    ...payment,
-    appointmentId: [payment.appointmentId, payment.paidServiceAppointmentId].find(value => value && value !== '00000000-0000-0000-0000-000000000000') ?? null,
-    // Zero balances and restored PAID transactions do not create another checkout.
-    redirectUrl: ['PAID', 'CONFIRMED'].includes(payment.paymentStatus) ? null : payment.redirectUrl,
-  }
-}

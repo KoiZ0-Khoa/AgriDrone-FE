@@ -112,3 +112,27 @@ test('getCaptureAttempts calls the V3 manager route with bearer, sorts by attemp
   globalThis.fetch = async () => Response.json({ title: 'Forbidden', errorCode: 'CaptureAttempts.ManagerForbidden' }, { status: 403 })
   await assert.rejects(v3Api.getCaptureAttempts('manager', 'order'), error => error.code === 'CaptureAttempts.ManagerForbidden')
 })
+
+test('V3 flight mutations send the attempt and order versions with exact action evidence', async () => {
+  const expected = { expectedOrderVersion: 54, expectedAttemptVersion: 4, operationId: 'flight-operation', payloadFingerprint: 'f'.repeat(64) }
+  const at = '2026-11-26T02:03:04.000Z'
+  const actions = [
+    ['start', v3Api.startCaptureFlight, { ...expected, missionId: 'mission' }, { startedAt: at, status: 'InFlight' }],
+    ['complete-flight', v3Api.completeCaptureFlight, { ...expected, endedAt: at, flightCompletedReceipt: 'flight-record' }, { endedAt: at, status: 'AwaitingUpload' }],
+    ['fail-flight', v3Api.failCaptureFlight, { ...expected, failedAt: at, failureReason: 'Pin yếu', failureIncidentEvidence: 'blackbox' }, { status: 'FlightFailed' }],
+  ]
+  for (const [route, send, body, response] of actions) {
+    globalThis.fetch = async (url, options) => {
+      assert.equal(new URL(url).pathname, `/api/v3/system-manager/survey-orders/order%2F1/capture-attempts/attempt%2F1/${route}`)
+      assert.equal(options.headers.Authorization, 'Bearer manager')
+      assert.equal(options.method, 'POST')
+      assert.deepEqual(JSON.parse(options.body), body)
+      return Response.json({ success: true, attemptId: 'attempt/1', version: 5, ...response })
+    }
+    assert.equal((await send('manager', 'order/1', 'attempt/1', body)).status, response.status)
+  }
+  let calls = 0
+  globalThis.fetch = async () => { calls++; return Response.json({ title: 'CAPTURE_VERSION_CONFLICT' }, { status: 409 }) }
+  await assert.rejects(v3Api.startCaptureFlight('manager', 'order/1', 'attempt/1', { ...expected, missionId: 'mission' }), error => error.code === 'CAPTURE_VERSION_CONFLICT')
+  assert.equal(calls, 1)
+})

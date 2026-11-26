@@ -21,18 +21,6 @@ export type Appointment = {
 }
 export type VerifyBoundaryBody = { boundary: GeoJsonPolygon; reason: string; evidenceReference: string | null; expectedOrderVersion: number; expectedCurrentBoundaryVersionNumber: number | null }
 export type VerifiedBoundary = { surveyOrderId: string; farmId: string; farmBoundaryId: string; farmBoundaryVersionNumber: number; currentFarmBaseMapVersionId: string | null; confirmedSurveyPoleCount: number | null; requiresBaselineMapping: boolean; orderStatus: string; orderVersion: number }
-export type ConfirmPricingBody = { expectedFarmBaseMapVersionId: string; evidenceReference: string; expectedOrderVersion: number }
-export type ConfirmedPricing = {
-  remainingAmount: number | null
-  confirmedMappingPoleCount: number | null; confirmedPlantHealthPoleCount: number | null
-  mappingPricePerPole: number | null; plantHealthPricePerPole: number | null
-  mappingSubtotal: number | null; plantHealthSubtotal: number | null
-  comboDiscountPercentage: number | null; comboDiscountAmount: number | null
-  surveyOrderId: string; orderNumber: string; tenantId: string; farmId: string; surveyServiceId: string
-  farmBoundaryVersionId: string; farmBaseMapVersionId: string; poleCountSource: string; poleCountEvidenceReference: string
-  confirmedSurveyPoleCount: number; surveyServicePriceId: string; pricePerPole: number; currency: string; finalPrice: number
-  systemManagerProfileId: string; orderStatus: string; orderVersion: number; confirmedAt: string
-}
 
 export type CaptureSample = { clientOperationId: string; sequenceNumber: number; latitude: number; longitude: number; horizontalAccuracyMeters: number; capturedAt: string }
 export type CaptureSession = {
@@ -42,5 +30,4 @@ export type CaptureSession = {
 }
 export type ApproveRouteBody = { sessionId: string; farmBoundaryVersionId: string; routePlanVersion: number; safetyInsetMeters: number; isWithinSafetyInset: boolean; expectedOrderVersion: number }
 export type OrthophotoBody = { expectedOrderVersion: number; corners: { sequence: number; longitude: number; latitude: number }[]; reason: string | null; evidenceReference: string | null }
-export type PaymentPurpose = 'BASELINE_DEPOSIT' | 'FINAL_BALANCE'
 export type PaymentSession = { surveyPaymentId: string; surveyOrderId: string; paidServiceAppointmentId: string; appointmentId: string | null; amount: number; currency: string; paymentStatus: string; redirectUrl: string | null; expiresAt: string; paymentVersion: number; orderVersion: number }

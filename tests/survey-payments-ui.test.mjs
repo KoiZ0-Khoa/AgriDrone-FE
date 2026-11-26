@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createServer } from 'vite'
-import { confirmedOrder, orderId, ownerOrder, paidServiceOrder, paymentItem } from './owner-payment-fixtures.mjs'
+import { confirmedOrder, orderId, ownerOrder, settlementOrder, paymentItem } from './owner-payment-fixtures.mjs'
 
 test('Owner screens render paginated orders, appointment actions, payment eligibility and server-only results', async () => {
   const server = await createServer({ configFile: false, logLevel: 'silent', server: { middlewareMode: true, hmr: false, watch: null }, optimizeDeps: { noDiscovery: true, include: [] } })
@@ -52,35 +52,24 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     assert.doesNotMatch(proposed, /Bay bệnh|Manager chốt lịch bay bệnh|Khảo sát bản đồ nền/)
     assert.doesNotMatch(proposed, /Chưa thể tạo thanh toán mới|Thông tin đơn và lịch hẹn chưa sẵn sàng/)
     const ready = render('OWNER', [])
-    assert.doesNotMatch(button(ready, 'Thanh toán'), /disabled=""/)
+    assert.doesNotMatch(button(ready, 'Trả cọc'), /disabled=""/)
     const pending = render('OWNER', [paymentItem], { path: '/survey-payments/' + orderId + '?status=success&orderVersion=999&amount=1' })
     assert.match(pending, /Đang xử lý/)
     assert.match(pending, /10\.000/)
-    assert.match(pending, /Đã có giao dịch đang xử lý/)
-    assert.match(button(pending, 'Thanh toán'), /disabled=""/)
+    assert.match(pending, /Đã có giao dịch cọc/)
+    assert.match(button(pending, 'Trả cọc'), /disabled=""/)
     assert.doesNotMatch(pending, /Đã thanh toán|Mở trang thanh toán/)
     const paid = render('OWNER', [{ ...paymentItem, status: 'PAID' }])
     assert.match(paid, /Đã thanh toán/)
-    assert.match(button(paid, 'Thanh toán'), /disabled=""/)
+    assert.match(button(paid, 'Trả cọc'), /disabled=""/)
     assert.match(render('OWNER', []), /Chưa có giao dịch/)
-    const zero = render('OWNER', [], { order: { ...paidServiceOrder, remainingAmount: 0 } })
-    assert.doesNotMatch(button(zero, 'Hoàn tất số dư 0'), /disabled=""/)
-    const invoice = { ...paidServiceOrder, currentAppointment: null, confirmedMappingPoleCount: 1000, confirmedPlantHealthPoleCount: 300, mappingPricePerPole: 1500, plantHealthPricePerPole: 1000, mappingSubtotal: 1500000, plantHealthSubtotal: 300000, comboDiscountPercentage: 20, comboDiscountAmount: 360000, totalAmount: 1440000, remainingAmount: 940000 }
+    const invoice = { ...settlementOrder, confirmedMappingPoleCount: 1000, confirmedPlantHealthPoleCount: 300, mappingPricePerPole: 1500, plantHealthPricePerPole: 1000, mappingSubtotal: 1500000, plantHealthSubtotal: 300000, comboDiscountPercentage: 20, comboDiscountAmount: 360000, totalAmount: 1440000, remainingAmount: 940000 }
     const finalInvoice = render('OWNER', [], { order: invoice })
     for (const value of ['Trụ bản đồ nền', 'Trụ khảo sát sức khỏe', '1.500.000', '300.000', '360.000', '1.440.000', '940.000', '20%']) assert.match(finalInvoice, new RegExp(value))
-    assert.doesNotMatch(button(finalInvoice, 'Thanh toán'), /disabled=""/)
-    assert.doesNotMatch(finalInvoice, /Lịch hẹn đã hết thời gian.*trước khi thanh toán/)
-    const followUp = { ...ownerOrder, status: 'PENDING_BOUNDARY_VERIFICATION', depositAmount: 5000, currentAppointment: null }
-    const deposit = render('OWNER', [], { order: followUp })
-    assert.match(deposit, /Cọc khảo sát/)
-    assert.match(deposit, /5\.000/)
-    assert.doesNotMatch(button(deposit, 'Thanh toán'), /disabled=""/)
-    assert.doesNotMatch(deposit, /Xác nhận lịch hẹn trước khi thanh toán/)
-    const healthOrder = { ...followUp, status: 'AWAITING_BASELINE_DEPOSIT', currentAppointment: { ...confirmedOrder.currentAppointment, purpose: 'PAID_SERVICE' } }
-    const healthDeposit = render('OWNER', [], { order: healthOrder })
-    // Trạng thái đơn của luồng cũ: không còn nút xác nhận hay đổi lịch. (Phần thanh toán cũ gỡ ở G3.)
-    assert.doesNotMatch(healthDeposit, /<span>Xác nhận lịch<\/span>|<span>Yêu cầu đổi lịch<\/span>|Xác nhận lịch.*trước khi thanh toán/)
-    assert.doesNotMatch(button(healthDeposit, 'Thanh toán'), /disabled=""/)
+    assert.equal(button(finalInvoice, 'Trả cọc'), undefined)
+    assert.equal(button(finalInvoice, 'Thanh toán'), undefined)
+    const legacyDeposit = render('OWNER', [], { order: { ...confirmedOrder, status: 'AWAITING_BASELINE_DEPOSIT' } })
+    assert.equal(button(legacyDeposit, 'Trả cọc'), undefined)
     // V3: lịch đã xác nhận, chờ cọc → còn đổi được lịch, không xác nhận lại.
     const v3Confirmed = render('OWNER', [], { order: { ...v3Proposed, status: 'AWAITING_DEPOSIT', currentAppointment: { ...v3Proposed.currentAppointment, status: 'CONFIRMED' } } })
     assert.match(v3Confirmed, /Đã xác nhận/)
@@ -92,15 +81,19 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     assert.doesNotMatch(v3Reschedule, /<span>Xác nhận lịch<\/span>|<span>Yêu cầu đổi lịch<\/span>/)
     // V3: đã bắt đầu bay → hết đổi lịch.
     assert.equal(button(render('OWNER', [], { order: { ...v3Proposed, status: 'CAPTURING', currentAppointment: { ...v3Proposed.currentAppointment, status: 'CONFIRMED' } } }), 'Yêu cầu đổi lịch'), undefined)
-    const finalPaid = { ...paymentItem, purpose: 'FINAL_BALANCE', status: 'PAID', amount: paidServiceOrder.remainingAmount }
-    const synchronize = render('OWNER', [finalPaid], { order: paidServiceOrder })
-    assert.doesNotMatch(button(synchronize, 'Đồng bộ trạng thái đơn'), /disabled=""/)
-    assert.match(synchronize, /không thu thêm tiền/)
-    assert.doesNotMatch(synchronize, /Mở trang thanh toán/)
-    const mismatchedPaid = render('OWNER', [{ ...finalPaid, amount: 1 }], { order: paidServiceOrder })
-    assert.equal(button(mismatchedPaid, 'Đồng bộ trạng thái đơn'), undefined)
+    const readyToFly = render('OWNER', [], { order: { ...confirmedOrder, status: 'READY_FOR_CAPTURE' } })
+    assert.match(readyToFly, /Đơn đã đủ điều kiện tiền cọc/)
+    assert.equal(button(readyToFly, 'Trả cọc'), undefined)
+    const refunded = render('OWNER', [{ ...paymentItem, status: 'REFUNDED' }])
+    assert.doesNotMatch(button(refunded, 'Trả cọc'), /disabled=""/)
+    const invalidated = render('OWNER', [{ ...paymentItem, status: 'INVALIDATED' }])
+    assert.match(invalidated, /Đã vô hiệu hóa/)
+    assert.doesNotMatch(button(invalidated, 'Trả cọc'), /disabled=""/)
+    const adjustment = render('OWNER', [{ ...paymentItem, status: 'ADJUSTMENT_REQUIRED' }])
+    assert.match(adjustment, /cần được quản trị viên đối soát/)
+    assert.match(button(adjustment, 'Trả cọc'), /disabled=""/)
     const expired = render('OWNER', [], { order: { ...confirmedOrder, currentAppointment: { ...confirmedOrder.currentAppointment, endAt: '2000-01-01T00:00:00Z' } } })
-    assert.match(button(expired, 'Thanh toán'), /disabled=""/)
+    assert.match(button(expired, 'Trả cọc'), /disabled=""/)
     const reschedule = render('OWNER', [], { order: { ...ownerOrder, currentAppointment: { ...ownerOrder.currentAppointment, status: 'RESCHEDULE_REQUESTED' } } })
     assert.match(reschedule, /Chờ Manager đề xuất thời gian mới/)
     assert.doesNotMatch(reschedule, /<span>Xác nhận lịch<\/span>/)
@@ -108,7 +101,7 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     assert.match(error, /read-trace/)
     assert.match(error, /Chưa tải được lịch sử/)
     assert.doesNotMatch(error, /Chưa có giao dịch/)
-    assert.match(button(error, 'Thanh toán'), /disabled=""/)
+    assert.match(button(error, 'Trả cọc'), /disabled=""/)
     const orderError = render('OWNER', [], { order: new ApiError(404, 'Not found', 'SurveyOrder.NotFound', 'order-trace') })
     assert.match(orderError, /order-trace/)
     assert.doesNotMatch(orderError, /Lịch sử thanh toán|SO-OWNER-1/)

@@ -15,51 +15,6 @@ const surveyWorkflow = await import(dataUrl(compile('../src/features/surveys/wor
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
 
-const pricingOrder = { surveyOrderId: '11111111-1111-4111-8111-111111111111', tenantId: 'tenant', farmId: 'farm', status: 'AWAITING_PRICING', orderVersion: 4165, requiresBaselineMapping: true }
-const pricingScope = { ...pricingOrder, serviceReviewedAt: '2026-11-16T03:00:00Z', orderStatus: pricingOrder.status, currentApprovedBoundary: { farmBoundaryId: 'boundary', versionNumber: 2 } }
-const pricingFarm = { farmId: 'farm', tenantId: 'tenant', status: 'ACTIVE', publishedBaseMap: { id: '22222222-2222-4222-8222-222222222222', versionNumber: 3, sourceSurveyOrderId: pricingOrder.surveyOrderId } }
-
-test('legacy pricing is confirmed only after review (gỡ ở G3)', () => {
-  const order = { ...pricingOrder, currentAppointmentId: null, currentAppointmentVersion: null, currentAppointmentStatus: null, currentAppointmentPurpose: null }
-  const before = { ...pricingScope, serviceReviewedAt: null }
-  assert.throws(() => workflow.pricingConfirmationBody(order, before, pricingFarm, 'checked'), /duyệt kết quả/)
-  assert.equal(workflow.pricingConfirmationBody(order, pricingScope, pricingFarm, 'checked').expectedOrderVersion, 4165)
-  for (const serviceReviewedAt of [undefined, 'invalid']) {
-    const unknown = { ...pricingScope, serviceReviewedAt }
-    assert.throws(() => workflow.pricingConfirmationBody(order, unknown, pricingFarm, 'checked'))
-  }
-})
-
-test('pricing confirmation uses published map/version and leaves pole count, unit price and total to BE', async () => {
-  const body = workflow.pricingConfirmationBody(pricingOrder, pricingScope, pricingFarm, '  Đã đối chiếu bản đồ  ')
-  assert.deepEqual(body, { expectedFarmBaseMapVersionId: pricingFarm.publishedBaseMap.id, evidenceReference: 'Đã đối chiếu bản đồ', expectedOrderVersion: 4165 })
-  globalThis.fetch = async (url, options) => {
-    assert.equal(url, 'http://test.local/api/system-manager/survey-orders/o%2F1/pole-count/confirm')
-    assert.equal(options.method, 'POST')
-    assert.equal(options.headers.Authorization, 'Bearer manager')
-    assert.deepEqual(JSON.parse(options.body), body)
-    return Response.json({ confirmedSurveyPoleCount: 321, finalPrice: 481500, currency: 'VND', orderStatus: 'AWAITING_PAID_APPOINTMENT', orderVersion: 4166 })
-  }
-  const result = await api.confirmOrderPricing('manager', 'o/1', body)
-  assert.equal(result.confirmedSurveyPoleCount, 321)
-  assert.equal(result.finalPrice, 481500)
-  assert.equal(result.orderVersion, 4166)
-})
-
-test('pricing refuses missing/foreign maps, inconsistent Order and blank evidence; existing Farms may reuse prior maps', () => {
-  for (const order of [{ ...pricingOrder, orderVersion: 4164 }, { ...pricingOrder, farmId: 'other' }, { ...pricingOrder, tenantId: 'other' }, { ...pricingOrder, requiresBaselineMapping: false }]) assert.throws(() => workflow.pricingConfirmationBody(order, pricingScope, pricingFarm, 'evidence'))
-  for (const scope of [{ ...pricingScope, orderStatus: 'COMPLETED' }, { ...pricingScope, currentApprovedBoundary: null }, { ...pricingScope, orderVersion: 0 }, { ...pricingScope, orderVersion: 4294967296 }]) assert.throws(() => workflow.pricingConfirmationBody(pricingOrder, scope, pricingFarm, 'evidence'))
-  for (const farm of [{ ...pricingFarm, farmId: 'other' }, { ...pricingFarm, tenantId: 'other' }, { ...pricingFarm, status: 'ARCHIVED' }, { ...pricingFarm, publishedBaseMap: null }, { ...pricingFarm, publishedBaseMap: { ...pricingFarm.publishedBaseMap, id: '00000000-0000-0000-0000-000000000000' } }, { ...pricingFarm, publishedBaseMap: { ...pricingFarm.publishedBaseMap, sourceSurveyOrderId: 'other-order' } }]) assert.throws(() => workflow.pricingConfirmationBody(pricingOrder, pricingScope, farm, 'evidence'))
-  for (const evidence of ['', '   ', 'a'.repeat(1001)]) assert.throws(() => workflow.pricingConfirmationBody(pricingOrder, pricingScope, pricingFarm, evidence))
-  assert.equal(workflow.pricingConfirmationBody({ ...pricingOrder, requiresBaselineMapping: false }, { ...pricingScope, requiresBaselineMapping: false }, { ...pricingFarm, publishedBaseMap: { ...pricingFarm.publishedBaseMap, sourceSurveyOrderId: 'previous-order' } }, 'checked').expectedOrderVersion, 4165)
-})
-
-test('pricing map-version conflicts stay visible and never trigger an automatic retry', async () => {
-  let calls = 0
-  globalThis.fetch = async () => { calls++; return Response.json({ errorCode: 'SurveyPricing.BaseMapVersionConflict', detail: 'Map changed', traceId: 'pricing-trace' }, { status: 409 }) }
-  await assert.rejects(api.confirmOrderPricing('manager', pricingOrder.surveyOrderId, workflow.pricingConfirmationBody(pricingOrder, pricingScope, pricingFarm, 'checked')), error => error.code === 'SurveyPricing.BaseMapVersionConflict' && error.traceId === 'pricing-trace')
-  assert.equal(calls, 1)
-})
 
 test('assigned Order directory preserves paging/filter, cancellation and Manager authorization', async () => {
   const controller = new AbortController()

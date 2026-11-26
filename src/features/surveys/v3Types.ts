@@ -69,3 +69,14 @@ export type V3CaptureAttempt = {
   endedAt: string | null
   history: V3CaptureAttemptHistory[]
 }
+
+type V3FlightOperation = {
+  expectedOrderVersion: number
+  expectedAttemptVersion: number
+  operationId: string
+  payloadFingerprint: string
+}
+export type V3StartFlightBody = V3FlightOperation & { missionId: string }
+export type V3CompleteFlightBody = V3FlightOperation & { endedAt: string; flightCompletedReceipt: string }
+export type V3FailFlightBody = V3FlightOperation & { failedAt: string; failureReason: string; failureIncidentEvidence: string }
+export type V3FlightResult = { success: boolean; attemptId: string; status: string; version: number }

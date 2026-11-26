@@ -7,7 +7,7 @@ const compile = path => ts.transpileModule(readFileSync(new URL(path, import.met
 const dataUrl = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
 const clientUrl = dataUrl(compile('../src/api/client.ts').replace('import.meta.env.VITE_API_BASE_URL', "'http://test.local'"))
 const payments = await import(dataUrl(compile('../src/features/surveys/paymentApi.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
-const orders = await import(dataUrl(compile('../src/features/surveys/orderApi.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
+const v3 = await import(dataUrl(compile('../src/features/surveys/v3Api.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
 const workflow = await import(dataUrl(compile('../src/features/surveys/paymentWorkflow.ts')))
 const originalFetch = globalThis.fetch
 afterEach(() => { globalThis.fetch = originalFetch })
@@ -26,41 +26,39 @@ test('Owner history uses the existing authorized read endpoint and cancellation;
   await assert.rejects(payments.getPaymentHistory('owner', 'order/1'), /không khớp/)
 })
 
-test('zero balance with actual BE PAID status is settled without navigating about:blank', async () => {
-  let calls = 0
-  globalThis.fetch = async (_url, options) => {
-    calls++
-    assert.deepEqual(JSON.parse(options.body), { purpose: 'FINAL_BALANCE', expectedOrderVersion: 4165 })
-    return Response.json({ surveyOrderId: 'order', amount: 0, paymentStatus: 'PAID', paymentVersion: 0, orderVersion: 4166, redirectUrl: 'about:blank' }, { status: 201 })
+test('deposit uses V3 checkout, sends only the reviewed order version and reads the server amount', async () => {
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'http://test.local/api/v3/tenant-owner/survey-orders/order%2F1/deposit-checkouts')
+    assert.equal(options.method, 'POST')
+    assert.equal(options.headers.Authorization, 'Bearer owner')
+    assert.deepEqual(JSON.parse(options.body), { expectedOrderVersion: 4165 })
+    return Response.json({ ...session, surveyOrderId: 'order/1', amount: 3500, appointmentId: 'capture-appointment', paymentVersion: 12, orderVersion: 4166 }, { status: 201 })
   }
-  const result = await orders.initiateSurveyPayment('owner', 'order', { purpose: 'FINAL_BALANCE', expectedOrderVersion: 4165 })
-  assert.equal(result.redirectUrl, null)
-  assert.equal(workflow.paymentCheckoutUrl(result, 'order'), null)
-  assert.equal(calls, 1)
+  const result = await v3.initiateDepositCheckout('owner', 'order/1', { expectedOrderVersion: 4165 })
+  assert.equal(result.appointmentId, 'capture-appointment')
+  assert.equal(result.amount, 3500)
+  assert.equal(workflow.paymentCheckoutUrl(result, 'order/1'), session.redirectUrl)
 })
 
 test('payment conflict is surfaced once, retaining server trace; no automatic new version or retry', async () => {
   let calls = 0
   globalThis.fetch = async () => { calls++; return Response.json({ errorCode: 'SurveyPayment.VersionConflict', traceId: 'trace' }, { status: 409 }) }
-  await assert.rejects(orders.initiateSurveyPayment('owner', 'order', { purpose: 'BASELINE_DEPOSIT', expectedOrderVersion: 4165 }), error => error.status === 409 && error.traceId === 'trace')
+  await assert.rejects(v3.initiateDepositCheckout('owner', 'order', { expectedOrderVersion: 4165 }), error => error.status === 409 && error.traceId === 'trace')
   assert.equal(calls, 1)
 })
 
-test('restored PAID final balance never exposes another checkout, and follow-up deposits allow no appointment', async () => {
-  globalThis.fetch = async () => Response.json({ surveyOrderId: 'order', amount: 50000, paymentStatus: 'PAID', redirectUrl: 'about:blank' })
-  const paid = await orders.initiateSurveyPayment('owner', 'order', { purpose: 'FINAL_BALANCE', expectedOrderVersion: 4165 })
-  assert.equal(paid.redirectUrl, null)
-  assert.equal(workflow.paymentCheckoutUrl(paid, 'order'), null)
-  globalThis.fetch = async () => Response.json({ surveyOrderId: 'order', amount: 5000, paymentStatus: 'PROCESSING', appointmentId: null, paidServiceAppointmentId: '00000000-0000-0000-0000-000000000000', redirectUrl: 'https://pay.sepay.vn/session' })
-  const deposit = await orders.initiateSurveyPayment('owner', 'order', { purpose: 'BASELINE_DEPOSIT', expectedOrderVersion: 4165 })
-  assert.equal(deposit.appointmentId, null)
-  assert.equal(deposit.redirectUrl, 'https://pay.sepay.vn/session')
+test('the shared checkout response recognizes the appointment compatibility field and rejects the empty GUID', async () => {
+  const emptyGuid = '00000000-0000-0000-0000-000000000000'
+  for (const [appointmentId, paidServiceAppointmentId, expected] of [['capture', 'alias', 'capture'], [emptyGuid, 'capture', 'capture'], [null, emptyGuid, null]]) {
+    globalThis.fetch = async () => Response.json({ ...session, appointmentId, paidServiceAppointmentId }, { status: 201 })
+    assert.equal((await v3.initiateDepositCheckout('owner', 'order', { expectedOrderVersion: 4165 })).appointmentId, expected)
+  }
 })
 
 const session = { surveyOrderId: 'order', amount: 10000, paymentStatus: 'PROCESSING', expiresAt: '2099-01-01T00:00:00Z', redirectUrl: 'https://pay-sandbox.sepay.vn/session' }
 test('checkout only accepts matching, unexpired HTTP(S) sessions; return URLs never mark a payment paid', () => {
   assert.equal(workflow.paymentCheckoutUrl(session, 'order'), session.redirectUrl)
   for (const changes of [{ surveyOrderId: 'other' }, { amount: -1 }, { amount: NaN }, { expiresAt: '2000-01-01T00:00:00Z' }, { expiresAt: 'invalid' }, { redirectUrl: 'javascript:alert(1)' }, { redirectUrl: 'data:text/html,example' }, { redirectUrl: 'https://user:password@example.test' }, { redirectUrl: null }]) assert.throws(() => workflow.paymentCheckoutUrl({ ...session, ...changes }, 'order'))
-  for (const paymentStatus of ['PAID', 'CONFIRMED', 'FAILED', 'REFUNDED', 'ADJUSTMENT_REQUIRED']) assert.equal(workflow.paymentCheckoutUrl({ ...session, paymentStatus }, 'order'), null)
+  for (const paymentStatus of ['PAID', 'CONFIRMED', 'FAILED', 'REFUNDED', 'ADJUSTMENT_REQUIRED', 'INVALIDATED']) assert.equal(workflow.paymentCheckoutUrl({ ...session, paymentStatus }, 'order'), null)
   assert.equal(workflow.paymentIsPaid('PROCESSING'), false)
 })

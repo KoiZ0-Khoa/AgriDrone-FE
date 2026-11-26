@@ -46,7 +46,10 @@ Lần bay (`CaptureAttemptStatus`): `PLANNED`, `PREFLIGHT_READY`, `IN_FLIGHT`, `
 | BE-2 | Bộ lọc đơn không có trạng thái V3 | ✅ Đã sửa (`fc01761`) | G0 |
 | BE-3 | Không có GET danh sách lần bay | ✅ Đã sửa (`fc01761`) | G4, G6 dùng `GET capture-attempts` |
 | BE-4 | Chính sách thương mại V3 chỉ có POST, không có GET | ❌ Đã báo BE, sẽ bổ sung sớm | G12 (cuối) |
-| **BE-5** | **`POST .../plant-gps/publish` không chạy được với nhiệm vụ V3.** `MissionPlantGpsPublisher` bắt buộc nhiệm vụ có `CaptureAttemptId` (chỉ nhiệm vụ mục đích `Capture` mới có) nhưng lại từ chối mục đích `Capture` ("purpose 'Capture' is not eligible") | ❌ **Cần báo BE** | Chặn đường MAP ở G5: không công bố được GPS cây → không có số trụ → không duyệt kết quả, không chốt hóa đơn |
+| **BE-5** | `MissionPlantGpsPublisher` đã nhận mục đích `Capture` ở `dd0ada8`. Truy vấn xác minh lần bay vẫn dùng `survey.capture_attempts.mission_id`, trong khi liên kết nằm ở `mission.drone_missions.capture_attempt_id` | Cần sửa truy vấn phía BE | Chặn publish GPS cây ở G5 |
+| BE-6 | Owner GET gắn nhãn `PAID_SERVICE` cho lịch Capture. Response đổi lịch có thể trả `AWAITINGDEPOSIT` | FE dùng trạng thái từ GET đơn và bỏ qua nhãn mục đích trên lịch V3 | G2 |
+| **BE-7** | `GET /api/tenant-owner/survey-orders/{id}/payments` đọc cả khoản cọc V3, nhưng `GetSurveyPaymentHistoryQueryHandler.MapPurpose` thiếu `PaymentPurpose.OrderDeposit => "ORDER_DEPOSIT"`. Handler ném exception khi gặp khoản cọc V3 | Cần sửa mapper và test lịch sử có cọc V3 | G3 và lịch sử thanh toán G8. FE giữ URL phiên vừa tạo khi lịch sử trả 5xx và đọc lại đơn để cập nhật trạng thái |
+| **BE-8** | `GET /api/system-manager/survey-orders/{id}/drones/available` đọc lịch và điều kiện tiền của luồng cũ. API drone theo farm cần `startAt`, `endAt`. API đơn của Manager chỉ có ID, phiên bản và trạng thái lịch | Cần danh sách drone theo lịch Capture đã xác nhận, hoặc bổ sung khung giờ lịch vào API Manager | Chặn chọn drone để chuẩn bị lần bay đầu ở G4 |
 
 ## Bảng tiến độ
 
@@ -54,9 +57,9 @@ Lần bay (`CaptureAttemptStatus`): `PLANNED`, `PREFLIGHT_READY`, `IN_FLIGHT`, `
 | --- | --- | --- | --- |
 | G0 | Nền tảng: trạng thái V3, MAP/COMBO, client + mã lỗi; gỡ phần chung của luồng cũ | `orderWorkflow.ts`, `ownerOrderWorkflow.ts`, `v3Api.ts` (mới) | [x] chưa test tay |
 | G1 | Gửi và duyệt yêu cầu khảo sát V3 | `SurveyIntakePage.tsx`, `RequestsPage.tsx` | [x] chưa test tay |
-| G2 | Lịch hẹn Capture (Manager đề xuất, Owner xác nhận/đổi, báo vắng mặt) | `OrderActionModals.tsx`, `OwnerAppointmentDialog.tsx` | [ ] |
-| G3 | Cọc V3 (`OrderDeposit`) | `SurveyPaymentPanel.tsx`, `OwnerPaymentsPage.tsx` | [ ] |
-| G4 | Chuẩn bị lần bay và bay (prepare → checklist → start → complete / fail) | `PrepareMissionModal.tsx`, `ManagerMissionDetailPage.tsx` | [ ] |
+| G2 | Lịch hẹn Capture (Manager đề xuất, Owner xác nhận/đổi, báo vắng mặt) | `OrderActionModals.tsx`, `OwnerAppointmentDialog.tsx` | [x] API được giả lập trong test, còn kiểm thử với BE thật |
+| G3 | Cọc V3 (`OrderDeposit`) | `SurveyPaymentPanel.tsx`, `OwnerPaymentsPage.tsx` | [x] FE, chờ BE-7 và kiểm thử thanh toán |
+| G4 | Chuẩn bị lần bay và bay (prepare → checklist → start → complete / fail) | `PrepareMissionModal.tsx`, `ManagerMissionDetailPage.tsx` | [ ] Đã nối danh sách và thao tác bay, chuẩn bị lần bay chờ BE-8 |
 | G5 | Sau bay: tải dữ liệu, chốt và duyệt dữ liệu đầu vào, xử lý MAP/COMBO | `ManagerMissionDetailPage.tsx`, `plantHealthProcessingApi.ts` | [ ] (MAP chờ BE-5) |
 | G6 | Bay lại + lịch sử chuyến bay | `ManagerMissionDetailPage.tsx`, modal mới | [ ] |
 | G7 | Duyệt kết quả V3 (result-review, combo-reviews, freeze) | trang mới thay `ManagerHealthReviewPage` | [ ] |
@@ -81,7 +84,7 @@ Gỡ trong giai đoạn ghi ở cột cuối. "Đã xác nhận" là BE chặn �
 | Đề xuất lịch với `purpose` `BASELINE_MAPPING` / `PAID_SERVICE`; Owner xác nhận/đổi lịch kiểu cũ | `system-manager/.../appointments`, `tenant-owner/.../appointments/{id}/confirm|request-reschedule` | Đã xác nhận: BE từ chối mục đích khác `Capture` với đơn V3 | G2 |
 | Trả cọc `BASELINE_DEPOSIT`, trả phần còn lại `FINAL_BALANCE` | `tenant-owner/.../payments` (POST) | Đã xác nhận: đơn V3 chỉ nhận `OrderDeposit` | G3 (lịch sử GET kiểm khi làm) |
 | Xác nhận số trụ và giá (`PricingConfirmationModal`) | `.../pole-count/confirm` | Đã xác nhận: chỉ nhận `Legacy` | G3 |
-| Xác minh ranh giới theo đơn (`verifyOrderBoundary`, `getOrderScope`) | `.../boundary-scope`, `.../boundary-scope/verify` | Đã xác nhận: handler chỉ dùng trạng thái cũ | G4 |
+| Ghi xác minh ranh giới theo đơn (`verifyOrderBoundary`) | `POST .../boundary-scope/verify` | Điều kiện trạng thái của luồng cũ. GET `boundary-scope` vẫn đọc được trạng thái, phiên bản và phạm vi đơn V3 | G4 |
 | Thu thập ranh giới GNSS (`BoundaryCapturePanel`, `startCapture`, `syncCapture`, `finalizeCapture`, `abortCapture`), duyệt route bay bản đồ nền, đánh dấu 4 góc ảnh trực giao | `.../boundary-capture-sessions*`, `.../baseline-route-plans/*`, `.../farm-boundary/mark-orthophoto-corners` | Kiểm khi làm (luồng bản đồ nền cũ) | G4 / G5 |
 | Chuẩn bị bộ nhiệm vụ kiểu cũ (`prepareMissionSet`), start / complete-flight / fail-flight / cancel / reschedule kiểu cũ, `RescheduleMissionModal` | `system-manager/survey-orders/{id}/missions/prepare`, `.../missions/{id}/start|complete-flight|fail-flight|cancel|reschedule` | Thay bằng coordinator V3 | G4, G6 |
 | Đoán đơn từ mã nhiệm vụ `ORD-{order}-{BASE|HEALTH|READY}` (`findMissionsBySurveyOrder`, `surveyOrderIdFromMissionCode`) | — | Mã V3 là `V3CAP-{order:N}` / `V3R{n}-{order:N}`; nối qua `GET capture-attempts` | G4 |
@@ -140,7 +143,7 @@ Gỡ trong giai đoạn ghi ở cột cuối. "Đã xác nhận" là BE chặn �
 - Admin duyệt: `POST api/v3/system-admin/survey-requests/{requestId}/approve`, header `Idempotency-Key`, body `ApproveSurveyRequest` (`selectedSystemManagerProfileId`, `reason`, `checklist`, `expectedVersion`). Khi duyệt, BE ghim giá/cọc/claim/chính sách hủy vào đơn; đổi chính sách sau đó không ảnh hưởng đơn này.
 - Các bước start-review / reject của Admin: kiểm khi làm xem route cũ có còn dùng chung cho V3 không (V3 chưa có route riêng).
 
-## G2. Lịch hẹn Capture — [ ]
+## G2. Lịch hẹn Capture — [x] Kiểm thử với API giả lập
 
 | Ai | Route V3 | Body |
 | --- | --- | --- |
@@ -150,14 +153,15 @@ Gỡ trong giai đoạn ghi ở cột cuối. "Đã xác nhận" là BE chặn �
 | Manager báo vắng mặt | `POST api/v3/system-manager/survey-orders/{orderId}/capture-appointments/no-show` | `{ appointmentId, expectedOrderVersion, expectedAppointmentVersion, occurredAt, reason, evidenceReference, operationId, payloadFingerprint }` → `{ noShowId, occurrenceIndex, disposition, orderStatus, appointmentStatus }` |
 
 - `OrderActionModals.tsx`: bỏ ô chọn mục đích, gọi route V3. `OwnerAppointmentDialog.tsx`: gọi route V3. Types `purpose: 'BASELINE_MAPPING' | 'PAID_SERVICE'` đổi thành `'CAPTURE'`.
-- Báo vắng mặt: chỉ hiện khi lịch đã xác nhận và đã tới giờ hẹn. Hiện `disposition`: trong hạn mức miễn phí thì được đổi lịch, vượt hạn mức thì chờ Admin xem xét.
+- Báo vắng mặt: FE hiện nút khi đơn sẵn sàng bay và lịch đã xác nhận. BE kiểm thời điểm ghi nhận từ giờ bắt đầu lịch đến hiện tại. Hiện `disposition`: trong hạn mức miễn phí thì được đổi lịch, vượt hạn mức thì chờ Admin xem xét.
 
-## G3. Cọc V3 — [ ]
+## G3. Cọc V3 — [x] FE, chờ BE-7
 
-- `POST api/v3/tenant-owner/survey-orders/{orderId}/deposit-checkouts`, body `{ expectedOrderVersion }`. Response xem lại khi làm.
+- `POST api/v3/tenant-owner/survey-orders/{orderId}/deposit-checkouts`, body `{ expectedOrderVersion }`. Response 201 trả `surveyPaymentId`, `surveyOrderId`, `appointmentId`, `amount`, `currency`, `paymentStatus`, `redirectUrl`, `expiresAt` và phiên bản. `amount` là số tiền còn phải nộp theo nghĩa vụ cọc. FE hiển thị số tiền này trước khi mở cổng thanh toán.
 - Lịch sử thanh toán (`GET tenant-owner/.../payments`): kiểm có trả thanh toán V3 không. Nhãn `ORDER_DEPOSIT`, `FINAL_BALANCE`; trạng thái `ADJUSTMENT_REQUIRED` (tiền về lệch, chờ Admin đối soát), `INVALIDATED`. Xóa nhãn `BASELINE_DEPOSIT`.
 - Hoàn tiền/chargeback cọc trước khi bay có thể đưa đơn từ `READY_FOR_CAPTURE` về `AWAITING_DEPOSIT` → trang Owner phải hiện lại nút trả cọc.
 - Xóa `PricingConfirmationModal` và `confirmOrderPricing` (số trụ V3 lấy từ kết quả bay, G7–G8). Xóa logic cọc/phần còn lại kiểu cũ trong `ownerOrderWorkflow.ts` (`paymentPurposeForOrder`, `depositRefundedAfterInvoice`, `paymentRequiresAppointment`…).
+- FE dùng trạng thái đơn hoặc giao dịch từ BE để xác nhận thanh toán. Khôi phục đường dẫn sau khi tải lại trang cần lịch sử khớp với phiên đã lưu. BE-7 có thể chặn khôi phục trong lúc chờ sửa mapper.
 
 ## G4. Chuẩn bị lần bay và bay — [ ]
 
@@ -177,6 +181,7 @@ Coordinator V3 tạo nhiệm vụ mã `V3CAP-{orderId:N}` (mục đích `Capture
 - Nối `v3ErrorMessage` (từ G0) vào `missionError` trong `missionWorkflow.ts`, và cập nhật các test nhiệm vụ nạp thêm `v3Workflow`.
 - BE tự kiểm lại mọi điều kiện lúc bấm Bắt đầu (phân công, drone, lịch, checklist) — không tin kết quả kiểm tra trước đó, nên phải xử lý lỗi ngay cả khi màn hình đang báo "sẵn sàng".
 - Ranh giới farm: kiểm khi làm V3 lấy ranh giới từ đâu (đơn đầu tiên chưa có bản đồ nền) trước khi gỡ các màn hình xác minh / thu thập ranh giới cũ.
+- Đã nối danh sách lần bay và các nút bắt đầu, kết thúc, báo lỗi cho nhiệm vụ V3 đã liên kết với đơn. BE kiểm tra phiên bản đơn/lần bay và điều kiện checklist. Bước chọn drone để chuẩn bị nhiệm vụ mới còn chờ BE-8. Coordinator hiện sao chép `FarmBoundaryVersionId` từ đơn khi tạo nhiệm vụ.
 
 ## G5. Sau bay — [ ] (MAP chờ BE-5)
 
@@ -263,6 +268,7 @@ Theo `PROJECT_MEMORY.md` của BE, các phần sau **chưa có ở BE**, FE chư
 - **Báo cáo doanh thu**: FE đã dùng route V3; BE còn nối thêm dữ liệu (V3-09), không đổi contract.
 
 ## Nhật ký
+- 26/11/2026 — Đối chiếu BE `dd0ada8`, nối checkout trả cọc V3, gỡ checkout và xác nhận giá kiểu cũ. Nối danh sách lần bay và các API bắt đầu, kết thúc và báo lỗi. Ghi BE-7 và BE-8, cập nhật BE-5 theo truy vấn hiện tại. Build đạt và 278 test FE đạt với dữ liệu giả lập. Còn kiểm tra trên môi trường có BE thật.
 - 26/11/2026 — Lập kế hoạch sau khi rà soát route FE và BE. Người dùng chọn chuyển sang V3, để các lỗ hổng BE xử lý cuối (đã báo đội BE). Chưa sửa code.
 - 26/11/2026 — Cập nhật theo BE commit `fc01761`: BE-1/2/3 đã sửa; bỏ cache `localStorage`; thêm G9b (đối soát tiền), trường đối soát ở hóa đơn Manager, mã lỗi hủy mới. `41f9d0c`, `a463c5a` không ảnh hưởng FE.
 - 26/11/2026 — Đối chiếu với `PROJECT_MEMORY.md` và `docs/contracts/survey-business-v3.md` của BE: chính sách thương mại xuống cuối (G12); thêm bảng vòng đời đơn; phát hiện BE-5; G7 làm trang mới; trả phần còn lại sang G8; thêm chi tiết MAP/COMBO, hủy, đối soát; thêm G11; ghi chú cờ thanh toán ở local; RT-06 đã có ở FE.

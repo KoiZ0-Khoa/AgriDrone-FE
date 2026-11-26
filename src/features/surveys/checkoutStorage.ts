@@ -22,14 +22,16 @@ export function readCheckout(key: string, orderId: string): PaymentSession | nul
     return item
   } catch { forgetCheckout(key); return null }
 }
-export function restoredCheckoutMatches(payment: PaymentSession, order: OwnerSurveyOrder, history: PaymentHistory | undefined) {
-  if (!history || history.surveyOrderId !== order.surveyOrderId || payment.surveyOrderId !== order.surveyOrderId) return false
-  const item = history.payments.find(item => item.surveyPaymentId === payment.surveyPaymentId && item.amount === payment.amount && item.currency === payment.currency && ['PENDING', 'PROCESSING'].includes(item.status))
-  if (!item) return false
-  if (item.purpose === 'FINAL_BALANCE') return order.status === 'AWAITING_PAYMENT' && payment.amount === (order.remainingAmount ?? order.totalAmount) && payment.currency === order.currency
-  if (item.purpose === 'BASELINE_DEPOSIT' && payment.appointmentId === null && payment.amount === order.depositAmount &&
-    ['PENDING_BOUNDARY_VERIFICATION', 'AWAITING_BASELINE_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'AWAITING_PAID_APPOINTMENT', 'AWAITING_PAYMENT'].includes(order.status)) return true
-  return !!order.currentAppointment && payment.appointmentId === order.currentAppointment.appointmentId
+export function depositCheckoutMatchesOrder(payment: PaymentSession, order: OwnerSurveyOrder, now = Date.now()) {
+  const appointment = order.currentAppointment
+  return payment.surveyOrderId === order.surveyOrderId && order.status === 'AWAITING_DEPOSIT' &&
+    Number.isFinite(payment.amount) && payment.amount > 0 && payment.currency === order.currency &&
+    !!appointment && appointment.status === 'CONFIRMED' && payment.appointmentId === appointment.appointmentId && Date.parse(appointment.endAt) > now
+}
+export function restoredCheckoutMatches(payment: PaymentSession, order: OwnerSurveyOrder, history: PaymentHistory | undefined, now = Date.now()) {
+  return history?.surveyOrderId === order.surveyOrderId && depositCheckoutMatchesOrder(payment, order, now) &&
+    history.payments.some(item => item.surveyPaymentId === payment.surveyPaymentId && item.purpose === 'ORDER_DEPOSIT' &&
+      item.amount === payment.amount && item.currency === payment.currency && ['PENDING', 'PROCESSING'].includes(item.status))
 }
 export function clearSavedCheckouts() {
   try { for (let index = sessionStorage.length - 1; index >= 0; index--) { const key = sessionStorage.key(index); if (key?.startsWith(prefix)) sessionStorage.removeItem(key) } } catch { /* Logout must work even without storage. */ }

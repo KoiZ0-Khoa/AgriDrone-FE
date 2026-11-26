@@ -141,18 +141,6 @@ test('orthophoto marking uses four unique longitude/latitude corners in explicit
   assert.equal((await orders.markOrthophotoCorners('manager', 'o/1', body)).orderVersion, 52)
 })
 
-test('Owner payment distinguishes deposit and remaining balance without FE amounts or confirmation', async () => {
-  for (const purpose of ['BASELINE_DEPOSIT', 'FINAL_BALANCE']) {
-    globalThis.fetch = async (url, options) => {
-      assert.equal(url, 'http://test.local/api/tenant-owner/survey-orders/o%2F1/payments')
-      assert.equal(options.headers.Authorization, 'Bearer owner')
-      assert.deepEqual(JSON.parse(options.body), { purpose, expectedOrderVersion: 51 })
-      return Response.json({ amount: purpose === 'BASELINE_DEPOSIT' ? 500000 : 2500000, currency: 'VND', paymentStatus: 'PROCESSING' }, { status: 201 })
-    }
-    assert.equal((await orders.initiateSurveyPayment('owner', 'o/1', { purpose, expectedOrderVersion: 51 })).paymentStatus, 'PROCESSING')
-  }
-})
-
 
 test('orthophoto marking is blocked before review and retains both supported BE review states', () => {
   const points = [{ longitude: 108, latitude: 10 }, { longitude: 108.001, latitude: 10 }, { longitude: 108.001, latitude: 10.001 }, { longitude: 108, latitude: 10.001 }]
@@ -162,48 +150,6 @@ test('orthophoto marking is blocked before review and retains both supported BE 
     assert.deepEqual(body.corners.map(corner => corner.sequence), [1, 2, 3, 4])
     assert.equal(body.expectedOrderVersion, 73)
   }
-})
-
-test('payment response uses the new appointment ID and falls back to the legacy appointment field', async () => {
-  for (const response of [
-    { appointmentId: 'baseline-appointment', paidServiceAppointmentId: 'legacy-appointment' },
-    { paidServiceAppointmentId: 'legacy-appointment' },
-    { appointmentId: null, paidServiceAppointmentId: 'legacy-appointment' },
-  ]) {
-    globalThis.fetch = async () => Response.json({ ...response, amount: 500000, currency: 'VND', paymentStatus: 'PROCESSING', redirectUrl: 'https://payments.example.test/session', orderVersion: 73 }, { status: 201 })
-    const payment = await orders.initiateSurveyPayment('owner', 'order', { expectedOrderVersion: 73, purpose: 'BASELINE_DEPOSIT' })
-    assert.equal(payment.appointmentId, response.appointmentId ?? response.paidServiceAppointmentId)
-    assert.equal(payment.redirectUrl, 'https://payments.example.test/session')
-    assert.equal(payment.orderVersion, 73)
-  }
-})
-
-test('confirmed zero balance is accepted without opening about:blank or creating a second payment', async () => {
-  let calls = 0
-  globalThis.fetch = async (_url, options) => {
-    calls++
-    assert.deepEqual(JSON.parse(options.body), { expectedOrderVersion: 73, purpose: 'FINAL_BALANCE' })
-    return Response.json({ surveyPaymentId: '00000000-0000-0000-0000-000000000000', surveyOrderId: 'order', paidServiceAppointmentId: 'appointment', appointmentId: 'appointment', amount: 0, currency: 'VND', provider: 'SETTLEMENT', paymentStatus: 'CONFIRMED', redirectUrl: 'about:blank', paymentVersion: 0, orderVersion: 74 }, { status: 201 })
-  }
-  const payment = await orders.initiateSurveyPayment('owner', 'order', { expectedOrderVersion: 73, purpose: 'FINAL_BALANCE' })
-  assert.equal(payment.redirectUrl, null)
-  assert.equal(payment.amount, 0)
-  assert.equal(payment.paymentStatus, 'CONFIRMED')
-  assert.equal(payment.paymentVersion, 0)
-  assert.equal(payment.orderVersion, 74)
-  assert.equal(payment.appointmentId, 'appointment')
-  assert.equal(calls, 1)
-})
-
-test('invalid payment purpose keeps the server 400 response and never falls back to FinalBalance', async () => {
-  let calls = 0
-  globalThis.fetch = async (_url, options) => {
-    calls++
-    assert.equal(JSON.parse(options.body).purpose, 'UNKNOWN_PURPOSE')
-    return Response.json({ title: 'Invalid payment purpose', detail: 'Allowed values: BASELINE_DEPOSIT, FINAL_BALANCE.' }, { status: 400 })
-  }
-  await assert.rejects(orders.initiateSurveyPayment('owner', 'order', { expectedOrderVersion: 73, purpose: 'UNKNOWN_PURPOSE' }), error => error.status === 400 && error.message.includes('Allowed values'))
-  assert.equal(calls, 1)
 })
 
 test('deposit filter is sent using the newly supported BE status token', async () => {

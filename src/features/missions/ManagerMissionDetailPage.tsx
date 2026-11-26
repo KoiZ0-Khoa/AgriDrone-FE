@@ -2,7 +2,7 @@ import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Checkbox, Divider, Form, Input, InputNumber, Radio, Space, Steps, Table, Tag } from 'antd'
 import { useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { CopyReference } from '../../components/RecordReference'
 import { ActionModal } from '../../management/ActionModal'
@@ -19,6 +19,7 @@ import { RescheduleMissionModal } from './RescheduleMissionModal'
 import { StepSection } from './StepSection'
 import { YoloDetectionPanel } from './YoloDetectionPanel'
 import { PlantHealthProcessingPanel } from './PlantHealthProcessingPanel'
+import { V3CaptureFlightActions } from './V3CaptureFlightActions'
 
 const missionStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Ghép bản đồ', 'Ranh giới, YOLO & Publish GPS']
 function missionStepIndex(status: string, preflightDone: boolean) {
@@ -86,6 +87,8 @@ export function ManagerMissionDetailPage() {
   const { message } = App.useApp()
   const token = useAuth().session!.accessToken
   const { farmId = '', missionId = '' } = useParams()
+  const [params] = useSearchParams()
+  const orderId = params.get('orderId') ?? ''
   const client = useQueryClient()
   const [answers, setAnswers] = useState<Record<string, boolean>>({})
   const [suitableForFlight, setSuitableForFlight] = useState(false)
@@ -120,6 +123,8 @@ export function ManagerMissionDetailPage() {
 
   const missionQuery = useQuery({ queryKey: ['mission-detail', farmId, missionId], queryFn: ({ signal }) => api.findMissionById(token, farmId, missionId, signal) })
   const mission = missionQuery.data
+  // Direct links from the farm list have no order context. The prefix identifies the workflow only.
+  const v3Capture = !!mission && (toScreamingSnakeCase(latest?.purpose ?? '') === 'CAPTURE' || /^V3(?:CAP|R\d+)-/i.test(mission.missionCode))
   const status = latest?.status ?? mission?.status
   const version = latest?.version ?? mission?.version
   const draft = status === 'DRAFT'
@@ -401,7 +406,7 @@ export function ManagerMissionDetailPage() {
     </section>
     <Steps className="mission-steps" size="small" current={missionStepIndex(status ?? mission.status, preflightDone)} items={(isPlantHealth ? ['Preflight', 'Bay', 'Upload & Telemetry', 'Nhận diện bệnh', 'Chuyển kết quả kiểm duyệt'] : missionStepTitles).map(title => ({ title }))} />
     {!draft && !scheduled && !inFlight && !flightFailed && !postFlight && !orthophotoEligible && !canResetUpload ? <Alert className="workflow-notice" type="info" showIcon message={`Nhiệm vụ đang ở trạng thái "${missionStatusLabel(status ?? mission.status)}", không ở bước có thao tác trong phạm vi đã triển khai.`} /> : null}
-    {flightFailed ? <Alert className="workflow-notice" type="warning" showIcon message="Chuyến bay trước đã lỗi." description="Chỉ lên lịch lại được nếu quyết định khắc phục khi báo lỗi là &quot;Cần lên lịch lại&quot;." /> : null}
+    {flightFailed ? <Alert className="workflow-notice" type="warning" showIcon message="Chuyến bay trước đã lỗi." description={v3Capture ? 'Xem quyết định bay lại trên đơn khảo sát.' : 'Chỉ lên lịch lại được nếu quyết định khắc phục khi báo lỗi là "Cần lên lịch lại".'} /> : null}
     {!draft ? <StepSection title="Checklist trước khi bay" status={scheduled && !preflightDone ? 'active' : 'done'} summary={preflightDone ? `Phù hợp để bay: ${preflightSuitable ? 'Có' : 'Không'}.` : undefined}>
       {preflightDone ? <Alert type="success" showIcon message="Đã hoàn tất checklist preflight." description={`Phù hợp để bay: ${preflightSuitable ? 'Có' : 'Không'}.`} />
         : checklistQuery.isPending ? <CommonState type="loading" />
@@ -426,12 +431,16 @@ export function ManagerMissionDetailPage() {
         </> : null}
     </StepSection> : null}
     {scheduled && !preflightDone ? <Alert className="workflow-notice" type="info" showIcon message="Hoàn tất checklist trước khi bay để mở bước &quot;Bắt đầu bay&quot;." /> : null}
-    {preflightDone ? <StepSection title="Bắt đầu bay" status={scheduled ? 'active' : 'done'} summary="Đã bắt đầu bay.">
+    {v3Capture && ((scheduled && preflightDone) || inFlight) ? <StepSection title={scheduled ? 'Bắt đầu bay' : 'Kết thúc chuyến bay'} status="active">
+      <V3CaptureFlightActions key={`${orderId}:${missionId}`} token={token} orderId={orderId} farmId={farmId} missionId={missionId} scheduled={scheduled} preflightSuitable={preflightSuitable}
+        refreshMission={async () => { await missionQuery.refetch(); setLatest(null) }} />
+    </StepSection> : null}
+    {!v3Capture && preflightDone ? <StepSection title="Bắt đầu bay" status={scheduled ? 'active' : 'done'} summary="Đã bắt đầu bay.">
       <p className="form-hint">Chỉ bắt đầu được trong khung giờ và lịch khảo sát đã được chốt, sau khi checklist preflight đã hoàn tất với kết quả phù hợp để bay.</p>
       {startMutation.error ? <Alert type="error" showIcon message={missionError(startMutation.error)} /> : null}
       <Button type="primary" loading={startMutation.isPending} onClick={() => startMutation.mutate()}>Bắt đầu bay</Button>
     </StepSection> : null}
-    {inFlight || postFlight || orthophotoEligible || canResetUpload ? <StepSection title="Kết thúc chuyến bay" status={inFlight ? 'active' : 'done'} summary="Đã kết thúc chuyến bay.">
+    {!v3Capture && (inFlight || postFlight || orthophotoEligible || canResetUpload) ? <StepSection title="Kết thúc chuyến bay" status={inFlight ? 'active' : 'done'} summary="Đã kết thúc chuyến bay.">
       <p className="form-hint">Xác nhận chuyến bay đã kết thúc an toàn. Upload ảnh và dữ liệu bay được thực hiện ở bước riêng sau khi kết thúc.</p>
       {completeFlightMutation.error ? <Alert type="error" showIcon message={missionError(completeFlightMutation.error)} /> : null}
       <Button type="primary" loading={completeFlightMutation.isPending} onClick={() => completeFlightMutation.mutate()}>Kết thúc chuyến bay</Button>
@@ -590,7 +599,7 @@ export function ManagerMissionDetailPage() {
         ]} />}
     </section> : null}
     {canDetectDiseases && status !== 'COMPLETED' ? <PlantHealthProcessingPanel key={missionId} token={token} farmId={farmId} missionId={missionId} missionCode={mission.missionCode} surveyOrderId={latest?.surveyOrderId} boundary={farmContextQuery.data?.approvedBoundary?.geometry ?? null} disabled={farmContextQuery.isPending || farmContextQuery.isFetching || farmContextQuery.isError} /> : null}
-    {draft || scheduled || inFlight || flightFailed ? <section className="resource-panel">
+    {!v3Capture && (draft || scheduled || inFlight || flightFailed) ? <section className="resource-panel">
       <h2>Thao tác khác</h2>
       <Space wrap>
         {draft || scheduled ? <Button danger onClick={() => setAction(cancelAction())}>Hủy nhiệm vụ</Button> : null}
