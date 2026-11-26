@@ -68,11 +68,15 @@ async function throwIfError(response: Response): Promise<never> {
   throw new ApiError(
     response.status,
     firstValidationMessage ?? problem?.detail ?? problem?.title ?? 'Không thể xử lý yêu cầu.',
-    problem?.errorCode,
+    problem?.errorCode ?? coordinatorErrorCode(problem?.title),
     problem?.traceId,
     problem?.errors,
   )
 }
+
+// Coordinator V3 (V3SystemManagerSurveyOrdersController.CoordinatorResult) trả Results.Problem với mã lỗi chữ hoa ở `title`
+// (vd. "CAPTURE_VERSION_CONFLICT") và không có extension errorCode. Title thường ("Conflict", "Bad Request") không bị nhận nhầm.
+const coordinatorErrorCode = (title: string | undefined) => title && /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$/.test(title) ? title : undefined
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { body, token, headers, skipAuthRefresh, ...requestOptions } = options

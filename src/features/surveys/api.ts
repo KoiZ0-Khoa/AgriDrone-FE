@@ -1,10 +1,13 @@
-import { ApiError, apiRequest } from '../../api/client'
-import type { Approval, AssignedFarm, ExistingFarmIntake, FarmManagerAssignment, Manager, NewFarmIntake, Page, PriceHistory, PublicIntake, PublicService, RequestDetail, RequestReceipt, ReviewDecision, SurveyRequest, SurveyService } from './types'
+import { apiRequest } from '../../api/client'
+import type { Approval, AssignedFarm, ExistingFarmIntake, FarmManagerAssignment, Manager, NewFarmIntake, Page, PriceHistory, PublicIntake, RequestDetail, ReviewDecision, SurveyRequest, SurveyService } from './types'
 import type { SurveyCatalogueV3, SurveyIntakeCatalogue, SurveyIntakeReceipt } from './types'
 
 const id = encodeURIComponent
 const adminServices = '/api/system-admin/survey-services'
 const adminRequests = '/api/system-admin/survey-requests'
+// Phê duyệt dùng route V3 (cùng body, header Idempotency-Key và response với route cũ). Xem/nhận xét duyệt/từ chối
+// chưa có bản V3 riêng và vẫn dùng chung cho yêu cầu V3.
+const adminRequestsV3 = '/api/v3/system-admin/survey-requests'
 export function getManagers(token: string, page = 1, filters: { status?: string; availability?: string } = {}, signal?: AbortSignal) {
   const params = new URLSearchParams({ pageNumber: String(page), pageSize: '20' })
   for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value)
@@ -16,27 +19,16 @@ export const createManager = (token: string, userId: string) => apiRequest<Manag
 export const changeManagerState = (token: string, profileId: string, state: 'activate' | 'suspend', body: { reason: string; expectedVersion: number }) => apiRequest<Manager>(`/api/system/managers/${id(profileId)}/${state}`, { method: 'PUT', token, body })
 export const changeManagerAvailability = (token: string, profileId: string, body: { availability: Manager['availability']; reason: string; expectedVersion: number }) => apiRequest<Manager>(`/api/system/managers/${id(profileId)}/availability`, { method: 'PUT', token, body })
 export const getServices = (token: string, signal?: AbortSignal) => apiRequest<SurveyService[]>(adminServices, { token, signal })
-export const getPublicServices = (signal?: AbortSignal) => apiRequest<PublicService[]>('/api/public/survey-services', { signal })
+// Web chỉ nhận yêu cầu khảo sát V3 (MAP / COMBO). Danh mục chưa mở đăng ký (isBookable = false) thì trả danh sách rỗng
+// để trang hiện "Chưa có dịch vụ nhận yêu cầu", không còn quay về danh mục cũ.
 export async function getSurveyIntakeCatalogue(signal?: AbortSignal): Promise<SurveyIntakeCatalogue> {
-  let v3: SurveyCatalogueV3 | undefined
-  try {
-    v3 = await apiRequest<SurveyCatalogueV3>('/api/v3/catalog/survey-services', { signal, cache: 'no-store' })
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 404) throw error
-  }
-  if (v3?.isBookable) {
-    return {
-      version: 'v3',
-      sharedDeposit: v3.sharedDeposit,
-      services: v3.services
-        .filter(service => service.code === 'MAP' || service.code === 'COMBO')
-        .map(service => ({ ...service, name: service.code === 'MAP' ? 'Chỉ bay bản đồ' : 'Combo bản đồ + khảo sát sức khỏe cây' })),
-    }
-  }
-  const services = await getPublicServices(signal)
+  const v3 = await apiRequest<SurveyCatalogueV3>('/api/v3/catalog/survey-services', { signal, cache: 'no-store' })
+  if (!v3?.isBookable) return { services: [] }
   return {
-    version: 'legacy',
-    services: services.map(service => ({ ...service, pricePerPole: service.indicativePrice.amountPerPole, currency: service.indicativePrice.currency })),
+    sharedDeposit: v3.sharedDeposit,
+    services: v3.services
+      .filter(service => service.code === 'MAP' || service.code === 'COMBO')
+      .map(service => ({ ...service, name: service.code === 'MAP' ? 'Chỉ bay bản đồ' : 'Combo bản đồ + khảo sát sức khỏe cây' })),
   }
 }
 export const getPriceHistory = (token: string, serviceId: string, signal?: AbortSignal) => apiRequest<PriceHistory[]>(`${adminServices}/${id(serviceId)}/prices`, { token, signal })
@@ -57,10 +49,7 @@ export function getRequests(token: string, page = 1, filters: { status?: string;
 export const getRequest = (token: string, requestId: string, signal?: AbortSignal) => apiRequest<RequestDetail>(`${adminRequests}/${id(requestId)}`, { token, signal })
 export const startReview = (token: string, requestId: string, expectedVersion: number) => apiRequest(`${adminRequests}/${id(requestId)}/start-review`, { method: 'POST', token, body: { expectedVersion } })
 export const rejectRequest = (token: string, requestId: string, body: ReviewDecision) => apiRequest(`${adminRequests}/${id(requestId)}/reject`, { method: 'POST', token, body })
-export const approveRequest = (token: string, requestId: string, body: ReviewDecision & { selectedSystemManagerProfileId: string | null }, key: string) => apiRequest<Approval>(`${adminRequests}/${id(requestId)}/approve`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
-export const submitPublicRequest = (body: PublicIntake, key: string) => apiRequest<RequestReceipt>('/api/public/survey-requests', { method: 'POST', credentials: 'include', headers: { 'Idempotency-Key': key }, body })
-export const submitNewFarmRequest = (token: string, body: NewFarmIntake, key: string) => apiRequest<RequestReceipt>('/api/tenant-owner/survey-requests/new-farm', { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
-export const submitExistingFarmRequest = (token: string, farmId: string, body: ExistingFarmIntake, key: string) => apiRequest<RequestReceipt>(`/api/tenant-owner/farms/${id(farmId)}/survey-requests`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
+export const approveRequest = (token: string, requestId: string, body: ReviewDecision & { selectedSystemManagerProfileId: string | null }, key: string) => apiRequest<Approval>(`${adminRequestsV3}/${id(requestId)}/approve`, { method: 'POST', token, headers: { 'Idempotency-Key': key }, body })
 export const submitPublicRequestV3 = (body: PublicIntake, key: string) =>
   apiRequest<SurveyIntakeReceipt>('/api/v3/public/survey-requests', { method: 'POST', credentials: 'include', headers: { 'Idempotency-Key': key }, body })
 export const submitOwnerRequestV3 = (token: string, body: (ExistingFarmIntake & { farmId: string }) | (NewFarmIntake & { farmId: null }), key: string) =>

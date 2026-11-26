@@ -1,13 +1,12 @@
-import type { OwnerAppointmentBody, OwnerSurveyOrder } from './ownerOrderTypes'
+import type { OwnerSurveyOrder } from './ownerOrderTypes'
+import type { CaptureAppointmentOwnerBody } from './v3Types'
 import type { PaymentPurpose } from './orderTypes'
 import type { PaymentHistory } from './paymentWorkflow'
 import { paymentIsPaid } from './paymentWorkflow'
+import { v3OrderStatusEnumName, v3OrderStatuses } from './v3Workflow'
 
-// MVC query binding accepts the enum member name; JSON responses use SCREAMING_SNAKE_CASE.
-export const ownerOrderStatusQuery: Record<string, string> = Object.fromEntries([
-  'PendingBoundaryVerification', 'AwaitingBaselineAppointment', 'AwaitingBaselineDeposit', 'AwaitingBoundaryCapture', 'BaselineReady', 'BaselineInProgress',
-  'AwaitingBaselineReview', 'AwaitingPricing', 'AwaitingPaidAppointment', 'AwaitingPayment', 'ReadyForPaidService', 'InProgress', 'PendingReview', 'Completed', 'Cancelled',
-].map(value => [value.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase(), value]))
+// MVC query binding accepts the enum member name; JSON responses use SCREAMING_SNAKE_CASE. Web chỉ lọc theo trạng thái V3.
+export const ownerOrderStatusQuery: Record<string, string> = Object.fromEntries(v3OrderStatuses.map(status => [status, v3OrderStatusEnumName(status)]))
 export const ownerGuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) && value !== '00000000-0000-0000-0000-000000000000'
 export const validOwnerVersion = (value: number) => Number.isInteger(value) && value > 0 && value <= 4_294_967_295
 export const ownerOrderFingerprint = (order: OwnerSurveyOrder) => JSON.stringify(order)
@@ -28,19 +27,23 @@ export const paymentRequiresAppointment = (order: OwnerSurveyOrder, history?: Pa
 export function historyMatchesOrder(order: OwnerSurveyOrder, history: PaymentHistory | undefined) { return !!history && history.surveyOrderId.toLowerCase() === order.surveyOrderId.toLowerCase() }
 export const activePaymentStatus = (status: string) => ['PENDING', 'PROCESSING', 'PAID', 'CONFIRMED', 'ADJUSTMENT_REQUIRED'].includes(status)
 
+// Lịch hẹn bay V3: đơn V3 chỉ có lịch CAPTURE nên không xét `purpose`. BE (TenantOwnerSurveyOrderResponseMapper) hiện trả
+// mọi lịch không phải bản đồ nền là "PAID_SERVICE", kể cả lịch CAPTURE — lỗi nhỏ phía BE (BE-6), FE bỏ qua trường này.
 function validAppointmentContext(order: OwnerSurveyOrder) {
   const appointment = order.currentAppointment
   return validOwnerVersion(order.orderVersion) && ownerGuid(order.surveyOrderId) && !!appointment && ownerGuid(appointment.appointmentId) && validOwnerVersion(appointment.appointmentVersion) &&
-    ['BASELINE_MAPPING', 'PAID_SERVICE'].includes(appointment.purpose) && Number.isFinite(Date.parse(appointment.startAt)) && Date.parse(appointment.endAt) > Date.parse(appointment.startAt)
+    Number.isFinite(Date.parse(appointment.startAt)) && Date.parse(appointment.endAt) > Date.parse(appointment.startAt)
 }
+// Owner xác nhận lịch Manager đề xuất khi đơn đang chờ chốt lịch; sau đó đơn sang chờ cọc hoặc sẵn sàng bay (nếu đã đủ cọc).
 export function canConfirmOwnerAppointment(order: OwnerSurveyOrder, now = Date.now()) {
-  return validAppointmentContext(order) && order.currentAppointment!.purpose === 'BASELINE_MAPPING' && order.currentAppointment!.status === 'PROPOSED' && Date.parse(order.currentAppointment!.endAt) > now && order.status === 'AWAITING_BASELINE_APPOINTMENT'
+  return validAppointmentContext(order) && order.currentAppointment!.status === 'PROPOSED' && Date.parse(order.currentAppointment!.endAt) > now && order.status === 'AWAITING_APPOINTMENT'
 }
-export function canRescheduleOwnerAppointment(order: OwnerSurveyOrder, history: PaymentHistory | undefined) {
-  if (!validAppointmentContext(order) || !['PROPOSED', 'CONFIRMED'].includes(order.currentAppointment!.status) || !historyMatchesOrder(order, history)) return false
-  return order.currentAppointment!.purpose === 'BASELINE_MAPPING' && ['AWAITING_BASELINE_APPOINTMENT', 'AWAITING_BASELINE_DEPOSIT', 'AWAITING_BOUNDARY_CAPTURE', 'BASELINE_READY'].includes(order.status)
+// Owner xin đổi lịch khi lịch còn chờ xác nhận hoặc đã xác nhận và chưa bay. BE còn chặn khi Manager đã chuẩn bị lần bay.
+const reschedulableStatuses = ['AWAITING_APPOINTMENT', 'AWAITING_DEPOSIT', 'READY_FOR_CAPTURE']
+export function canRescheduleOwnerAppointment(order: OwnerSurveyOrder) {
+  return validAppointmentContext(order) && ['PROPOSED', 'CONFIRMED'].includes(order.currentAppointment!.status) && reschedulableStatuses.includes(order.status)
 }
-export function ownerAppointmentBody(order: OwnerSurveyOrder): OwnerAppointmentBody {
+export function ownerAppointmentBody(order: OwnerSurveyOrder): CaptureAppointmentOwnerBody {
   if (!validAppointmentContext(order)) throw new Error('Thông tin đơn hoặc lịch hẹn chưa đầy đủ. Tải lại trước khi tiếp tục.')
   return { expectedOrderVersion: order.orderVersion, expectedAppointmentVersion: order.currentAppointment!.appointmentVersion }
 }

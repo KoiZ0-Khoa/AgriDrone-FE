@@ -1,6 +1,6 @@
 import { apiRequest } from '../../api/client'
 import type { Page } from './types'
-import type { Appointment, AppointmentBody, AssignedOrder, OrderScope, VerifiedBoundary, VerifyBoundaryBody } from './orderTypes'
+import type { AssignedOrder, OrderScope, VerifiedBoundary, VerifyBoundaryBody } from './orderTypes'
 import type { ConfirmedPricing, ConfirmPricingBody } from './orderTypes'
 import type { ApproveRouteBody, CaptureSample, CaptureSession, OrthophotoBody, PaymentPurpose, PaymentSession } from './orderTypes'
 
@@ -28,7 +28,6 @@ export async function getAssignedOrder(token: string, orderId: string, signal?: 
   }
 }
 export const getOrderScope = (token: string, orderId: string, signal?: AbortSignal) => apiRequest<OrderScope>(`${base}/${encodeURIComponent(orderId)}/boundary-scope`, { token, signal })
-export const proposeAppointment = (token: string, orderId: string, body: AppointmentBody) => apiRequest<Appointment>(`${base}/${encodeURIComponent(orderId)}/appointments`, { method: 'POST', token, body })
 export const verifyOrderBoundary = (token: string, orderId: string, body: VerifyBoundaryBody) => apiRequest<VerifiedBoundary>(`${base}/${encodeURIComponent(orderId)}/boundary-scope/verify`, { method: 'POST', token, body })
 export const confirmOrderPricing = (token: string, orderId: string, body: ConfirmPricingBody) => apiRequest<ConfirmedPricing>(`${base}/${encodeURIComponent(orderId)}/pole-count/confirm`, { method: 'POST', token, body })
 

@@ -11,6 +11,7 @@ import { useAuth } from '../auth/AuthContext'
 import * as api from './api'
 import type { Approval, RequestDetail, ReviewChecklist, SurveyRequest } from './types'
 import { checklistVersion, dateTime, isEligibleManager, operationFor, requestKindLabels, requestStatusLabels, reviewChecklist, reviewLabels, workflowError } from './workflow'
+import { orderStatusLabels } from './orderWorkflow'
 
 export function RequestsPage() {
   const token = useAuth().session!.accessToken
@@ -54,7 +55,7 @@ export function RequestDetailPage() {
   return <>
     <Link className="back-link" to="/system/survey-requests"><ArrowLeftOutlined /> Danh sách yêu cầu</Link>
     <section className="resource-page-heading"><div><span className="page-kicker">{requestKindLabels[request.kind]}</span><h1>Yêu cầu khảo sát · {request.farmName}</h1><p>{request.surveyServiceName}</p><CopyReference value={request.requestNumber} label="Sao chép mã yêu cầu" /></div><Tag>{requestStatusLabels[request.status]}</Tag></section>
-    {approval ? <Alert className="workflow-notice" showIcon type="success" title="Đã tạo đơn khảo sát" description={<>{approval.requiresBaselineMapping ? 'Đơn cần khảo sát bản đồ nền trước. Manager đã được phân công; Owner mới sẽ nhận lời mời qua email.' : 'Đơn khảo sát đã được tạo cho nông trại. Manager tiếp tục xác minh phạm vi và điều kiện vận hành.'}<p><Link className="workflow-detail-link" to={`/system/survey-orders?farmId=${encodeURIComponent(approval.farmId)}`}>Xem đơn khảo sát →</Link></p></>} /> : null}
+    {approval ? <Alert className="workflow-notice" showIcon type="success" title="Đã tạo đơn khảo sát" description={<>{`Đơn ${approval.orderNumber} đang ở bước "${orderStatusLabels[approval.orderStatus] ?? approval.orderStatus}". Giá, cọc và chính sách đã được chốt theo thời điểm duyệt. Manager được phân công sẽ đề xuất lịch bay${approval.ownerInvitationId ? '; Owner mới sẽ nhận lời mời qua email' : ''}.`}<p><Link className="workflow-detail-link" to={`/system/survey-orders?farmId=${encodeURIComponent(approval.farmId)}`}>Xem đơn khảo sát →</Link></p></>} /> : null}
     <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>Thông tin tiếp nhận</strong><span>Gửi lúc {dateTime(request.createdAt)}</span></div><Button icon={<ReloadOutlined />} onClick={() => { start.reset(); void query.refetch() }}>Tải lại</Button></div>
       <dl className="detail-list">

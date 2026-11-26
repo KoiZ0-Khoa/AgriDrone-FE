@@ -9,9 +9,8 @@ export type SurveyService = {
   surveyServiceId: string; code: string; name: string; description: string; serviceType: string
   status: 'ACTIVE' | 'EXPERIMENTAL' | 'RETIRED'; version: number; currentPrice: ServicePrice | null
 }
-export type PublicService = Pick<SurveyService, 'surveyServiceId' | 'code' | 'name' | 'description' | 'serviceType'> & { isExperimental: boolean; indicativePrice: Omit<ServicePrice, 'priceVersionId'> }
+// Danh mục V3 đã chuẩn hóa cho trang đăng ký khảo sát (chỉ MAP / COMBO).
 export type SurveyIntakeCatalogue = {
-  version: 'legacy' | 'v3'
   services: {
     surveyServiceId: string; name: string; description: string
     pricePerPole: number; currency: string; isExperimental?: boolean; preliminaryLimitations?: string[]
@@ -42,9 +41,10 @@ export type RequestDetail = SurveyRequest & {
 export type ReviewCode = 'contact-valid' | 'dragon-fruit-farm-confirmed' | 'service-area-supported' | 'candidate-location-sufficient'
 export type ReviewChecklist = Record<ReviewCode, boolean> & { notes: string | null }
 export type ReviewDecision = { expectedVersion: number; reason: string; checklist: ReviewChecklist }
-export type Approval = { surveyRequestId: string; requestNumber: string; surveyOrderId: string; orderNumber: string; orderStatus: string; tenantId: string; farmId: string; requiresBaselineMapping: boolean }
-export type RequestReceipt = { id: string; requestNumber: string; tenantCode: string | null; tenantName: string | null; kind: RequestKind; status: RequestStatus; createdAt: string }
-export type SurveyIntakeReceipt = Pick<RequestReceipt, 'requestNumber'> & {
+// ApproveSurveyRequestApiResponse (route V3 và route cũ trả cùng dạng).
+export type Approval = { surveyRequestId: string; requestNumber: string; surveyOrderId: string; orderNumber: string; orderStatus: string; tenantId: string; farmId: string; requiresBaselineMapping: boolean; ownerInvitationId: string | null }
+export type SurveyIntakeReceipt = {
+  requestNumber: string
   trackingToken?: string
   indicativeQuote?: { currency: string; depositAmount: number; indicativeTotalAmount: number | null }
 }
