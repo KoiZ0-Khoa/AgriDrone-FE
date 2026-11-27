@@ -8,6 +8,12 @@ export const decisionLabels: Record<ReviewDecision | 'Pending', string> = {
 export function decisionLabel(value: string) { return Object.entries(decisionLabels).find(([key]) => stateToken(key) === stateToken(value))?.[1] ?? value }
 export const editableDraft = (draft: BaseMapDraft) => stateToken(draft.status) === 'DRAFT' && ['PENDINGREVIEW', 'REVIEWINPROGRESS'].includes(stateToken(draft.batchStatus)) && !!draft.batchId
 export const draftFingerprint = (draft: BaseMapDraft) => JSON.stringify(draft)
+export type ReviewMapPosition = [latitude: number, longitude: number]
+export function reviewMapPosition(latitude: number | null | undefined, longitude: number | null | undefined): ReviewMapPosition | null {
+  if (typeof latitude !== 'number' || typeof longitude !== 'number' || !Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null
+  return [latitude, longitude]
+}
+
 export type ReviewValues = { decision: ReviewDecision; longitude?: number | null; latitude?: number | null; row?: number | null; column?: number | null; plantId?: string | null; reason?: string | null }
 export function candidateReviewBody(candidate: MappingCandidate, values: ReviewValues): CandidateReviewBody {
   if (!Object.hasOwn(decisionLabels, values.decision) || values.decision === ('Pending' as string)) throw new Error('Chọn một quyết định duyệt hợp lệ.')

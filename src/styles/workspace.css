@@ -105,6 +105,10 @@
 .app-shell .mapping-summary strong { font-size: 30px; line-height: 1.2; }
 .app-shell .mapping-filters { display: flex; flex-wrap: wrap; gap: 12px; }
 .app-shell .mapping-filters > * { width: 240px; max-width: 100%; }
+.draft-position-section { margin-bottom: 16px; }
+.draft-position-toolbar { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 8px; }
+.draft-position-toolbar p { margin: 0; flex: 1 1 280px; }
+.base-map-canvas.draft-position-canvas { height: clamp(255px, 48vh, 440px); isolation: isolate; }
 .mapping-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
 .mapping-form-grid .ant-input-number { width: 100%; }
 @media (max-width: 1280px) {

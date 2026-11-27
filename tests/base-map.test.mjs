@@ -57,6 +57,16 @@ test('all review decisions preserve position order and require the correct exist
   for (const values of [{ decision: 'Pending' }, { decision: 'Accept' }, { decision: 'Relocate', plantId }, { decision: 'MatchExisting' }, { decision: 'Replace', plantId: 'tree_r1_c2' }, { decision: 'CreateNew', longitude: 108 }, { decision: 'CreateNew', longitude: 181, latitude: 11 }, { decision: 'CreateNew', longitude: 108, latitude: NaN }, { decision: 'CreateNew', row: 0 }, { decision: 'CreateNew', column: 1.5 }]) assert.throws(() => flow.candidateReviewBody(candidate, values))
 })
 
+test('a map-selected position keeps WGS84 coordinate order and the original create decision', () => {
+  const [latitude, longitude] = flow.reviewMapPosition(10.4616421, 106.4940462)
+  const body = flow.candidateReviewBody(candidate, { decision: 'CreateNew', latitude, longitude })
+  assert.equal(body.correctedLatitude, 10.4616421)
+  assert.equal(body.correctedLongitude, 106.4940462)
+  assert.equal(body.correctedMatchedPlantId, null)
+  assert.equal(flow.reviewMapPosition(106.4940462, 10.4616421), null)
+  assert.equal(flow.reviewMapPosition(null, 106.4940462), null)
+})
+
 test('batch reviews use the actual selected points and each point own corrected plant/position, never a shared plant ID', () => {
   const other = { ...candidate, candidateId: '40000000-0000-0000-0000-000000000002', proposedMatchedPlantId: draftId, correctedLongitude: 108.4, correctedLatitude: 11.3 }
   const snapshot = { ...draft, candidates: [candidate, other] }

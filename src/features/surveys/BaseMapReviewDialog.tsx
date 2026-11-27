@@ -2,16 +2,19 @@ import { FormSubmit } from '../../components/FormSubmit'
 import { readableCode } from '../../components/RecordReference'
 import { Alert, Form, Input, InputNumber, Modal, Select } from 'antd'
 import { useMutation } from '@tanstack/react-query'
-import { useRef } from 'react'
+import { lazy, Suspense, useRef } from 'react'
 import { reviewMappingBatch, reviewMappingCandidate } from './baseMapApi'
 import type { BaseMapDraft, ReviewDecision } from './baseMapTypes'
-import { batchReviewBody, candidateReviewBody, decisionLabels, draftFingerprint, editableDraft, type ReviewValues } from './baseMapWorkflow'
+import { batchReviewBody, candidateReviewBody, decisionLabels, draftFingerprint, editableDraft, reviewMapPosition, type ReviewValues } from './baseMapWorkflow'
 import { mutationNeedsReload, SurveyMutationError } from './SurveyMutationError'
+
+const DraftCandidatePositionMap = lazy(() => import('./DraftCandidatePositionMap'))
 
 export type ReviewSelection = { snapshot: BaseMapDraft; candidateIds: string[]; batch: boolean }
 export function BaseMapReviewDialog({ token, selection, current, disabled, close, done }: { token: string; selection: ReviewSelection; current: BaseMapDraft; disabled: boolean; close: () => void; done: (message: string) => Promise<void> }) {
   const [form] = Form.useForm<ReviewValues>()
   const decision = Form.useWatch('decision', form)
+  const latitude = Form.useWatch('latitude', form), longitude = Form.useWatch('longitude', form)
   const pending = useRef(false)
   const { snapshot, candidateIds, batch } = selection
   const candidate = snapshot.candidates.find(item => item.candidateId === candidateIds[0])!
@@ -25,7 +28,10 @@ export function BaseMapReviewDialog({ token, selection, current, disabled, close
     } else await reviewMappingCandidate(token, snapshot.farmId, snapshot.draftId, candidate.candidateId, candidateReviewBody(candidate, values))
   }, onSuccess: () => done(batch ? `Đã duyệt ${candidateIds.length} điểm.` : 'Đã lưu quyết định duyệt.'), onSettled: () => { pending.current = false } })
   const blocked = disabled || stale || mutationNeedsReload(mutation.error) || mutation.isError
-  return <Modal open title={batch ? `Duyệt ${candidateIds.length} điểm đã chọn` : `Duyệt ${readableCode(candidate.treeId) ?? 'điểm nhận diện'}`} okText="Lưu quyết định" cancelText="Hủy" confirmLoading={mutation.isPending} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }} cancelButtonProps={{ disabled: mutation.isPending }} okButtonProps={{ disabled: blocked }} onCancel={() => { if (!mutation.isPending) close() }} onOk={() => form.submit()}>
+  const mapDisabled = blocked || mutation.isPending
+  return <Modal open width={batch ? undefined : 880} centered={!batch}
+    styles={batch ? undefined : { body: { maxHeight: 'calc(100dvh - 160px)', overflowY: 'auto' } }}
+    title={batch ? `Duyệt ${candidateIds.length} điểm đã chọn` : `Duyệt ${readableCode(candidate.treeId) ?? 'điểm nhận diện'}`} okText="Lưu quyết định" cancelText="Hủy" confirmLoading={mutation.isPending} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }} cancelButtonProps={{ disabled: mutation.isPending }} okButtonProps={{ disabled: blocked }} onCancel={() => { if (!mutation.isPending) close() }} onOk={() => form.submit()}>
     {stale ? <Alert showIcon type="warning" title="Bản đồ đã thay đổi. Đóng biểu mẫu và tải lại trước khi duyệt." /> : null}
     <Form form={form} layout="vertical" disabled={blocked || mutation.isPending} initialValues={batch ? {} : { decision: candidate.reviewDecision in decisionLabels && candidate.reviewDecision !== 'Pending' ? candidate.reviewDecision : undefined,
       longitude: candidate.correctedLongitude, latitude: candidate.correctedLatitude, row: candidate.correctedRowIndex, column: candidate.correctedColumnIndex,
@@ -35,7 +41,21 @@ export function BaseMapReviewDialog({ token, selection, current, disabled, close
       {decision === 'CreateNew' ? <Alert className="workflow-notice" showIcon type="info" title="Các điểm này sẽ tạo cây mới khi phát hành bản đồ." /> : null}
       {batch && decision === 'MatchExisting' ? <Alert className="workflow-notice" showIcon type="info" title="Mỗi điểm dùng mã cây tương ứng đã được BE đề xuất hoặc đã sửa. Điểm thiếu mã cây cần duyệt riêng." /> : null}
       {!batch && ['MatchExisting', 'Relocate', 'Replace'].includes(decision) ? <Form.Item name="plantId" label="Mã cây hiện có" rules={[{ required: true, message: 'Nhập mã cây cần ghép hoặc thay thế.' }]} extra="Dùng mã cây chính thức, không phải mã TreeId của điểm nhận diện."><Input placeholder="Mã cây (GUID)" /></Form.Item> : null}
-      {!batch && decision !== 'Reject' ? <><div className="mapping-form-grid"><Form.Item name="longitude" label="Kinh độ hiệu chỉnh" rules={[{ required: decision === 'Relocate', message: 'Nhập kinh độ mới.' }]}><InputNumber min={-180} max={180} controls={false} /></Form.Item><Form.Item name="latitude" label="Vĩ độ hiệu chỉnh" rules={[{ required: decision === 'Relocate', message: 'Nhập vĩ độ mới.' }]}><InputNumber min={-90} max={90} controls={false} /></Form.Item><Form.Item name="row" label="Hàng hiệu chỉnh"><InputNumber min={1} precision={0} /></Form.Item><Form.Item name="column" label="Cột hiệu chỉnh"><InputNumber min={1} precision={0} /></Form.Item></div><p className="form-hint">Để trống các trường hiệu chỉnh để dùng giá trị gốc. Sửa vị trí bắt buộc có cả kinh độ và vĩ độ.</p></> : null}
+      {!batch && decision !== 'Reject' ? <>
+        <Suspense fallback={<p className="form-hint">Đang mở bản đồ…</p>}>
+          <DraftCandidatePositionMap token={token} draft={snapshot} candidate={candidate} selected={reviewMapPosition(latitude, longitude)}
+            disabled={mapDisabled} onPick={([lat, lon]) => {
+              form.setFieldsValue({ latitude: Number(lat.toFixed(7)), longitude: Number(lon.toFixed(7)) })
+            }} onReset={() => form.setFieldsValue({ latitude: candidate.correctedLatitude, longitude: candidate.correctedLongitude })} />
+        </Suspense>
+        <div className="mapping-form-grid">
+          <Form.Item name="longitude" label="Kinh độ hiệu chỉnh" rules={[{ required: decision === 'Relocate', message: 'Chọn vị trí trên bản đồ hoặc nhập kinh độ mới.' }]}><InputNumber min={-180} max={180} controls={false} /></Form.Item>
+          <Form.Item name="latitude" label="Vĩ độ hiệu chỉnh" rules={[{ required: decision === 'Relocate', message: 'Chọn vị trí trên bản đồ hoặc nhập vĩ độ mới.' }]}><InputNumber min={-90} max={90} controls={false} /></Form.Item>
+          <Form.Item name="row" label="Hàng hiệu chỉnh"><InputNumber min={1} precision={0} placeholder={candidate.proposedRowIndex?.toString()} /></Form.Item>
+          <Form.Item name="column" label="Cột hiệu chỉnh"><InputNumber min={1} precision={0} placeholder={candidate.proposedColumnIndex?.toString()} /></Form.Item>
+        </div>
+        <p className="form-hint">Để trống trường hiệu chỉnh để dùng giá trị gốc.</p>
+      </> : null}
       <Form.Item name="reason" label="Lý do / ghi chú"><Input.TextArea rows={3} maxLength={2000} showCount /></Form.Item>
     </Form>
     <SurveyMutationError error={mutation.error} />

@@ -21,7 +21,7 @@ export function mapBoundary(value: string | null): GeoJsonPolygon | null {
     return data
   } catch { return null }
 }
-export function viewerBounds(map: MapVersionDetail): [[number, number], [number, number]] | null {
+export function viewerBounds(map: Pick<MapVersionDetail, 'bounds' | 'plants' | 'boundaryGeoJson'>): [[number, number], [number, number]] | null {
   const b = map.bounds
   if (b && [b.minLat, b.maxLat, b.minLon, b.maxLon].every(Number.isFinite) && b.minLat < b.maxLat && b.minLon < b.maxLon && b.minLat >= -90 && b.maxLat <= 90 && b.minLon >= -180 && b.maxLon <= 180) return [[b.minLat, b.minLon], [b.maxLat, b.maxLon]]
   const points = map.plants.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180).map(p => [p.lat, p.lon])
