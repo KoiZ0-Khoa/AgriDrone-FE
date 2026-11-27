@@ -93,15 +93,20 @@ export function closedBoundaryPolygon(points: [number, number][]) {
   const coordinates = [...points, points[0]] as [number, number][]
   return { type: 'Polygon' as const, coordinates: [coordinates] }
 }
-export function captureBoundaryCorners(polygon: GeoJsonPolygon | null) {
+export function captureBoundaryVertices(polygon: GeoJsonPolygon | null) {
   if (!polygon || polygon.coordinates.length !== 1) return null
   const ring = polygon.coordinates[0]
-  // The crop ring ends by repeating the first point. The boundary API expects only four distinct vertices.
-  if (ring.length !== 5) return null
-  const [longitude, latitude] = ring[0]
-  if (ring[4][0] !== longitude || ring[4][1] !== latitude) return null
+  if (ring.length < 4) return null
+  const [firstLongitude, firstLatitude] = ring[0]
+  const [lastLongitude, lastLatitude] = ring[ring.length - 1]
+  if (lastLongitude !== firstLongitude || lastLatitude !== firstLatitude) return null
+
+  // The Capture API closes the polygon itself. Send each distinct vertex once.
   const vertices = ring.slice(0, -1)
-  if (new Set(vertices.map(point => point.join(','))).size !== 4) return null
+  if (vertices.some(([longitude, latitude]) =>
+    !Number.isFinite(longitude) || Math.abs(longitude) > 180 || !Number.isFinite(latitude) || Math.abs(latitude) > 90
+  )) return null
+  if (new Set(vertices.map(point => point.join(','))).size !== vertices.length) return null
   return vertices.map(([longitude, latitude], index) => ({ sequence: index + 1, longitude, latitude }))
 }
 

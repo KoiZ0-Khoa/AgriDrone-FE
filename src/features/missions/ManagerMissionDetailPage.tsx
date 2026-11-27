@@ -17,7 +17,7 @@ import { captureAttemptStatusLabels, v3OperationFor, v3ServiceKind, type V3Opera
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
 import type { DetectMissionTreesOptions, GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, MissionTilingJob, MissionTreeDetection, MissionYoloJob, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, TelemetrySegment } from './missionTypes'
-import { captureBoundaryCorners, completedMissionTiling, completedMissionYolo, dateTime, fileSizeLabel, isBaselineMappingMissionCode, isMissionTilingActive, isMissionYoloActive, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
+import { captureBoundaryVertices, completedMissionTiling, completedMissionYolo, dateTime, fileSizeLabel, isBaselineMappingMissionCode, isMissionTilingActive, isMissionYoloActive, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
 import { BoundaryTilingPanel } from './BoundaryTilingPanel'
 import { CaptureInputReview } from './CaptureInputReview'
 import { PlantGpsPasteModal } from './PlantGpsPasteModal'
@@ -335,9 +335,9 @@ export function ManagerMissionDetailPage() {
   const captureBoundaryBound = ownerGuid(captureOrder.data?.farmBoundaryVersionId ?? '')
   const captureMappingRefreshing = captureOrder.isFetching || captureAttempts.isFetching || missionQuery.isFetching
   const captureMayMarkBoundary = captureMappingReady && captureOrder.data?.requiresBaselineMapping === true && !captureBoundaryBound
-  const captureCorners = captureMayMarkBoundary ? captureBoundaryCorners(boundaryPolygon) : null
+  const captureVertices = captureMayMarkBoundary ? captureBoundaryVertices(boundaryPolygon) : null
   const canPublishCaptureGps = captureMappingReady && captureBoundaryBound && !captureMappingRefreshing
-  const canMarkCaptureBoundary = captureMayMarkBoundary && !!captureCorners && !captureMappingRefreshing &&
+  const canMarkCaptureBoundary = captureMayMarkBoundary && !!captureVertices && !captureMappingRefreshing &&
     farmContextQuery.isSuccess && !farmContextQuery.isFetching && farmContextQuery.data.farmId === farmId &&
     validOwnerVersion(captureOrder.data?.orderVersion ?? 0)
 
@@ -348,8 +348,8 @@ export function ManagerMissionDetailPage() {
   const markCaptureBoundaryMutation = useMutation({
     retry: false,
     mutationFn: async () => {
-      if (!canMarkCaptureBoundary || !captureOrder.data || !captureAttempt || !captureCorners) {
-        throw new Error('Cần chọn đúng 4 góc và tải đủ thông tin lần bay để xác nhận ranh giới.')
+      if (!canMarkCaptureBoundary || !captureOrder.data || !captureAttempt || !captureVertices) {
+        throw new Error('Cần ít nhất 3 điểm ranh giới khác nhau và đầy đủ thông tin lần bay để xác nhận.')
       }
       const currentMission = await api.getMissionVersion(token, farmId, missionId)
       if (currentMission.id !== missionId || !validOwnerVersion(currentMission.version)) {
@@ -359,7 +359,7 @@ export function ManagerMissionDetailPage() {
         expectedOrderVersion: captureOrder.data.orderVersion,
         expectedMissionVersion: currentMission.version,
         expectedBoundaryVersionNumber: farmContextQuery.data.approvedBoundary?.versionNumber ?? null,
-        corners: captureCorners,
+        corners: captureVertices,
       })
       if (result.surveyOrderId !== captureOrderId || !ownerGuid(result.farmBoundaryId)) {
         throw new Error('Máy chủ chưa xác nhận ranh giới của đơn này.')
@@ -890,9 +890,11 @@ export function ManagerMissionDetailPage() {
         </div></div>
         {captureMayMarkBoundary ? <Flex vertical gap="middle">
           <Alert showIcon type="info" title="Cần xác nhận ranh giới của đơn khảo sát lần đầu"
-            description={captureCorners ? 'Xác nhận dùng 4 góc đã vẽ làm ranh giới chính thức của nông trại và lần bay.' : 'Quay lại bản đồ, mở khóa và chọn đúng 4 góc ranh giới theo thứ tự quanh vườn. Sau đó cắt tiles và chạy YOLO lại.'} />
+            description={captureVertices
+              ? `Dùng ${captureVertices.length} điểm đã vẽ làm ranh giới chính thức của nông trại và lần bay.`
+              : 'Quay lại bản đồ và vẽ ít nhất 3 điểm khác nhau theo thứ tự quanh vườn. Sau đó cắt tiles và chạy YOLO lại.'} />
           <Space wrap>
-            <Popconfirm title="Dùng 4 góc đã vẽ làm ranh giới chính thức?" okText="Xác nhận" cancelText="Quay lại"
+            <Popconfirm title="Dùng vùng đã vẽ làm ranh giới chính thức?" okText="Xác nhận" cancelText="Quay lại"
               disabled={!canMarkCaptureBoundary || markCaptureBoundaryMutation.isPending}
               onConfirm={() => markCaptureBoundaryMutation.mutate()}>
               <Button disabled={!canMarkCaptureBoundary} loading={markCaptureBoundaryMutation.isPending}>Xác nhận ranh giới</Button>

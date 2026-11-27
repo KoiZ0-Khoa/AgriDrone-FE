@@ -13,13 +13,20 @@ afterEach(() => { globalThis.fetch = originalFetch })
 
 const samplePayload = { surveyOrderId: 'order-1', processingJobId: 'job-1' }
 
-test('V3 boundary sends the four drawn corners in order without the closing point', () => {
-  const points = [[106.491, 10.461], [106.492, 10.461], [106.492, 10.462], [106.491, 10.462]]
-  assert.deepEqual(workflow.captureBoundaryCorners(workflow.closedBoundaryPolygon(points)),
-    points.map(([longitude, latitude], index) => ({ sequence: index + 1, longitude, latitude })))
-  assert.equal(workflow.captureBoundaryCorners(workflow.closedBoundaryPolygon(points.slice(1))), null)
-  assert.equal(workflow.captureBoundaryCorners(workflow.closedBoundaryPolygon([...points, [106.49, 10.46]])), null)
-  assert.equal(workflow.captureBoundaryCorners(workflow.closedBoundaryPolygon([...points.slice(0, 3), points[0]])), null)
+test('V3 boundary sends all drawn vertices in order without the closing point', () => {
+  const points = [[106.491, 10.461], [106.492, 10.461], [106.493, 10.461], [106.493, 10.462],
+    [106.493, 10.463], [106.492, 10.463], [106.491, 10.463], [106.491, 10.462]]
+  for (const vertices of [[points[0], points[2], points[4]], [points[0], points[2], points[4], points[6]], points]) {
+    assert.deepEqual(workflow.captureBoundaryVertices(workflow.closedBoundaryPolygon(vertices)),
+      vertices.map(([longitude, latitude], index) => ({ sequence: index + 1, longitude, latitude })))
+  }
+})
+
+test('V3 boundary rejects an open ring, too few vertices, repeated vertices or invalid coordinates', () => {
+  const [a, b, c] = [[106.491, 10.461], [106.492, 10.461], [106.492, 10.462]]
+  for (const ring of [[a, b, a], [a, b, c], [a, b, c, b, a], [a, b, [181, 10.462], a]]) {
+    assert.equal(workflow.captureBoundaryVertices({ type: 'Polygon', coordinates: [ring] }), null)
+  }
 })
 
 test('publishMissionPlantGps POSTs to the mission-scoped publish route with the Idempotency-Key header and payload wrapper', async () => {
