@@ -18,7 +18,7 @@ const frozen = {
 }
 const disabledButton = label => new RegExp('<button[^>]*disabled[^>]*><span>' + label + '</span></button>')
 
-test('G5 reviews the current manifest and restores the telemetry requirement after reopening', async () => {
+test('G5 restores capture review and shows the grid from the matching draft or YOLO result', async () => {
   const server = await createServer({
     configFile: false,
     logLevel: 'silent',
@@ -29,7 +29,7 @@ test('G5 reviews the current manifest and restores the telemetry requirement aft
       name: 'stub-client-only-map',
       resolveId: id => id === 'virtual:test-map' ? '\0test-map' : null,
       load: id => id === '\0test-map'
-        ? 'export const CircleMarker = null, ImageOverlay = null, MapContainer = null, Polygon = null, Polyline = null, Popup = null, useMapEvents = null, LayersControl = null, TileLayer = null'
+        ? 'export const CircleMarker = null, ImageOverlay = null, MapContainer = () => null, Polygon = null, Polyline = null, Popup = null, useMapEvents = null, LayersControl = null, TileLayer = null'
         : null,
     }],
   })
@@ -42,7 +42,10 @@ test('G5 reviews the current manifest and restores the telemetry requirement aft
         role: 'SYSTEM_MANAGER', fullName: 'Manager', accessToken: 'test-token', expiresAt: '2099-01-01T00:00:00Z',
       }) },
     })
-    const render = ({ orderStatus = 'AWAITING_CAPTURE_UPLOAD', pointCount = 0, attempt = {}, missionStatus = 'UPLOADING', missionCode = 'V3CAP-TEST', orderParam = orderId } = {}) => {
+    const render = ({
+      orderStatus = 'AWAITING_CAPTURE_UPLOAD', pointCount = 0, attempt = {}, missionStatus = 'UPLOADING',
+      missionCode = 'V3CAP-TEST', orderParam = orderId, yoloGrid, baseMapDraft,
+    } = {}) => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } } })
       client.setQueryData(['mission-detail', farmId, missionId], {
         id: missionId, farmId, missionCode, status: missionStatus,
@@ -58,6 +61,23 @@ test('G5 reviews the current manifest and restores the telemetry requirement aft
         missionId, missionVersion: 42, rawImageCount: 190, rawVideoCount: 0,
         telemetryPointCount: pointCount, hasActiveUploadSessions: false,
       })
+      if (yoloGrid) {
+        const bounds = { minLat: 10, minLon: 106, maxLat: 10.1, maxLon: 106.1 }
+        client.setQueryData(['mission-orthophoto-status', farmId, missionId], { status: 'COMPLETED', previewUrl: '/preview.png', bounds })
+        client.setQueryData(['mission-tiling-job', farmId, missionId], {
+          status: 'COMPLETED', jobId: 'tiling-1', missionId,
+          polygonGeoJson: { type: 'Polygon', coordinates: [[[106, 10], [106.1, 10], [106, 10.1], [106, 10]]] },
+          result: { isSuccess: true, totalTiles: 1, manifestStorageKey: 'manifest', tiles: [] },
+        })
+        client.setQueryData(['mission-yolo-job', farmId, missionId], {
+          status: 'COMPLETED', jobId: 'yolo-1', missionId, tilingJobId: 'tiling-1', createdAt: '2026-11-26T08:00:00Z',
+          result: { missionId, totalUniqueTrees: 1, totalTilesScanned: 1, totalMissingTrees: 0, activeTrees: [], missingTrees: [], ...yoloGrid },
+        })
+        if (baseMapDraft) {
+          client.setQueryData(['mission-plant-gps', farmId, missionId], { missionId, savedCount: 1, trees: [] })
+          client.setQueryData(['manager-current-base-map-draft', farmId, orderId], baseMapDraft)
+        }
+      }
       try {
         return renderToStaticMarkup(h(QueryClientProvider, { client },
           h(MemoryRouter, { initialEntries: ['/missions/' + farmId + '/' + missionId + (orderParam ? '?orderId=' + orderParam : '')] },
@@ -116,6 +136,29 @@ test('G5 reviews the current manifest and restores the telemetry requirement aft
     assert.doesNotMatch(ready, /Khôi phục để ghép bản đồ/)
     assert.doesNotMatch(currentManifest, /Khôi phục để ghép bản đồ/)
     assert.doesNotMatch(withoutTelemetry, /Khôi phục để ghép bản đồ/)
+
+    const withYolo = {
+      orderStatus: 'PROCESSING', missionStatus: 'READY_FOR_PROCESSING', attempt: { ...frozen, status: 'PROCESSING' },
+      yoloGrid: { suggestedRowSpacing: 2.81, suggestedColSpacing: 2.68 },
+    }
+    const suggested = render(withYolo)
+    assert.match(suggested, /Thông số gợi ý từ YOLO/)
+    assert.match(suggested, /Khoảng cách hàng <strong>2,81 m<\/strong>/)
+    assert.match(suggested, /Góc lưới <strong>Chưa có gợi ý<\/strong>/)
+    assert.match(suggested, /<details><summary>Chỉnh thông số dự phòng<\/summary>/)
+    assert.doesNotMatch(suggested, /Kiểm tra bản nháp/)
+
+    const mapGrid = { sourceMissionId: missionId, rowSpacingM: 2.95, plantSpacingM: 2.75, gridBearingDeg: 270.4 }
+    const saved = render({ ...withYolo, baseMapDraft: mapGrid })
+    assert.match(saved, /Thông số đã lưu trên bản nháp/)
+    assert.match(saved, /Góc lưới <strong>270,4°<\/strong>/)
+    assert.match(saved, /Kiểm tra bản nháp/)
+    assert.doesNotMatch(saved, /Thông số gợi ý từ YOLO/)
+
+    const otherMission = render({ ...withYolo, baseMapDraft: { ...mapGrid, sourceMissionId: attemptId } })
+    assert.match(otherMission, /Thông số gợi ý từ YOLO/)
+    assert.match(otherMission, /Bản nháp đang mở thuộc lần bay khác/)
+    assert.doesNotMatch(otherMission, /270,4°/)
   } finally {
     if (originalStorage) Object.defineProperty(globalThis, 'sessionStorage', originalStorage)
     else delete globalThis.sessionStorage

@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Checkbox, Divider, Flex, Form, Input, InputNumber, Modal, Popconfirm, Radio, Space, Steps, Table, Tag } from 'antd'
 import { useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { CopyReference } from '../../components/RecordReference'
 import { ActionModal } from '../../management/ActionModal'
 import { text, type Action } from '../../management/actions'
 import { useAuth } from '../auth/AuthContext'
+import { getCurrentBaseMapDraft } from '../surveys/baseMapApi'
 import { getFarmContext } from '../surveys/farmOperationsApi'
 import { getAssignedOrder } from '../surveys/orderApi'
 import { ownerGuid, validOwnerVersion } from '../surveys/ownerOrderWorkflow'
@@ -17,7 +19,7 @@ import { captureAttemptStatusLabels, v3OperationFor, v3ServiceKind, type V3Opera
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
 import type { DetectMissionTreesOptions, GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, MissionTilingJob, MissionTreeDetection, MissionYoloJob, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, TelemetrySegment } from './missionTypes'
-import { captureBoundaryVertices, completedMissionTiling, completedMissionYolo, dateTime, fileSizeLabel, isBaselineMappingMissionCode, isMissionTilingActive, isMissionYoloActive, isNotFound, isOrthophotoTerminal, mappingGridFallback, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
+import { captureBoundaryVertices, completedMissionTiling, completedMissionYolo, dateTime, fileSizeLabel, isBaselineMappingMissionCode, isMissionTilingActive, isMissionYoloActive, isNotFound, isOrthophotoTerminal, mappingGridSuggestions, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
 import { BoundaryTilingPanel } from './BoundaryTilingPanel'
 import { CaptureInputReview } from './CaptureInputReview'
 import { PlantGpsPasteModal } from './PlantGpsPasteModal'
@@ -26,6 +28,12 @@ import { StepSection } from './StepSection'
 import { YoloDetectionPanel } from './YoloDetectionPanel'
 import { PlantHealthProcessingPanel } from './PlantHealthProcessingPanel'
 import { V3CaptureFlightActions } from './V3CaptureFlightActions'
+
+const gridNumber = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 })
+
+function gridValue(value: number | null, unit: string) {
+  return value === null ? 'Chưa có gợi ý' : `${gridNumber.format(value)}${unit}`
+}
 
 const missionStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Ghép bản đồ', 'Ranh giới, YOLO & Publish GPS']
 const v3MissionStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Chốt & duyệt dữ liệu', 'Ghép bản đồ', 'Ranh giới & YOLO']
@@ -235,10 +243,11 @@ export function ManagerMissionDetailPage() {
       sourceVersion: yoloRevision?.jobId === yoloJob.jobId ? yoloRevision.version : 1,
     }
     : null
-  const gridFallback = mappingGridFallback(yoloResult)
-  const rowSpacingM = rowSpacingOverride ?? gridFallback.rowSpacingM
-  const plantSpacingM = plantSpacingOverride ?? gridFallback.plantSpacingM
-  const gridBearingDeg = bearingOverride ?? gridFallback.gridBearingDeg
+  const suggestedGrid = mappingGridSuggestions(yoloResult)
+  const rowSpacingM = rowSpacingOverride ?? suggestedGrid.rowSpacingM ?? 3
+  const plantSpacingM = plantSpacingOverride ?? suggestedGrid.plantSpacingM ?? 2.5
+  const gridBearingDeg = bearingOverride ?? suggestedGrid.gridBearingDeg ?? 0
+  const baseMapDraftKey = ['manager-current-base-map-draft', farmId, captureOrderId] as const
   const detectMutation = useMutation({
     mutationFn: (options: DetectMissionTreesOptions) => api.detectMissionTrees(token, farmId, missionId, options),
     onSuccess: async job => {
@@ -427,11 +436,25 @@ export function ManagerMissionDetailPage() {
     },
     onSuccess: ({ publishResult, replaceResult }) => {
       setPublishResult(publishResult)
-      if (v3Capture) void client.invalidateQueries({ queryKey: ['manager-current-base-map-draft', farmId, captureOrderId] })
+      if (v3Capture) void client.invalidateQueries({ queryKey: baseMapDraftKey })
       void message.success(v3Capture ? 'Đã gửi GPS cây để duyệt bản đồ.' :
         replaceResult.boundaryId ? 'Đã lưu nháp, set ranh giới nông trại và gửi yêu cầu đưa vào hệ thống chính thức.' : 'Đã lưu nháp và gửi yêu cầu đưa vào hệ thống chính thức.')
     },
   })
+  const canReadDraftGrid = linkedCapture && !!yoloResult && (!!publishResult || (plantGpsQuery.data?.savedCount ?? 0) > 0)
+  const draftGridQuery = useQuery({
+    queryKey: baseMapDraftKey,
+    queryFn: ({ signal }) => getCurrentBaseMapDraft(token, farmId, captureOrderId, signal),
+    enabled: canReadDraftGrid && !publishPlantGpsMutation.isPending,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+  const draftGridError = draftGridQuery.error
+  const draftGridMissing = draftGridError instanceof ApiError && draftGridError.status === 404 && draftGridError.code === 'FarmBaseMapDraft.NotFound'
+  const currentMapDraft = canReadDraftGrid && !draftGridQuery.isError ? draftGridQuery.data : undefined
+  const savedGrid = currentMapDraft?.sourceMissionId?.toLowerCase() === missionId.toLowerCase() ? currentMapDraft : undefined
+  const displayedGrid = savedGrid ?? suggestedGrid
   const normalizeMutation = useMutation({
     mutationFn: () => { if (!logFile) throw new Error('Chọn file log bay (TXT/BBL).'); return api.normalizeTelemetryLog(token, farmId, missionId, logFile) },
     onSuccess: data => { setNormalized(data); setSelectedSegmentIndexes([]); setImportResult(null) },
@@ -907,15 +930,32 @@ export function ManagerMissionDetailPage() {
           <SurveyMutationError error={markCaptureBoundaryMutation.error ?? farmContextQuery.error} />
         </Flex> : null}
         {v3Capture && !captureMayMarkBoundary && !captureBoundaryBound ? <Alert showIcon type="warning" title="Đơn khảo sát chưa có ranh giới đã gắn với lần bay." /> : null}
-        <div className="workflow-section">
-          <strong>Thông số lưới dự phòng</strong>
-          <p className="form-hint">Máy chủ tính thông số lưới từ tọa độ cây khi lưu GPS. Khi dữ liệu chưa đủ cho một thông số, máy chủ dùng giá trị tương ứng dưới đây. Các ô tự điền theo gợi ý YOLO nếu có.</p>
-          <Form layout="inline" className="workflow-toolbar">
-            <Form.Item label="Khoảng cách hàng (m)" htmlFor="gps-row-spacing"><InputNumber id="gps-row-spacing" min={0.1} step={0.1} value={rowSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={setRowSpacingOverride} /></Form.Item>
-            <Form.Item label="Khoảng cách cây (m)" htmlFor="gps-plant-spacing"><InputNumber id="gps-plant-spacing" min={0.1} step={0.1} value={plantSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={setPlantSpacingOverride} /></Form.Item>
-            <Form.Item label="Góc lưới (độ)" htmlFor="gps-grid-bearing"><InputNumber id="gps-grid-bearing" min={0} max={359.9} step={1} value={gridBearingDeg} disabled={publishPlantGpsMutation.isPending} onChange={setBearingOverride} /></Form.Item>
-          </Form>
-        </div>
+        <Flex className="workflow-section" vertical gap="small">
+          <strong>{savedGrid ? 'Thông số đã lưu trên bản nháp' : 'Thông số gợi ý từ YOLO'}</strong>
+          <Space wrap size="large">
+            <span>Khoảng cách hàng <strong>{gridValue(displayedGrid.rowSpacingM, ' m')}</strong></span>
+            <span>Khoảng cách cây <strong>{gridValue(displayedGrid.plantSpacingM, ' m')}</strong></span>
+            <span>Góc lưới <strong>{gridValue(displayedGrid.gridBearingDeg, '°')}</strong></span>
+          </Space>
+          {currentMapDraft?.sourceMissionId && !savedGrid ? <span className="form-hint">Bản nháp đang mở thuộc lần bay khác.</span> : null}
+          {savedGrid && publishResult && boundaryUpdateResult?.processingJobId !== savedGrid.jobId
+            ? <span className="form-hint">Các số trên thuộc lần gửi GPS đã tạo bản nháp đang mở.</span> : null}
+          {canReadDraftGrid ? <Space wrap>
+            <Button size="small" icon={<ReloadOutlined />} loading={draftGridQuery.isFetching} disabled={publishPlantGpsMutation.isPending}
+              onClick={() => { void draftGridQuery.refetch() }}>Kiểm tra bản nháp</Button>
+            {draftGridMissing ? <span className="form-hint">Chưa có bản nháp để đọc thông số đã lưu.</span> : null}
+          </Space> : null}
+          {canReadDraftGrid && draftGridError && !draftGridMissing ? <SurveyMutationError error={draftGridError} /> : null}
+          <details>
+            <summary>Chỉnh thông số dự phòng</summary>
+            <p className="form-hint">Máy chủ dùng mỗi giá trị dự phòng khi dữ liệu tọa độ chưa đủ để tính thông số tương ứng.</p>
+            <Form layout="inline" className="workflow-toolbar">
+              <Form.Item label="Khoảng cách hàng (m)" htmlFor="gps-row-spacing"><InputNumber id="gps-row-spacing" min={0.1} step={0.1} value={rowSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={setRowSpacingOverride} /></Form.Item>
+              <Form.Item label="Khoảng cách cây (m)" htmlFor="gps-plant-spacing"><InputNumber id="gps-plant-spacing" min={0.1} step={0.1} value={plantSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={setPlantSpacingOverride} /></Form.Item>
+              <Form.Item label="Góc lưới (độ)" htmlFor="gps-grid-bearing"><InputNumber id="gps-grid-bearing" min={0} max={359.9} step={1} value={gridBearingDeg} disabled={publishPlantGpsMutation.isPending} onChange={setBearingOverride} /></Form.Item>
+            </Form>
+          </details>
+        </Flex>
         {!v3Capture && !isBaselineMapping ? <Alert type="warning" showIcon message="Nhiệm vụ này không phải Khảo sát bản đồ nền — yêu cầu sẽ bị từ chối." /> : null}
         {!v3Capture && isBaselineMapping && farmBoundaryMissing ? <Alert type="info" showIcon message="Nông trại này chưa có ranh giới nào." description="Ranh giới đã vẽ ở bước trên sẽ được dùng để set luôn ranh giới chính thức của nông trại khi bấm nút bên dưới." /> : null}
         {publishPlantGpsMutation.error ? <Alert type="error" showIcon message={publishPlantGpsError(publishPlantGpsMutation.error)} /> : null}

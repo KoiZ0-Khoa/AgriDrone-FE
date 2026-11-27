@@ -61,10 +61,11 @@ test('latest YOLO lookup restores the running job and polls that job to completi
   assert.deepEqual(workflow.completedMissionYolo(job, 'mission-1', 'job-1'), detection)
 })
 
-test('GPS uses the YOLO grid suggestions as fallback values and supports older jobs', () => {
-  assert.deepEqual(workflow.mappingGridFallback(detection), { rowSpacingM: 2.81, plantSpacingM: 2.68, gridBearingDeg: 270.4 })
-  assert.deepEqual(workflow.mappingGridFallback({ ...detection, detectedBearingDeg: undefined }), { rowSpacingM: 2.81, plantSpacingM: 2.68, gridBearingDeg: 0 })
-  assert.deepEqual(workflow.mappingGridFallback({ ...detection, detectedBearingDeg: 360, suggestedRowSpacing: -1, suggestedColSpacing: null }), { rowSpacingM: 3, plantSpacingM: 2.5, gridBearingDeg: 0 })
+test('GPS shows server grid suggestions without presenting defaults as YOLO results', () => {
+  assert.deepEqual(workflow.mappingGridSuggestions(detection), { rowSpacingM: 2.81, plantSpacingM: 2.68, gridBearingDeg: 270.4 })
+  assert.deepEqual(workflow.mappingGridSuggestions({ ...detection, detectedBearingDeg: undefined }), { rowSpacingM: 2.81, plantSpacingM: 2.68, gridBearingDeg: null })
+  assert.deepEqual(workflow.mappingGridSuggestions({ ...detection, detectedBearingDeg: 360, suggestedRowSpacing: -1, suggestedColSpacing: null }), { rowSpacingM: null, plantSpacingM: null, gridBearingDeg: null })
+  assert.equal(workflow.mappingGridSuggestions({ ...detection, detectedBearingDeg: 0 }).gridBearingDeg, 0)
 })
 
 test('failed, malformed and mismatched results cannot populate the tree map', () => {

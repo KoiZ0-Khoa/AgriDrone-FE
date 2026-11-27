@@ -88,14 +88,14 @@ export function completedMissionYolo(job: MissionYoloJob | null | undefined, mis
   return result
 }
 
-export function mappingGridFallback(result: DetectMissionTreesResult | null) {
+export function mappingGridSuggestions(result: DetectMissionTreesResult | null) {
   const row = result?.suggestedRowSpacing
   const plant = result?.suggestedColSpacing
   const bearing = result?.detectedBearingDeg
   return {
-    rowSpacingM: typeof row === 'number' && Number.isFinite(row) && row > 0 ? row : 3,
-    plantSpacingM: typeof plant === 'number' && Number.isFinite(plant) && plant > 0 ? plant : 2.5,
-    gridBearingDeg: typeof bearing === 'number' && Number.isFinite(bearing) && bearing >= 0 && bearing < 360 ? bearing : 0,
+    rowSpacingM: typeof row === 'number' && Number.isFinite(row) && row > 0 ? row : null,
+    plantSpacingM: typeof plant === 'number' && Number.isFinite(plant) && plant > 0 ? plant : null,
+    gridBearingDeg: typeof bearing === 'number' && Number.isFinite(bearing) && bearing >= 0 && bearing < 360 ? bearing : null,
   }
 }
 
