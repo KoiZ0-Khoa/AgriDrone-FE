@@ -28,9 +28,9 @@ function renumberAfterRemoval<T extends DetectedTree>(trees: T[], row: number, r
   return trees.map(tree => tree.row === row && tree.col > removedCol ? { ...tree, col: tree.col - 1, id: `${tree.status === 'MISSING' ? 'missing' : 'tree'}_r${tree.row}_c${tree.col - 1}` } : tree)
 }
 
-export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bounds, boundaryPolygon, onDetected }: {
+export function YoloDetectionPanel({ token, farmId, missionId, tilingJobId, previewUrl, bounds, boundaryPolygon, onDetected }: {
   token: string; farmId: string; missionId: string; previewUrl: string; bounds: OrthophotoBounds
-  boundaryPolygon: GeoJsonPolygon | null; onDetected: (result: MissionTreeDetection) => void
+  tilingJobId: string; boundaryPolygon: GeoJsonPolygon; onDetected: (result: MissionTreeDetection) => void
 }) {
   const { message } = App.useApp()
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25)
@@ -47,9 +47,9 @@ export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bound
       const startedAt = new Date().toISOString()
       const sourceVersion = (result?.sourceVersion ?? 0) + 1
       const detected = await api.detectMissionTrees(token, farmId, missionId, {
-        confidenceThreshold, rowSpacing, colSpacing,
+        tilingJobId, confidenceThreshold, rowSpacing, colSpacing,
         anchorLat: anchor?.lat, anchorLon: anchor?.lon,
-        polygonGeoJson: boundaryPolygon ?? undefined,
+        polygonGeoJson: boundaryPolygon,
       })
       return { ...detected, startedAt, sourceVersion }
     },
@@ -62,7 +62,7 @@ export function YoloDetectionPanel({ token, farmId, missionId, previewUrl, bound
     mutationFn: (current: MissionTreeDetection) => api.recalculateMissionTreeGrid(token, farmId, missionId, {
       activeTrees: current.activeTrees, rowSpacing, colSpacing,
       anchorLat: anchor?.lat, anchorLon: anchor?.lon,
-      polygonGeoJson: boundaryPolygon ?? undefined,
+      polygonGeoJson: boundaryPolygon,
     }),
     onSuccess: (data, current) => {
       // BE trả totalTilesScanned=0 / modelName="recalculated" — giữ thông tin lần quét YOLO gốc để thống kê không bị reset.

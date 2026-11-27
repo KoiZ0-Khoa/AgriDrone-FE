@@ -1,12 +1,10 @@
 import 'leaflet/dist/leaflet.css'
-import { useMutation } from '@tanstack/react-query'
-import { Alert, App, Button, Slider, Space } from 'antd'
+import { Alert, App, Button, Flex, Slider, Space } from 'antd'
 import { useState } from 'react'
 import { CircleMarker, ImageOverlay, MapContainer, Polygon, Polyline, useMapEvents } from 'react-leaflet'
 import { MapBaseLayers } from '../../components/MapBaseLayers'
-import * as api from './missionApi'
-import type { GeoJsonPolygon, OrthophotoBounds, SliceTilesResult } from './missionTypes'
-import { closedBoundaryPolygon, estimateAreaHectares, isWithinOrthophotoBounds, missionError } from './missionWorkflow'
+import type { GeoJsonPolygon, MissionTilingJob, OrthophotoBounds } from './missionTypes'
+import { closedBoundaryPolygon, completedMissionTiling, estimateAreaHectares, isMissionTilingActive, isWithinOrthophotoBounds, missionError } from './missionWorkflow'
 
 // Dùng đúng token màu của app (xem global.css :root / workspace.css .app-shell), không phải màu tối/cyan của map_picker.
 const boundaryColor = 'var(--mint)'
@@ -21,28 +19,33 @@ function ClickCapture({ enabled, bounds, onAdd, onOutsideBounds }: { enabled: bo
   return null
 }
 
-export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, bounds, onSliced, onUnlock, disabled, approvedBoundary }: {
-  token: string; farmId: string; missionId: string; previewUrl: string; bounds: OrthophotoBounds
-  onSliced: (result: SliceTilesResult, polygon: GeoJsonPolygon) => void; onUnlock: () => void; disabled?: boolean
+export function BoundaryTilingPanel({
+  previewUrl, bounds, job, editing, loading, submitting, submitError, statusError, checking, onRefresh,
+  onSlice, onUnlock, disabled, approvedBoundary,
+}: {
+  previewUrl: string; bounds: OrthophotoBounds; job: MissionTilingJob | null | undefined; editing: boolean
+  loading: boolean; submitting: boolean; submitError: unknown; statusError: unknown; checking: boolean; onRefresh: () => void
+  onSlice: (polygon: GeoJsonPolygon) => void; onUnlock: () => void; disabled?: boolean
   approvedBoundary?: number[][][]
 }) {
   const { message } = App.useApp()
-  const [points, setPoints] = useState<[number, number][]>([])
-  const [locked, setLocked] = useState(false)
+  const savedPoints = job?.polygonGeoJson?.coordinates[0]?.slice(0, -1) ?? []
+  const [points, setPoints] = useState(() => savedPoints)
+  const [locked, setLocked] = useState(savedPoints.length >= 3 && !editing)
   const [opacity, setOpacity] = useState(1)
   const leafletBounds: [[number, number], [number, number]] = [[bounds.minLat, bounds.minLon], [bounds.maxLat, bounds.maxLon]]
   const latLngPoints = points.map(([lng, lat]): [number, number] => [lat, lng])
   const area = estimateAreaHectares(points)
 
-  const sliceMutation = useMutation({
-    mutationFn: () => api.sliceMissionTiles(token, farmId, missionId, closedBoundaryPolygon(points)),
-    onSuccess: data => { onSliced(data, closedBoundaryPolygon(points)); setLocked(true) },
-  })
+  const active = isMissionTilingActive(job)
+  const completed = !editing ? completedMissionTiling(job) : null
+  const blocked = disabled || loading || active || submitting
+  const canEdit = !locked && !blocked
 
   return <>
     <Space wrap>
-      <Button disabled={locked || sliceMutation.isPending || points.length === 0} onClick={() => setPoints(previous => previous.slice(0, -1))}>↩ Xóa điểm cuối</Button>
-      <Button disabled={locked || sliceMutation.isPending || points.length === 0} onClick={() => setPoints([])}>🗑️ Xóa hết</Button>
+      <Button disabled={!canEdit || points.length === 0} onClick={() => setPoints(previous => previous.slice(0, -1))}>↩ Xóa điểm cuối</Button>
+      <Button disabled={!canEdit || points.length === 0} onClick={() => setPoints([])}>🗑️ Xóa hết</Button>
       <span className="form-hint">{locked ? 'Đã khóa ranh giới.' : 'Bấm lên ảnh để thêm điểm. Vẽ xong, khóa ranh giới bên dưới để cắt tiles.'}</span>
       {approvedBoundary ? <span className="form-hint">Nét đứt là ranh giới đã duyệt của nông trại.</span> : null}
     </Space>
@@ -60,7 +63,7 @@ export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, boun
         <ImageOverlay url={previewUrl} bounds={leafletBounds} opacity={opacity} />
         {approvedBoundary ? <Polygon positions={approvedBoundary.map(ring => ring.map(([lng, lat]): [number, number] => [lat, lng]))}
           pathOptions={{ color: 'var(--text)', dashArray: '6 5', fill: false }} /> : null}
-        <ClickCapture enabled={!locked && !sliceMutation.isPending} bounds={bounds} onAdd={point => setPoints(previous => [...previous, point])} onOutsideBounds={() => message.warning('Chỉ chấm điểm được trong phạm vi ảnh orthophoto.')} />
+        <ClickCapture enabled={canEdit} bounds={bounds} onAdd={point => setPoints(previous => [...previous, point])} onOutsideBounds={() => message.warning('Chỉ chấm điểm được trong phạm vi ảnh orthophoto.')} />
         {points.map((point, index) => <CircleMarker key={index} center={[point[1], point[0]]} radius={6} pathOptions={{ color: boundaryColor, fillColor: boundaryColor, fillOpacity: 0.9 }} />)}
         {points.length >= 2 && points.length < 3 ? <Polyline positions={latLngPoints} pathOptions={{ color: boundaryColor }} /> : null}
         {points.length >= 3 ? <Polygon positions={[...latLngPoints, latLngPoints[0]]} pathOptions={{ color: boundaryColor, fillOpacity: 0.15 }} /> : null}
@@ -68,15 +71,22 @@ export function BoundaryTilingPanel({ token, farmId, missionId, previewUrl, boun
     </div>
     {points.length === 0 ? <p className="form-hint">Chưa có điểm nào. Hãy click lên ảnh.</p> : <ol>{points.map((point, index) => <li key={index}>#{index + 1}: {point[1].toFixed(6)}, {point[0].toFixed(6)}</li>)}</ol>}
     <p className="form-hint">{points.length} điểm{points.length >= 3 ? ` · diện tích ước tính ${area.toFixed(2)} ha` : ''}</p>
-    <p className="form-hint" role="status">{points.length < 3 ? 'Chọn ít nhất 3 điểm để tạo ranh giới.' : locked ? 'Ranh giới đã khóa. Bạn có thể cắt tiles.' : 'Đã đủ điểm. Bấm Khóa ranh giới để bật nút Cắt tiles.'}</p>
-    {sliceMutation.error ? <Alert type="error" showIcon message={missionError(sliceMutation.error)} /> : null}
-    <Space wrap>
-      <Button type={locked ? 'default' : 'primary'} disabled={disabled || points.length < 3 || sliceMutation.isPending} onClick={() => {
-        if (locked) { sliceMutation.reset(); onUnlock() }
-        setLocked(!locked)
-      }}>{locked ? 'Mở khóa chỉnh sửa' : 'Khóa ranh giới'}</Button>
-      <Button type="primary" disabled={disabled || !locked || points.length < 3} loading={sliceMutation.isPending} onClick={() => sliceMutation.mutate()}>Cắt tiles</Button>
-    </Space>
-    {sliceMutation.data ? <Alert type="success" showIcon message={`Đã cắt ${sliceMutation.data.totalTiles} tile (${sliceMutation.data.totalTiles640} × 640, ${sliceMutation.data.totalTiles1280} × 1280).`} /> : null}
+    {!loading && !active && !completed ? <p className="form-hint" role="status">{points.length < 3 ? 'Chọn ít nhất 3 điểm để tạo ranh giới.' : locked ? 'Ranh giới đã khóa. Bạn có thể cắt tiles.' : 'Bấm Khóa ranh giới để bật nút Cắt tiles.'}</p> : null}
+    <Flex vertical gap={12}>
+      {loading ? <Alert type="info" showIcon message="Đang kiểm tra trạng thái cắt tiles…" /> : null}
+      {active ? <Alert type="info" showIcon message={job?.status === 'QUEUED' ? 'Đang chờ cắt tiles' : 'Đang cắt tiles'} /> : null}
+      {job?.status === 'FAILED' ? <Alert type="error" showIcon message="Cắt tiles thất bại" description={job.error || 'Bạn có thể thử cắt lại.'} /> : null}
+      {job?.status === 'COMPLETED' && !editing && !completed ? <Alert type="warning" showIcon message="Lượt cắt tiles thiếu dữ liệu để chạy YOLO. Hãy cắt lại." /> : null}
+      {submitError ? <Alert type="error" showIcon message={missionError(submitError)} /> : null}
+      {statusError ? <Alert type="error" showIcon message="Chưa đọc được trạng thái cắt tiles" description={missionError(statusError)} /> : null}
+      <Space wrap>
+        <Button type={locked ? 'default' : 'primary'} disabled={blocked || points.length < 3} onClick={() => {
+          if (locked) onUnlock()
+          setLocked(!locked)
+        }}>{locked ? 'Mở khóa chỉnh sửa' : 'Khóa ranh giới'}</Button>
+        <Button type="primary" disabled={blocked || !!completed || !locked || points.length < 3} loading={submitting} onClick={() => onSlice(closedBoundaryPolygon(points))}>{job?.status === 'FAILED' ? 'Cắt lại tiles' : 'Cắt tiles'}</Button>
+        {active || !!submitError || !!statusError ? <Button loading={checking} disabled={submitting} onClick={onRefresh}>Kiểm tra lại</Button> : null}
+      </Space>
+    </Flex>
   </>
 }

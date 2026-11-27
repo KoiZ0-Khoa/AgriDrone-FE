@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client'
 import type { AssignedOrder } from '../surveys/orderTypes'
-import type { GeoJsonPolygon, MappingProcessingMetadata, MissionPurpose, OrthophotoBounds, PlantGpsTree } from './missionTypes'
+import type { GeoJsonPolygon, MappingProcessingMetadata, MissionPurpose, MissionTilingJob, OrthophotoBounds, PlantGpsTree } from './missionTypes'
 
 // Bắt buộc người dùng chỉ chấm điểm (ranh giới, chấm thêm trụ...) trong phạm vi ảnh orthophoto, không phải trên nền vệ tinh/OSM xung quanh.
 export function isWithinOrthophotoBounds(lat: number, lon: number, bounds: OrthophotoBounds) {
@@ -71,6 +71,14 @@ export const orthophotoStatusLabel = (raw: string) => orthophotoStatusLabelsByCo
 export const isOrthophotoTerminal = (raw: string) => raw === 'COMPLETED' || raw === 'ERROR' || raw === 'FAILED'
 
 // Auto-closes the ring (first point repeated at the end) only when building the GeoJSON to send — the on-map point list stays open/distinct.
+export const isMissionTilingActive = (job: MissionTilingJob | null | undefined) => job?.status === 'QUEUED' || job?.status === 'RUNNING'
+
+export function completedMissionTiling(job: MissionTilingJob | null | undefined) {
+  if (job?.status !== 'COMPLETED' || !job.result?.isSuccess || !job.result.manifestStorageKey || job.result.totalTiles < 1) return null
+  if (!job.polygonGeoJson || job.polygonGeoJson.type !== 'Polygon' || (job.polygonGeoJson.coordinates[0]?.length ?? 0) < 4) return null
+  return { jobId: job.jobId, result: job.result, polygon: job.polygonGeoJson }
+}
+
 export function closedBoundaryPolygon(points: [number, number][]) {
   if (points.length < 3) throw new Error('Cần tối thiểu 3 điểm để tạo ranh giới.')
   const coordinates = [...points, points[0]] as [number, number][]
@@ -147,6 +155,8 @@ export function missionError(error: unknown) {
       'Mission.DroneNotAvailable': 'Drone đã chọn không còn khả dụng cho khoảng thời gian này.',
       'Mission.ScheduleConflict': 'Drone đã chọn có nhiệm vụ bay khác trùng thời gian.',
       'Mission.VersionConflict': 'Nhiệm vụ bay đã được cập nhật bởi người khác. Tải lại và kiểm tra trước khi tiếp tục.',
+      'Tiling.JobNotCompleted': 'Lượt cắt tiles chưa hoàn tất. Kiểm tra trạng thái cắt tiles rồi chạy YOLO lại.',
+      'Tiling.JobNotFound': 'Không tìm thấy lượt cắt tiles. Kiểm tra lại trạng thái cắt tiles.',
       'Mission.InvalidTransition': 'Không thể chuyển sang trạng thái này từ trạng thái hiện tại của nhiệm vụ bay.',
       'Mission.ReasonRequired': 'Cần nhập lý do cho thao tác này.',
       'Drone.FarmAccessDenied': 'Bạn không được phân công quản lý nông trại này.',

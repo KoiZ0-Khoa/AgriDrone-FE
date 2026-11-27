@@ -107,10 +107,18 @@ export type MissionTile = {
   tileIndex: number; tileSize: number | null; colOff: number; rowOff: number; width: number; height: number
   fileName: string; storageKey: string | null; url: string | null; bounds: OrthophotoBounds; corners: OrthophotoCorners; affineTransform: number[]
 }
-export type SliceTilesResult = { missionId: string; totalTiles: number; totalTiles640: number; totalTiles1280: number; dualScale: boolean; tiles: MissionTile[] }
+export type SliceTilesResult = { missionId: string; totalTiles: number; totalTiles640: number; totalTiles1280: number; dualScale: boolean; tiles: MissionTile[]; isSuccess: boolean; manifestStorageKey: string | null }
+export type MissionTilingJob = {
+  jobId: string
+  missionId: string
+  status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  polygonGeoJson: GeoJsonPolygon | null
+  result: SliceTilesResult | null
+  error: string | null
+}
 
 export type DetectedTree = { id: string; row: number; col: number; lat: number; lon: number; confidence: number; status: string; source: string; isAnchor: boolean }
-export type DetectMissionTreesOptions = { confidenceThreshold?: number; rowSpacing?: number; colSpacing?: number; anchorLat?: number; anchorLon?: number; customAngleDeg?: number; polygonGeoJson?: GeoJsonPolygon }
+export type DetectMissionTreesOptions = { tilingJobId: string; confidenceThreshold?: number; rowSpacing?: number; colSpacing?: number; anchorLat?: number; anchorLon?: number; customAngleDeg?: number; polygonGeoJson?: GeoJsonPolygon }
 export type RecalculateTreeGridOptions = { activeTrees: DetectedTree[]; rowSpacing?: number; colSpacing?: number; anchorLat?: number; anchorLon?: number; customAngleDeg?: number; polygonGeoJson?: GeoJsonPolygon }
 export type DetectMissionTreesResult = {
   missionId: string; modelName: string; totalTilesScanned: number; totalRawDetections: number; totalUniqueTrees: number; totalMissingTrees: number

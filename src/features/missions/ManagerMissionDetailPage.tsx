@@ -16,8 +16,8 @@ import { freezeCaptureInput, getCaptureAttempts, markCaptureBoundary, recoverApp
 import { captureAttemptStatusLabels, v3OperationFor, v3ServiceKind, type V3Operation } from '../surveys/v3Workflow'
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
-import type { GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, MissionTreeDetection, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, SliceTilesResult, TelemetrySegment } from './missionTypes'
-import { captureBoundaryCorners, dateTime, fileSizeLabel, isBaselineMappingMissionCode, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
+import type { GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, MissionTilingJob, MissionTreeDetection, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, TelemetrySegment } from './missionTypes'
+import { captureBoundaryCorners, completedMissionTiling, dateTime, fileSizeLabel, isBaselineMappingMissionCode, isMissionTilingActive, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
 import { BoundaryTilingPanel } from './BoundaryTilingPanel'
 import { CaptureInputReview } from './CaptureInputReview'
 import { PlantGpsPasteModal } from './PlantGpsPasteModal'
@@ -120,9 +120,8 @@ export function ManagerMissionDetailPage() {
   const [telemetryOperation, setTelemetryOperation] = useState<{ payload: string; key: string } | null>(null)
   const [importResult, setImportResult] = useState<ImportTelemetryResult | null>(null)
   const [engine, setEngine] = useState<'metashape' | 'odm'>('metashape')
-  const [sliceResult, setSliceResult] = useState<SliceTilesResult | null>(null)
-  const [boundaryPolygon, setBoundaryPolygon] = useState<GeoJsonPolygon | null>(null)
-  const [yoloResult, setYoloResult] = useState<MissionTreeDetection | null>(null)
+  const [tilingEditJobId, setTilingEditJobId] = useState<string | null>(null)
+  const [jobDetection, setJobDetection] = useState<{ jobId: string; result: MissionTreeDetection } | null>(null)
   const [rowSpacingM, setRowSpacingM] = useState(3)
   const [plantSpacingM, setPlantSpacingM] = useState(2.5)
   const [gridBearingDeg, setGridBearingDeg] = useState(0)
@@ -195,6 +194,35 @@ export function ManagerMissionDetailPage() {
     queryFn: ({ signal }) => api.getOrthophotoStatus(token, farmId, missionId, signal),
     enabled: orthophotoEligible,
     refetchInterval: query => { const current = query.state.data; return current && current.status !== 'NOT_STARTED' && !isOrthophotoTerminal(current.status) ? 60000 : false },
+  })
+
+  const canReadTiling = !isPlantHealth && orthophotoStatusQuery.data?.status === 'COMPLETED'
+  const tilingQueryKey = ['mission-tiling-job', farmId, missionId] as const
+  const tilingQuery = useQuery({
+    queryKey: tilingQueryKey,
+    queryFn: ({ signal }) => {
+      const current = client.getQueryData<MissionTilingJob | null>(tilingQueryKey)
+      return api.getMissionTilingJob(token, farmId, missionId, isMissionTilingActive(current) ? current?.jobId : undefined, signal)
+    },
+    enabled: canReadTiling,
+    refetchInterval: query => isMissionTilingActive(query.state.data) ? 3000 : false,
+    retry: false,
+  })
+  const tilingJob = tilingQuery.data
+  const editingTiling = tilingEditJobId !== null && tilingEditJobId === tilingJob?.jobId
+  const completedTiling = canReadTiling && !editingTiling ? completedMissionTiling(tilingJob) : null
+  const sliceResult = completedTiling?.result ?? null
+  const boundaryPolygon = completedTiling?.polygon ?? null
+  const yoloResult = jobDetection && jobDetection.jobId === completedTiling?.jobId ? jobDetection.result : null
+
+  const sliceMutation = useMutation({
+    mutationFn: (polygon: GeoJsonPolygon) => api.sliceMissionTiles(token, farmId, missionId, polygon),
+    onSuccess: async job => {
+      await client.cancelQueries({ queryKey: tilingQueryKey, exact: true })
+      client.setQueryData(tilingQueryKey, job)
+      setTilingEditJobId(null)
+    },
+    onError: () => { void tilingQuery.refetch() },
   })
 
   async function refreshAfter(mission: MissionDetail) {
@@ -787,17 +815,29 @@ export function ManagerMissionDetailPage() {
     </StepSection> : null}
     {!isPlantHealth && orthophotoStatusQuery.data?.status === 'COMPLETED' && orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Vẽ ranh giới vườn + cắt tiles" status={sliceResult ? 'done' : 'active'} summary={sliceResult ? `${sliceResult.totalTiles} tile đã cắt.` : undefined}>
       <p className="form-hint">Click lên ảnh để thêm điểm ranh giới. Từ 3 điểm trở lên tự khép kín. Khóa viền trước khi cắt tiles.</p>
-      <BoundaryTilingPanel key={missionId} token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
+      <BoundaryTilingPanel key={`${missionId}:${tilingJob?.jobId ?? 'new'}`} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
+        job={tilingJob} editing={editingTiling} loading={tilingQuery.isPending}
+        submitting={sliceMutation.isPending} submitError={sliceMutation.error}
+        statusError={tilingQuery.error} checking={tilingQuery.isFetching} onRefresh={() => { sliceMutation.reset(); void tilingQuery.refetch() }}
         disabled={publishPlantGpsMutation.isPending || markCaptureBoundaryMutation.isPending}
         approvedBoundary={v3Capture ? farmContextQuery.data?.approvedBoundary?.geometry?.coordinates : undefined}
-        onSliced={(result, polygon) => { setSliceResult(result); setBoundaryPolygon(polygon) }}
-        onUnlock={() => { setSliceResult(null); setBoundaryPolygon(null); setYoloResult(null); setPublishResult(null); setBoundaryUpdateResult(null); publishPlantGpsMutation.reset(); markCaptureBoundaryMutation.reset() }} />
+        onSlice={polygon => sliceMutation.mutate(polygon)}
+        onUnlock={() => {
+          setTilingEditJobId(tilingJob?.jobId ?? null)
+          setJobDetection(null)
+          setPublishResult(null)
+          setBoundaryUpdateResult(null)
+          sliceMutation.reset()
+          publishPlantGpsMutation.reset()
+          markCaptureBoundaryMutation.reset()
+        }} />
       {sliceResult ? <p className="form-hint">Đã sẵn sàng {sliceResult.totalTiles} tile để nhận diện cây ở bước tiếp theo.</p> : null}
     </StepSection> : null}
-    {!isPlantHealth && sliceResult && boundaryPolygon && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title={v3Capture ? 'Nhận diện cây YOLO' : 'Nhận diện cây YOLO & Publish GPS'} status={publishResult ? 'done' : 'active'} summary={publishResult ? `Đã gửi yêu cầu publish (${publishResult.status}).` : yoloResult ? `${yoloResult.totalUniqueTrees} cây đã nhận diện.` : undefined}>
+    {completedTiling && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title={v3Capture ? 'Nhận diện cây YOLO' : 'Nhận diện cây YOLO & Publish GPS'} status={publishResult ? 'done' : 'active'} summary={publishResult ? `Đã gửi yêu cầu publish (${publishResult.status}).` : yoloResult ? `${yoloResult.totalUniqueTrees} cây đã nhận diện.` : undefined}>
       <p className="form-hint">Chạy nhận diện trong phạm vi ranh giới đã khóa. Có thể chọn lại cây neo (Hàng 1 - Cột 1) từ kết quả lần chạy trước rồi chạy lại để đánh số đúng theo thực địa.</p>
-      <YoloDetectionPanel token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
-        boundaryPolygon={boundaryPolygon} onDetected={setYoloResult} />
+      <YoloDetectionPanel key={completedTiling.jobId} token={token} farmId={farmId} missionId={missionId} tilingJobId={completedTiling.jobId}
+        previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
+        boundaryPolygon={completedTiling.polygon} onDetected={result => setJobDetection({ jobId: completedTiling.jobId, result })} />
       {yoloResult ? <>
         <p className="form-hint">Kết quả gần nhất: {yoloResult.totalUniqueTrees} cây, {yoloResult.totalMissingTrees} vị trí thiếu — dùng ở bước lưu nháp GPS cây tiếp theo.</p>
         <Button onClick={downloadTreesCsv}>Tải CSV kết quả cây</Button>

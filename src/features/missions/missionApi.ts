@@ -1,8 +1,8 @@
-import { apiRequest, apiRequestFile } from '../../api/client'
+import { ApiError, apiRequest, apiRequestFile } from '../../api/client'
 import type { AvailableDronesForOrder } from './missionTypes'
 import type { Drone } from '../drones/types'
 import type { Page } from '../surveys/types'
-import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MappingProcessingMetadata, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPlantGpsBoundaryPoint, MissionPurpose, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, RecalculateTreeGridOptions, ReplacePlantGpsResult, ResetMissionUploadResult, SliceTilesResult, UploadReadiness } from './missionTypes'
+import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MappingProcessingMetadata, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPlantGpsBoundaryPoint, MissionPurpose, MissionTilingJob, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, RecalculateTreeGridOptions, ReplacePlantGpsResult, ResetMissionUploadResult, UploadReadiness } from './missionTypes'
 
 const farmPath = (farmId: string) => `/api/system-manager/farms/${encodeURIComponent(farmId)}`
 const missionPath = (farmId: string, missionId: string) => `${farmPath(farmId)}/missions/${encodeURIComponent(missionId)}`
@@ -112,9 +112,23 @@ export const processOdm = (token: string, farmId: string, missionId: string, opt
   apiRequest<ProcessMetashapeResult>(`${processingPath(farmId, missionId)}/process-odm`, { method: 'POST', token, body: options ?? {} })
 export const getOrthophotoStatus = (token: string, farmId: string, missionId: string, signal?: AbortSignal) =>
   apiRequest<OrthophotoStatus>(`${processingPath(farmId, missionId)}/orthophoto-status`, { token, signal })
-export const sliceMissionTiles = (token: string, farmId: string, missionId: string, polygonGeoJson: GeoJsonPolygon, options: { tileSize?: number; overlap?: number; dualScale?: boolean } = {}) =>
-  apiRequest<SliceTilesResult>(`${processingPath(farmId, missionId)}/tiling-slice`, { method: 'POST', token, body: { tileSize: options.tileSize ?? 640, overlap: options.overlap ?? 64, dualScale: options.dualScale ?? true, polygonGeoJson } })
-export const detectMissionTrees = (token: string, farmId: string, missionId: string, options: DetectMissionTreesOptions = {}) =>
+export async function sliceMissionTiles(token: string, farmId: string, missionId: string, polygonGeoJson: GeoJsonPolygon, options: { tileSize?: number; overlap?: number; dualScale?: boolean } = {}) {
+  const job = await apiRequest<MissionTilingJob>(`${processingPath(farmId, missionId)}/tiling-slice`, {
+    method: 'POST', token, body: { tileSize: options.tileSize ?? 640, overlap: options.overlap ?? 64, dualScale: options.dualScale ?? true, polygonGeoJson },
+  })
+  if (!job?.jobId) throw new Error('Máy chủ không trả mã lượt cắt tiles. Hãy kiểm tra trạng thái cắt tiles.')
+  return job
+}
+export async function getMissionTilingJob(token: string, farmId: string, missionId: string, jobId: string | undefined, signal?: AbortSignal) {
+  const segment = jobId ? encodeURIComponent(jobId) : 'latest'
+  try {
+    return await apiRequest<MissionTilingJob>(`${processingPath(farmId, missionId)}/tiling-slice/jobs/${segment}`, { token, signal, cache: 'no-store' })
+  } catch (error) {
+    if (!jobId && error instanceof ApiError && error.status === 404 && error.code === 'Tiling.JobNotFound') return null
+    throw error
+  }
+}
+export const detectMissionTrees = (token: string, farmId: string, missionId: string, options: DetectMissionTreesOptions) =>
   apiRequest<DetectMissionTreesResult>(`${processingPath(farmId, missionId)}/yolo-detect`, { method: 'POST', token, body: options })
 // Chuẩn hóa Hàng & Cột: tính lại hàng/cột + cây khuyết cho danh sách cây hiện tại (đã sửa tay) mà không quét YOLO lại.
 export const recalculateMissionTreeGrid = (token: string, farmId: string, missionId: string, options: RecalculateTreeGridOptions) =>
