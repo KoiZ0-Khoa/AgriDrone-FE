@@ -81,12 +81,20 @@ test('reflight API posts to the parent attempt route and reads coordinator error
 
 test('disease capture uses a future Vietnam-time window and the new BE routes', async () => {
   const now = Date.parse('2099-03-01T11:00:00Z')
-  const window = workflow.diseaseCaptureWindow('2099-03-01T19:00', '2099-03-01T20:30', now)
+  const { window } = workflow.diseaseCaptureWindow('2099-03-01T19:00', '2099-03-01T20:30', now)
   assert.deepEqual(window, { startAt: '2099-03-01T12:00:00.000Z', endAt: '2099-03-01T13:30:00.000Z' })
-  assert.equal(workflow.diseaseCaptureWindow('2099-03-01T18:00', '2099-03-01T21:00', now), null)
-  assert.equal(workflow.diseaseCaptureWindow('2099-03-01T20:00', '2099-03-01T19:00', now), null)
-  assert.equal(workflow.diseaseCaptureWindow('2099-02-30T19:00', '2099-03-01T20:00', now), null)
-  assert.equal(workflow.diseaseCaptureWindow('2099-03-01T24:00', '2099-03-02T20:00', now), null)
+
+  const expired = workflow.diseaseCaptureWindow('2026-11-27T23:02', '2026-11-28T23:02', Date.parse('2026-11-27T16:02:44Z'))
+  assert.equal(expired.window, null)
+  assert.match(expired.startError, /thời điểm hiện tại \(23:02/)
+  const equalToNow = workflow.diseaseCaptureWindow('2099-03-01T18:00', '2099-03-01T21:00', now)
+  assert.equal(equalToNow.window, null)
+  assert.match(equalToNow.startError, /phải sau/)
+  const reversed = workflow.diseaseCaptureWindow('2099-03-01T20:00', '2099-03-01T19:00', now)
+  assert.equal(reversed.window, null)
+  assert.match(reversed.endError, /sau giờ bắt đầu/)
+  assert.match(workflow.diseaseCaptureWindow('2099-02-30T19:00', '2099-03-01T20:00', now).startError, /không hợp lệ/)
+  assert.match(workflow.diseaseCaptureWindow('2099-03-01T19:00', '2099-03-01T24:00', now).endError, /không hợp lệ/)
 
   const root = '/api/v3/system-manager/survey-orders/o%2F1'
   const schedule = { droneId: 'drone-2', expectedOrderVersion: 31, ...window }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Alert, Button, Form, Input, Modal, Select } from 'antd'
+import { Button, Form, Input, Modal, Select } from 'antd'
 import { useRef } from 'react'
 import { FormSubmit } from '../../components/FormSubmit'
 import { findMissionById } from '../missions/missionApi'
@@ -26,7 +26,7 @@ export function DiseaseCaptureScheduleModal({ token, order, attempt, close, done
   const operation = useRef<ReturnType<typeof operationFor> | null>(null)
   const submitting = useRef(false)
   const start = Form.useWatch('start', form), end = Form.useWatch('end', form)
-  const window = diseaseCaptureWindow(start, end)
+  const { window, startError, endError } = diseaseCaptureWindow(start, end)
   const mission = useQuery({
     queryKey: ['mission-detail', order.farmId, attempt?.missionId],
     queryFn: ({ signal }) => findMissionById(token, order.farmId, attempt!.missionId!, signal),
@@ -52,8 +52,10 @@ export function DiseaseCaptureScheduleModal({ token, order, attempt, close, done
   const mutation = useMutation({
     retry: false,
     mutationFn: async (values: Values) => {
-      const proposed = diseaseCaptureWindow(values.start, values.end)
-      if (!proposed || !window || proposed.startAt !== window.startAt || proposed.endAt !== window.endAt) throw new Error('Chọn khung giờ bay hợp lệ trong tương lai.')
+      const schedule = diseaseCaptureWindow(values.start, values.end)
+      const proposed = schedule.window
+      if (!proposed) throw new Error(schedule.startError ?? schedule.endError ?? 'Chọn giờ bắt đầu và kết thúc chuyến bay.')
+      if (!window || proposed.startAt !== window.startAt || proposed.endAt !== window.endAt) throw new Error('Kiểm tra drone cho khung giờ vừa thay đổi.')
       if (!options.some(item => item.value === values.droneId)) throw new Error('Chọn drone cho khung giờ đã kiểm tra.')
       const body = { droneId: values.droneId, expectedOrderVersion: order.orderVersion, ...proposed }
       if (!attempt) operation.current = operationFor(operation.current, body)
@@ -86,9 +88,10 @@ export function DiseaseCaptureScheduleModal({ token, order, attempt, close, done
         mutation.mutate(values)
       }}>
       <FormSubmit disabled={blocked} />
-      <Form.Item name="start" label="Bắt đầu (giờ Việt Nam)" rules={[{ required: true }]}><Input type="datetime-local" /></Form.Item>
-      <Form.Item name="end" label="Kết thúc (giờ Việt Nam)" rules={[{ required: true }]}><Input type="datetime-local" /></Form.Item>
-      {start && end && !window ? <Alert type="warning" showIcon title="Chọn giờ bắt đầu trong tương lai và giờ kết thúc sau giờ bắt đầu." /> : null}
+      <Form.Item name="start" label="Bắt đầu (giờ Việt Nam)" rules={[{ required: true }]}
+        validateStatus={startError ? 'error' : undefined} help={startError}><Input type="datetime-local" /></Form.Item>
+      <Form.Item name="end" label="Kết thúc (giờ Việt Nam)" rules={[{ required: true }]}
+        validateStatus={endError ? 'error' : undefined} help={endError}><Input type="datetime-local" /></Form.Item>
       <Form.Item name="droneId" label="Drone" rules={[{ required: true, message: 'Chọn drone.' }]}>
         <Select options={options} disabled={blocked} loading={drones.isFetching} placeholder={window ? 'Chọn drone' : 'Chọn khung giờ trước'}
           notFoundContent="Không có drone phù hợp còn trống trong khung giờ này." />

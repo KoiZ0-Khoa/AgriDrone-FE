@@ -58,11 +58,22 @@ function isValidScheduledDate(value: string): boolean {
 // Sends the chosen day as-is; BE (SurveyAppointmentWindow.TryResolveForDate) resolves it to the
 // full Asia/Ho_Chi_Minh day Prepare Mission Set expects, so FE no longer does its own UTC/timezone math.
 export const operationsDate = (now = Date.now()) => new Date(now + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+const vietnamTime = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short', hourCycle: 'h23' })
+
+function parseDiseaseCaptureTime(value: string) {
+  return /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) && isValidScheduledDate(value.slice(0, 10))
+    ? Date.parse(`${value}:00+07:00`) : NaN
+}
+
 export function diseaseCaptureWindow(start: string | undefined, end: string | undefined, now = Date.now()) {
-  if (!start || !end || ![start, end].every(value => /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) && isValidScheduledDate(value.slice(0, 10)))) return null
-  const startMs = Date.parse(`${start}:00+07:00`), endMs = Date.parse(`${end}:00+07:00`)
-  if (!(startMs > now && endMs > startMs)) return null
-  return { startAt: new Date(startMs).toISOString(), endAt: new Date(endMs).toISOString() }
+  const startMs = start ? parseDiseaseCaptureTime(start) : NaN
+  const endMs = end ? parseDiseaseCaptureTime(end) : NaN
+  if (start && !Number.isFinite(startMs)) return { window: null, startError: 'Ngày hoặc giờ bắt đầu không hợp lệ.' }
+  if (startMs <= now) return { window: null, startError: `Giờ bắt đầu phải sau thời điểm hiện tại (${vietnamTime.format(now)}, giờ Việt Nam).` }
+  if (end && !Number.isFinite(endMs)) return { window: null, endError: 'Ngày hoặc giờ kết thúc không hợp lệ.' }
+  if (endMs <= startMs) return { window: null, endError: 'Giờ kết thúc phải sau giờ bắt đầu.' }
+  if (!start || !end) return { window: null }
+  return { window: { startAt: new Date(startMs).toISOString(), endAt: new Date(endMs).toISOString() } }
 }
 
 export function captureAppointmentBody(order: AssignedOrder, scope: OrderScope, scheduledDate: string, now = Date.now()): CaptureAppointmentBody {
