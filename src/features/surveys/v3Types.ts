@@ -233,6 +233,18 @@ export type FreezeResultBody = {
   expectedComboBatchId: string | null; expectedComboSourceRevision: number | null; expectedComboBatchFingerprint: string | null
   expectedComboReviewRevisionId: string | null; expectedComboReviewFingerprint: string | null
 }
+export type ManagerSurveyInvoice = {
+  orderId: string; orderVersion: number; orderStatus: string; invoiceRevisionNumber: number
+  verifiedBillablePoleCount: number; pricePerPole: number; currency: string; totalAmount: number
+  validAllocatedDepositNet: number; confirmedNetReceipts: number; dueAmount: number; overpaymentAmount: number
+  finalizedAt: string; hasOpenReconciliation: boolean; reconciliationReasons: string[] | null
+}
+export type FinalizeManagerInvoiceBody = {
+  operationId: string; expectedOrderVersion: number; expectedApprovedResultRevisionId: string
+  expectedApprovedResultFingerprint: string; expectedCountSnapshotId: string; expectedCountFingerprint: string
+  finalizationReason: string; zeroPoleReasonCode: string | null; zeroPoleEvidenceReference: string | null
+}
+
 export type FreezeResult = {
   orderId: string; orderVersion: number; orderStatus: string; serviceCode: string; screensDisease: boolean
   approvedResultRevisionId: string; approvedResultRevisionNumber: number; approvedResultFingerprint: string; reviewDecision: string

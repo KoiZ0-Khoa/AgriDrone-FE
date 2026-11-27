@@ -6,6 +6,8 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
+import { PlantHealthProcessingPanel } from '../missions/PlantHealthProcessingPanel'
+import { ManagerInvoicePanel } from './ManagerInvoicePanel'
 import { orderStatusLabels } from './orderWorkflow'
 import {
   blockerItems, blockerResolutionLabels, comboReviewBody, comboReviewProblems, defaultFreezeDecision, findingDecisionLabels, freezeBlocker,
@@ -53,9 +55,10 @@ export function ManagerResultReviewPage() {
         <div><dt>Kết quả nội bộ</dt><dd>{isFrozen(review) ? <Tag color="success">Đã chốt</Tag> : <Tag>Chưa chốt</Tag>}</dd></div>
       </dl>
       {isFrozen(review) || frozen ? <Alert className="workflow-notice" showIcon type="success" title="Đã chốt kết quả nội bộ"
-        description={<>{frozen ? `Chốt lúc ${dateTime(frozen.frozenAt)} · ${frozen.verifiedBillablePoleCount.toLocaleString('vi-VN')} trụ · ${frozen.healthAssessmentStatus}. ` : ''}Kết quả chưa hiện cho Owner. Bước tiếp theo: chốt hóa đơn.</>} /> : null}
+        description={<>{frozen ? `Chốt lúc ${dateTime(frozen.frozenAt)} · ${frozen.verifiedBillablePoleCount.toLocaleString('vi-VN')} trụ · ${frozen.healthAssessmentStatus}. ` : ''}Sau khi chốt hóa đơn, Owner có thể kiểm tra số tiền còn lại.</>} /> : null}
     </section>
     {combo ? <ComboReviewSection key={`${review.comboPendingBatch?.batchId}:${review.currentComboReview?.reviewRevisionId}`} token={token} review={review} reload={reload} /> : null}
+    {isFrozen(review) ? <ManagerInvoicePanel key={review.orderId} token={token} review={review} refreshing={query.isFetching} reload={reload} /> : null}
     {!isFrozen(review) && !frozen ? <FreezeSection key={review.expectedFreezeTokens.expectedComboReviewRevisionId ?? review.verifiedPoleCountSnapshotId} token={token} review={review} reload={reload} done={async result => { setFrozen(result); await reload() }} /> : null}
   </>
 }
@@ -70,7 +73,14 @@ function ComboReviewSection({ token, review, reload }: { token: string; review: 
     operation.current = await v3OperationFor(operation.current, body)
     return recordComboReview(token, review.orderId, { ...body, operationId: operation.current.operationId })
   }, onSuccess: async () => { await reload() } })
-  if (!batch) return <section className="resource-panel workflow-section"><Alert showIcon type="info" title="Chưa có kết quả phân tích COMBO" description="Cần chạy nhận diện bệnh và chuyển kết quả phân tích cho nhiệm vụ của lần bay này trước." /></section>
+  if (!batch) {
+    if (!isFrozen(review) && review.orderStatus.toUpperCase() === 'PROCESSING' && review.captureAttemptStatus.toUpperCase() === 'PROCESSING') {
+      return <PlantHealthProcessingPanel key={review.missionId} token={token} farmId={review.farmId} missionId={review.missionId}
+        surveyOrderId={review.orderId} disabled={false} onComboHandoff={reload} />
+    }
+    return <Alert className="workflow-notice" showIcon type="info" title="Chưa có kết quả phân tích COMBO"
+      description="Nhận diện bệnh sẽ mở khi đơn và lần bay ở bước xử lý kết quả." />
+  }
   if (!draft) return null
   const editable = !isFrozen(review) && review.orderStatus.toUpperCase() === 'PROCESSING'
   const problems = comboReviewProblems(review, draft)

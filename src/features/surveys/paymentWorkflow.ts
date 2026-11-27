@@ -19,7 +19,7 @@ export function money(amount: number | null, currency = 'VND') {
 export const paymentIsPaid = (status: string) => ['PAID', 'CONFIRMED'].includes(status)
 
 // Checkout navigation never confirms a payment; confirmation is read from BE.
-export function paymentCheckoutUrl(payment: PaymentSession, orderId: string, now = Date.now()) {
+export function paymentCheckoutUrl(payment: Pick<PaymentSession, 'surveyOrderId' | 'amount' | 'paymentStatus' | 'expiresAt' | 'redirectUrl'>, orderId: string, now = Date.now()) {
   if (payment.surveyOrderId !== orderId || !Number.isFinite(payment.amount) || payment.amount < 0) throw new Error('Thông tin thanh toán không khớp đơn. Tải lại để kiểm tra.')
   if (paymentIsPaid(payment.paymentStatus)) return null
   if (!['PENDING', 'PROCESSING'].includes(payment.paymentStatus)) return null

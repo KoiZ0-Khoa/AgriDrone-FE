@@ -6,6 +6,10 @@ Mục tiêu: web **chỉ chạy luồng V3** (`ContractScope.V3`, dịch vụ `M
 
 **Trạng thái code (26/11/2026):** FE commit gần nhất `24d3b29` (`main` = `ReviewPlant` = `origin/KhoaNV`), cộng thay đổi local của G6 và G7 chưa commit. Đối chiếu với BE `main` = `dd0ada8`. `npm test` 292/292 ✓, typecheck ✓, build ✓. Chưa test với BE thật.
 
+**Cập nhật 27/11/2026.** Đối chiếu FE `1d01c26` và thay đổi trong workspace với BE `main` `6ea284f`, trùng commit API trên Lightsail theo log cung cấp. Tam Vu đã có bản đồ nháp với 55 điểm. Bước duyệt nội bộ chưa được xác nhận. Kiểm tra FE đạt 315/315 test, typecheck và build. Chưa triển khai FE hoặc nghiệm thu toàn luồng trên Lightsail.
+
+**Luồng sau khi duyệt điểm.** Manager chọn **Kiểm tra bản đồ** và xử lý các lỗi chặn nếu có. Sau **Duyệt nội bộ bản đồ**, mở đơn và chọn **Duyệt và chốt kết quả**. MAP chốt kết quả theo số trụ đã xác minh. COMBO nhận diện bệnh, gửi kết quả sơ bộ, duyệt phát hiện/vùng bệnh rồi mới chốt. Manager chốt hóa đơn ở G8. Owner trả số dư nếu còn và xem kết quả ở G11 sau khi BE phát hành. G12 nằm trong **Dịch vụ & đơn giá** của System Admin.
+
 **Nguồn đối chiếu**
 - BE code tại `dd0ada8`: `Controllers/V3/*.cs`, `Contracts/Surveys/V3/*.cs`, `IntegrationContracts/Surveys/ISurveyCaptureExecutionCoordinator.cs`, `Database/Surveys/SurveyCaptureExecutionCoordinator.cs`, `MissionPlantGpsPublisher.cs`.
 - BE docs: `AgriDrone-BE/docs/contracts/survey-business-v3.md` (mục 6.1–6.5), `PROJECT_MEMORY.md` của đội BE.
@@ -35,27 +39,27 @@ Mục tiêu: web **chỉ chạy luồng V3** (`ContractScope.V3`, dịch vụ `M
 | `AWAITING_PROCESSING` / `PROCESSING` | Đang xử lý ảnh, AI | G5 → G7 |
 | (vẫn `PROCESSING`) | Duyệt kết quả, chốt kết quả nội bộ | G7 |
 | `AWAITING_SETTLEMENT` | Đã chốt hóa đơn, chờ thanh toán | G8 |
-| `COMPLETED` | Đã phát hành kết quả cho Owner | G11 (chờ BE) |
+| `COMPLETED` | Đã phát hành kết quả cho Owner | G11 |
 | `CANCELLED` | Đã hủy | G9 |
 
 Lần bay (`CaptureAttemptStatus`): `PLANNED`, `PREFLIGHT_READY`, `IN_FLIGHT`, `AWAITING_UPLOAD`, `UPLOADED`, `PROCESSING` (đang hoạt động — tối đa 1 lần mỗi đơn) và `ACCEPTED`, `REFLIGHT_REQUIRED`, `FLIGHT_FAILED`, `CANCELLED` (đã kết thúc).
 
 ## Lỗ hổng BE
 
-Đã kiểm lại từng mục trên code BE `dd0ada8` (26/11/2026).
+Các dòng ghi theo cuộc rà soát BE `dd0ada8` ngày 26/11/2026 và được cập nhật riêng khi đã đối chiếu code mới hoặc thấy luồng chạy trên Tam Vu.
 
 | # | Lỗ hổng | Trạng thái | Ảnh hưởng tới FE |
 | --- | --- | --- | --- |
 | BE-1 | Không có API trả phần còn lại cho đơn V3 | ✅ Đã sửa (`fc01761`) | G8 dùng `balance-checkouts` |
 | BE-2 | Bộ lọc đơn không có trạng thái V3 | ✅ Đã sửa (`fc01761`) | G0 |
 | BE-3 | Không có GET danh sách lần bay | ✅ Đã sửa (`fc01761`) | G4, G6 dùng `GET capture-attempts` |
-| BE-4 | Chính sách thương mại V3 chỉ có POST, không có GET | ❌ Đã báo BE, sẽ bổ sung sớm | G12 (cuối) |
+| BE-4 | API đọc chính sách thương mại V3 | ✅ Có GET và FE đang dùng | G12 |
 | **BE-5** | `dd0ada8` đã cho `MissionPlantGpsPublisher` nhận mục đích `Capture`, nhưng publisher, `MappingCandidatesReadyV4Handler` và `FarmBaseMapInternalApprovalOrchestrator` vẫn lọc `survey.capture_attempts.mission_id`. Cột này không tồn tại: `CaptureAttemptConfiguration` bỏ qua `MissionId`; liên kết thực nằm ở `mission.drone_missions.capture_attempt_id` | ❌ Chờ BE sửa truy vấn | G5: chặn gửi GPS cây V3 và duyệt bản đồ V3 |
 | BE-6 | Owner GET gắn nhãn `PAID_SERVICE` cho lịch Capture (`TenantOwnerSurveyOrderResponseMapper`). Response lịch hẹn trả trạng thái V3 không gạch dưới (`AWAITINGDEPOSIT`) | ⚠️ Lỗi nhỏ, FE đã né | G2: FE bỏ qua nhãn mục đích và lấy trạng thái từ GET đơn |
 | **BE-7** | `GetSurveyPaymentHistoryQueryHandler.MapPurpose` thiếu `PaymentPurpose.OrderDeposit => "ORDER_DEPOSIT"`, ném exception khi lịch sử có khoản cọc V3 | ❌ Chờ BE sửa mapper | G3, G8: FE giữ link phiên vừa tạo khi lịch sử lỗi 5xx và đọc lại đơn |
 | **BE-8** | `GET /api/system-manager/survey-orders/{id}/drones/available` vẫn suy mục đích nhiệm vụ từ loại dịch vụ cũ và điều kiện lịch/tiền cũ. API drone theo farm cần `startAt`, `endAt`, mà API đơn của Manager không trả khung giờ lịch | ❌ Chờ BE: trả drone theo lịch Capture đã xác nhận, hoặc thêm khung giờ vào API đơn | G4 (chuẩn bị lần bay), G6 (chọn drone bay lại) |
-| **BE-9** | GET lần bay không trả manifest hiện hành. `input-approval` cần `processingJobId` nhưng chưa rõ lấy từ đâu; chốt dữ liệu chưa chuyển nhiệm vụ sang sẵn sàng xử lý | ❌ Chờ BE làm rõ | G5: dừng ở "chờ duyệt dữ liệu đầu vào" |
-| **BE-10** | `DetectMissionDiseasesCommandHandler` truy vấn `survey.survey_order_commercial_snapshots` (bảng thật là `survey.order_commercial_snapshots`). Response chưa trả `jobId`, `sourceRevision` mà `combo-analysis/handoffs` cần | ❌ Chờ BE sửa | G5 → G7: chưa nối được COMBO |
+| **BE-9** | Chốt, duyệt và mở lại đầu vào. Nhiệm vụ cũ có thể cần phục hồi trạng thái để ghép bản đồ. | ✅ FE đã nối duyệt, mở lại và khôi phục. Tam Vu đã qua ghép, cắt tiles và YOLO. | G5 |
+| **BE-10** | BE đã trả `jobId`, `sourceRevision`. FE đã nối handoff. Trong BE `6ea284f`, `DetectMissionDiseasesCommandHandler.cs:135` và `ComboAnalysisPendingImport.cs:240` dùng `INTERNALLY_APPROVED` cho enum PostgreSQL `farm_base_map_status`. Migration dùng `INTERNAL_APPROVED`. | ❌ BE cần sửa hai điều kiện và kiểm thử cả detect lẫn import | G5 → G7 COMBO |
 | **BE-11** | Ranh giới đơn First: chưa có API để Manager xác nhận phiên bản ranh giới (từ ảnh trực giao) và gắn cùng phiên bản cho đơn và nhiệm vụ | ❌ Chờ BE | G5: thiếu ranh giới khi gửi GPS cho đơn First |
 
 ## Bảng tiến độ
@@ -66,20 +70,20 @@ Lần bay (`CaptureAttemptStatus`): `PLANNED`, `PREFLIGHT_READY`, `IN_FLIGHT`, `
 | G1 | Gửi và duyệt yêu cầu khảo sát V3 | `SurveyIntakePage.tsx`, `RequestsPage.tsx` | `94cb4c7` | [x] chưa test tay |
 | G2 | Lịch hẹn Capture (đề xuất, xác nhận/đổi, vắng mặt) | `OrderActionModals.tsx`, `OwnerAppointmentDialog.tsx`, `OwnerPaymentsPage.tsx` | `94cb4c7` | [x] chưa test tay |
 | G3 | Cọc V3 (`OrderDeposit`) | `SurveyPaymentPanel.tsx`, `OwnerPaymentsPage.tsx` | `bf4cbb4` | [x] chưa test tay, chờ BE-7 |
-| G4 | Chuẩn bị lần bay và bay | `PrepareMissionModal.tsx`, `ManagerMissionDetailPage.tsx`, `V3CaptureFlightActions.tsx` | `bf4cbb4` | [~] bắt đầu/kết thúc/báo lỗi xong; chuẩn bị lần bay chưa nối (BE-8) |
-| G5 | Sau bay: tải dữ liệu, chốt và duyệt dữ liệu đầu vào, xử lý MAP/COMBO | `ManagerMissionDetailPage.tsx`, `ManagerBaseMapsPage.tsx` | `24d3b29` | [~] xong tới bước chốt dữ liệu; chờ BE-5, BE-9, BE-10, BE-11 |
+| G4 | Chuẩn bị lần bay và bay | `PrepareCaptureAttemptModal.tsx`, `ManagerMissionDetailPage.tsx`, `V3CaptureFlightActions.tsx` | `1d01c26` | [x] FE có chọn drone theo khung giờ Capture và chuẩn bị lần bay V3 |
+| G5 | Sau bay: tải dữ liệu, chốt và duyệt dữ liệu đầu vào, xử lý MAP/COMBO | `ManagerMissionDetailPage.tsx`, `ManagerBaseMapsPage.tsx` | workspace | [~] Tam Vu đã có bản đồ nháp 55 điểm. FE có handoff COMBO, cần BE sửa BE-10 và kiểm thử qua duyệt bản đồ |
 | G6 | Bay lại + lịch sử chuyến bay | `ManagerOrdersPage.tsx`, `CaptureAttemptHistory.tsx`, `QualityReflightModal` | chưa commit | [x] chưa test tay; nguồn drone tạm (BE-8) |
-| G7 | Duyệt kết quả V3 (result-review, combo-reviews, freeze) | `ManagerResultReviewPage.tsx`, `resultReviewWorkflow.ts` | chưa commit | [x] chưa test tay; chờ G5 để có dữ liệu thật |
-| G8 | Hóa đơn V3 + Owner trả phần còn lại | trang mới, `OwnerPaymentsPage.tsx` | — | [ ] |
-| G9 | Hủy đơn V3 (Owner yêu cầu, Admin quyết định) | `OwnerPaymentsPage.tsx`, `SystemOrdersPage.tsx` | — | [ ] |
-| G9b | Admin đối soát tiền đơn V3 (`funding-reconciliations`) | `SystemOrdersPage.tsx` | — | [ ] |
+| G7 | Duyệt kết quả V3 (result-review, combo-reviews, freeze) | `ManagerResultReviewPage.tsx`, `resultReviewWorkflow.ts` | workspace | [~] có chốt MAP/COMBO và duyệt/từ chối vùng. Chưa hỗ trợ chỉnh hình vùng |
+| G8 | Hóa đơn V3 + Owner trả phần còn lại | `ManagerInvoicePanel.tsx`, `OwnerBalanceCheckout.tsx` | workspace | [~] nối luồng thường. Thiếu API đọc mục đếm và hồ sơ cây để sửa hóa đơn trước phát hành |
+| G9 | Hủy đơn V3 | `OwnerPaymentsPage.tsx`, `SystemOrdersPage.tsx` | workspace | [~] Owner tự hủy trước bay. Admin hoãn vận hành/lỗi dịch vụ đã có. Hồ sơ hủy sau bay cần dữ liệu yêu cầu và bằng chứng |
+| G9b | Admin đối soát tiền đơn V3 (`funding-reconciliations`) | `ManagerInvoicePanel.tsx` | workspace | [~] hiện cảnh báo. Cần GET khoản thu chờ xử lý để chọn đúng chứng từ |
 | G10 | Rà soát cuối: không còn route, type, nhãn, mã lỗi nào của luồng cũ | toàn bộ | — | [ ] |
-| G11 | Chờ BE: phát hành kết quả cho Owner, cổng Owner, khiếu nại/hoàn tiền V3 | — | — | chờ BE (A2.4, V3-07, V3-08) |
-| G12 | Admin: chính sách thương mại V3 (để cuối, chờ BE-4) | `ServicesPage.tsx`, `PaymentPoliciesPanel.tsx` | — | [ ] |
+| G11 | Phát hành, cổng Owner, khiếu nại và hoàn tiền V3 | `OwnerSurveyResultPage.tsx`, `OwnerQualityRefundPanel.tsx`, `AdminQualityRefundPage.tsx` | workspace | [~] đã nối API đọc, ảnh, lịch sử, so sánh và báo sai. Chưa chạy phát hành thật, chưa có luồng điều chỉnh sau phát hành |
+| G12 | Admin: chính sách thương mại V3 | `ServicesPage.tsx`, `commercialPoliciesApi.ts` | `1d01c26` | [x] GET và 8 thao tác ghi đã có. Chưa kiểm với môi trường thật |
 
-**Thứ tự làm tiếp:** G8 → G9/G9b. Phần còn lại của G4 và G5 làm theo mục "Việc để sau" ngay bên dưới, khi BE sửa lỗ hổng tương ứng.
+**Thứ tự kiểm thử tiếp.** Chạy G5 → G8 → G11 với một đơn MAP và một đơn COMBO sau khi BE sửa BE-10. Kiểm tra riêng chính sách G12 và các nhánh ngoại lệ còn thiếu dữ liệu ở G8, G9, G9b.
 
-## Việc để sau — phần còn lại của G4 và G5
+## Checklist G4 và G5 tại thời điểm lập kế hoạch
 
 Ghi lại để triển khai khi BE sửa. Mỗi việc ghi rõ đang chờ gì; việc không chờ BE thì làm được bất cứ lúc nào (nên gộp vào G10 nếu chưa làm).
 
@@ -248,7 +252,7 @@ Trang mới cho Manager thay `ManagerHealthReviewPage` (trang cũ bị BE chặn
 - **Chốt kết quả nội bộ**: `POST .../result-review/freeze` (ID và fingerprint lấy từ response BE). Lần bay → `ACCEPTED`, đơn vẫn `PROCESSING`. Chốt nội bộ khác với phát hành cho Owner (G11).
 - **Lỗi 409** (`SurveyOrder.VersionConflict`, `CountSnapshot.Stale`, `ComboReview.Stale`, `Operation.Conflict`) → tải lại `GET result-review` để người dùng xác nhận đúng phiên bản.
 
-## G8. Hóa đơn V3 + trả phần còn lại — [ ]
+## G8. Hóa đơn V3 + trả phần còn lại — [~]
 
 **Manager**
 - `GET .../invoice` → token hóa đơn/kết quả/số trụ, chi tiết tiền, checkout đang mở, `hasOpenReconciliation`, `reconciliationReasons[]`, `orderConfirmedNetCash`, `orderAvailableRefundCap`. `409 Invoice.NotFinalized` → quay về G7; `409 InvoiceFinalization.RefundReconciliationHold` → chờ Admin đối soát (G9b).
@@ -260,7 +264,7 @@ Trang mới cho Manager thay `ManagerHealthReviewPage` (trang cũ bị BE chặn
 - **Trả phần còn lại**: `POST .../balance-checkouts`, body `{ checkoutToken, idempotencyKey }`. Đọc lại hóa đơn ngay trước khi trả để lấy `checkoutToken` (hết hạn nhanh). Giữ nguyên `idempotencyKey` khi thử lại cùng giao dịch; tạo key mới sau lỗi dứt khoát của cổng thanh toán. Lỗi `400` (tắt thanh toán / lỗi cổng), `409` (`Checkout.ZeroBalanceDue`, `Checkout.OpenCheckoutMismatch`, `Checkout.PaidBalanceInsufficientForNewDue`, `Checkout.UncertainProviderOutcome`…), `422` (token sai/hết hạn).
 - Lịch sử thanh toán còn phụ thuộc BE-7.
 
-## G9. Hủy đơn V3 — [ ]
+## G9. Hủy đơn V3 — [~]
 
 - Owner: `POST api/v3/tenant-owner/survey-orders/{orderId}/cancellation`, body `{ expectedOrderVersion, reasonCode, reasonDescription, operationId, payloadFingerprint }`. Owner chỉ tự hủy được trước khi bay.
 - Admin: `POST api/v3/system-admin/survey-orders/{orderId}/cancellation-decisions`, body `{ requesterId, decisionKind, requestedRetentionAmount, inputApprovalEvidenceId?, reasonCode, reasonDescription, expectedOrderVersion, operationId, payloadFingerprint }`. `decisionKind`: `CUSTOMER_BEFORE_CAPTURE`, `CUSTOMER_AFTER_ACCEPTABLE_CAPTURE` (cần bằng chứng `inputApprovalEvidenceId`), `OPERATIONAL_POSTPONEMENT`, `SERVICE_FAILURE` (hoàn 100%).
@@ -268,7 +272,7 @@ Trang mới cho Manager thay `ManagerHealthReviewPage` (trang cũ bị BE chặn
 - Gỡ UI hoàn tiền chất lượng cũ; khiếu nại V3 làm lại ở G11.
 - **Cần xác nhận với BE trước khi làm màn Admin:** danh sách `reasonCode` hợp lệ, API đọc danh sách yêu cầu hủy đang chờ.
 
-## G9b. Admin đối soát tiền đơn V3 — [ ]
+## G9b. Admin đối soát tiền đơn V3 — [~]
 
 - `POST api/v3/system-admin/survey-orders/{orderId}/funding-reconciliations`, body `{ operationId, dispositionKind, expectedOrderVersion, amount, currency, reason (1–2000), evidenceReference (1–1000), surveyPaymentId?, fundingReceiptId?, targetInvoiceRevisionId?, providerReference?, providerTransactionId?, expectedPaymentVersion? }`.
 - `dispositionKind`: `KEEP_EXCLUDED`, `ALLOCATE_TO_CURRENT_INVOICE` (cần `providerTransactionId` đã xác minh và đúng hóa đơn hiện hành), `ROUTE_TO_REFUND` (giữ hạn mức hoàn; chuyển tiền thuộc V3-08). Mỗi khoản tiền về chỉ có một quyết định cuối.
@@ -278,18 +282,16 @@ Trang mới cho Manager thay `ManagerHealthReviewPage` (trang cũ bị BE chặn
 
 Tìm trong `src/` và `tests/`: không còn route nào trong "Danh sách gỡ bỏ" (kể cả nhánh `!v3Capture`), không còn trạng thái / purpose / payment purpose / mã lỗi của luồng cũ, không còn test cho các phần đã xóa. Chạy lại typecheck, test, build.
 
-## G11. Chờ BE — phát hành kết quả, cổng Owner, khiếu nại
+## G11. Phát hành, cổng Owner và khiếu nại — [~]
 
-Theo `PROJECT_MEMORY.md` của BE, các phần sau **chưa có ở BE**:
-- **A2.4 (V3-06)**: phát hành kết quả khi đủ tiền, thông báo Owner, cửa sổ khiếu nại, đơn → `COMPLETED`.
-- **V3-07**: cổng Owner xem kết quả, ảnh, so sánh lịch sử.
-- **V3-08**: khiếu nại, thực hiện hoàn tiền, điều chỉnh sau phát hành.
-- Trước khi phát hành, Owner không thấy dữ liệu V3 (bản đồ, cây, bản đồ sức khỏe trả `404`) — đúng thiết kế.
+- BE đánh giá điều kiện phát hành sau khi đủ tiền và trả kết quả cho Owner khi đơn chuyển `COMPLETED`.
+- FE đọc `published-result`, ảnh qua MinIO, lịch sử và so sánh các đợt cùng bản đồ nền. Cần xác minh ảnh trên môi trường thật vì API ảnh chuyển hướng sang MinIO.
+- Báo sai gửi mã trụ từ bản kết quả đã phát hành và `publicationId`. Các API hồ sơ dùng đường dẫn `quality-refunds` và xử lý được V3. Manager xác minh, Admin xử lý quyết định/ghi nhận hoàn tiền. Chưa có màn điều chỉnh kết quả sau phát hành.
 
-## G12. Admin: chính sách thương mại V3 — [ ] (để cuối, chờ BE-4)
+## G12. Admin: chính sách thương mại V3 — [x]
 
-- 8 route `POST api/v3/system-admin/commercial-policies/`: `services`, `revisions`, `prices`, `deposit-policies`, `claim-policies`, `cancellation-policies`, `bundle-versions`, `activations`. Thay `ServicesPage` (phần giá) và `PaymentPoliciesPanel`; xóa route cũ `survey-services`, `survey-deposit`, `survey-combo-discount`.
-- Đội BE sẽ bổ sung GET; khi có, làm cả phần xem lẫn form đăng. Trước đó dữ liệu V3 lấy từ seeder `SurveyServiceV3Seeder`.
+- **Dịch vụ & đơn giá** ở `/system/survey-services` đọc cấu hình từ `GET /api/v3/system-admin/commercial-policies`.
+- Màn hình đã nối 8 thao tác ghi cho dịch vụ, phiên bản thương mại, giá, chính sách cọc, khiếu nại, hủy, gói và kích hoạt. Xác minh lại các cấu hình trên môi trường thật khi nghiệm thu.
 
 ## Không cần làm
 

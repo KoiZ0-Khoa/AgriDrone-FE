@@ -6,8 +6,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
+import { ActionModal } from '../../management/ActionModal'
+import { text, type Action } from '../../management/actions'
+import { OwnerBalanceCheckout } from './OwnerBalanceCheckout'
 import { OwnerAppointmentDialog, type OwnerAppointmentAction } from './OwnerAppointmentDialog'
-import { getOwnerOrder, getOwnerOrderInvoice, getOwnerOrders } from './ownerOrderApi'
+import { cancelOwnerOrder, getOwnerOrder, getOwnerOrderInvoice, getOwnerOrders } from './ownerOrderApi'
 import type { OwnerSurveyOrder } from './ownerOrderTypes'
 import { canConfirmOwnerAppointment, canRescheduleOwnerAppointment, ownerGuid, ownerOrderStatusQuery, validOwnerVersion } from './ownerOrderWorkflow'
 import { getPaymentHistory } from './paymentApi'
@@ -15,6 +18,7 @@ import { appointmentStatusLabels, orderStatusLabels } from './orderWorkflow'
 import { SurveyMutationError } from './SurveyMutationError'
 import { SurveyPaymentPanel } from './SurveyPaymentPanel'
 import { SurveyInvoiceLines } from './SurveyInvoiceLines'
+import { v3OperationFor, type V3Operation } from './v3Workflow'
 import { appointmentScheduleLabel, dateTime, workflowError } from './workflow'
 
 export function OwnerPaymentsPage() {
@@ -59,6 +63,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
   const writes = useIsMutating({ mutationKey: ['owner-order-write', tenantId, orderId] })
   const [action, setAction] = useState<OwnerAppointmentAction | null>(null)
   const [notice, setNotice] = useState('')
+  const [cancelAction, setCancelAction] = useState<Action | null>(null)
   const query = useQuery({ queryKey: ['owner-survey-order', tenantId, orderId], queryFn: ({ signal }) => getOwnerOrder(token, orderId, signal), retry: false,
     refetchOnWindowFocus: writes === 0, refetchInterval: value => writes === 0 && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.status) ? 10000 : false })
   const invoiceKey = ['owner-survey-invoice', tenantId, orderId] as const
@@ -80,10 +85,34 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
   if (!query.data) return <>{back}<SurveyMutationError error={query.error} /><Button onClick={() => { void query.refetch() }}>Tải lại đơn</Button></>
   const order = query.data, appointment = order.currentAppointment
   const busy = query.isFetching || query.isError || writes > 0
+  const canCancel = validOwnerVersion(order.orderVersion) && ['AWAITING_APPOINTMENT', 'AWAITING_DEPOSIT', 'READY_FOR_CAPTURE'].includes(order.status)
+  function askToCancel() {
+    let operation: V3Operation | null = null
+    setCancelAction({
+      title: 'Hủy đơn khảo sát',
+      description: 'Máy chủ sẽ áp dụng chính sách hủy đã chốt của đơn và ghi nhận khoản phải hoàn nếu có.',
+      danger: true,
+      fields: [{ key: 'reason', label: 'Lý do hủy', kind: 'multiline', max: 500 }],
+      run: async values => {
+        const body = { expectedOrderVersion: order.orderVersion, reasonCode: 'CUSTOMER_BEFORE_CAPTURE', reasonDescription: text(values, 'reason') }
+        operation = await v3OperationFor(operation, body)
+        const { operationId, payloadFingerprint } = operation
+        const result = await cancelOwnerOrder(token, orderId, { ...body, operationId, payloadFingerprint })
+        if (!result.success || result.orderId.toLowerCase() !== orderId) throw new Error('Chưa xác nhận được kết quả hủy. Hãy tải lại đơn khảo sát.')
+      },
+      after: refresh,
+      success: 'Đã hủy đơn khảo sát',
+    })
+  }
   return <>{back}
     <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT & THANH TOÁN</span><h1>{order.farmName}</h1><p>{orderStatusLabels[order.status] ?? order.status}</p><CopyReference value={order.orderNumber} label="Sao chép mã đơn" /></div><Button icon={<ReloadOutlined />} disabled={writes > 0 || !!action} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button></section>
     {notice ? <Alert className="workflow-notice" showIcon type="success" title={notice} /> : null}
     <SurveyMutationError error={query.isError ? query.error : null} />
+    {order.status === 'COMPLETED' ? <section className="resource-panel workflow-section">
+      <div className="resource-panel-heading"><strong>Kết quả khảo sát</strong>
+        <Link className="workflow-detail-link" to={`/survey-payments/${encodeURIComponent(orderId)}/result`}>Xem kết quả đã phát hành →</Link>
+      </div>
+    </section> : null}
     {!validOwnerVersion(order.orderVersion) ? <Alert className="workflow-notice" showIcon type="warning" title="Thông tin đơn chưa đầy đủ. Tải lại trước khi xác nhận lịch hoặc thanh toán." /> : null}
     <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Lịch bay</strong><span>{appointment ? 'Manager đề xuất, bạn xác nhận' : 'Chờ Manager đề xuất lịch'}</span></div>{appointment ? <Tag>{appointmentStatusLabels[appointment.status] ?? appointment.status}</Tag> : null}</div>
       {appointment ? <><dl className="detail-list"><div><dt>Ngày bay</dt><dd>{appointmentScheduleLabel(null, null, null, appointment.startAt, appointment.endAt)}</dd></div></dl>
@@ -94,14 +123,23 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
         {appointment.status === 'RESCHEDULE_REQUESTED' ? <p className="form-hint">Lịch đang chờ đổi (bạn đã yêu cầu đổi lịch hoặc Manager ghi nhận vắng mặt). Chờ Manager đề xuất thời gian mới.</p> : null}
       </> : <p>Chờ Manager đề xuất lịch bay. Lịch chỉ chính thức khi bạn xác nhận.</p>}
     </section>
-    <div className="workflow-section"><SurveyPaymentPanel order={order} history={history} refreshOrder={refreshOrder} disabled={busy || !!action} /></div>
+    <div className="workflow-section"><SurveyPaymentPanel order={order} history={history} refreshOrder={refreshOrder} disabled={busy || !!action || !!cancelAction} /></div>
     <section className="resource-panel workflow-section">
       <div className="resource-panel-heading"><div><strong>Hóa đơn khảo sát</strong></div><CreditCardOutlined aria-hidden="true" /></div>
       {canViewInvoice && invoice.isError ? <SurveyMutationError error={invoice.error} />
-        : canViewInvoice && invoice.data ? <SurveyInvoiceLines invoice={invoice.data} />
+        : canViewInvoice && invoice.data ? <><SurveyInvoiceLines invoice={invoice.data} />
+          <OwnerBalanceCheckout token={token} tenantId={tenantId} order={order} invoice={invoice.data}
+            disabled={busy || !!action || !!cancelAction || invoice.isFetching} refresh={refresh} />
+        </>
         : canViewInvoice && invoice.isFetching ? <p>Đang tải hóa đơn…</p>
         : <p className="form-hint">Hóa đơn được hiển thị sau khi chốt kết quả khảo sát.</p>}
     </section>
+    {canCancel ? <section className="resource-panel workflow-section">
+      <div className="resource-panel-heading"><div><strong>Hủy đơn khảo sát</strong></div>
+        <Button danger disabled={busy || !!action || !!cancelAction} onClick={askToCancel}>Hủy đơn</Button>
+      </div>
+    </section> : null}
+    {cancelAction ? <ActionModal action={cancelAction} close={() => setCancelAction(null)} /> : null}
     {action ? <OwnerAppointmentDialog token={token} tenantId={tenantId} action={action} current={order} disabled={query.isFetching || query.isError} close={() => { setAction(null); void refresh() }} done={async () => {
       setNotice(action.kind === 'confirm' ? 'Đã xác nhận lịch bay. Trả cọc nếu còn thiếu; khoản còn lại được chốt sau khi duyệt kết quả.' : 'Đã gửi yêu cầu đổi lịch. Chờ Manager đề xuất lại.')
       setAction(null); await refresh()

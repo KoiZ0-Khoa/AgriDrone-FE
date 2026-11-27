@@ -48,6 +48,7 @@ const MyFarmsPage = lazy(() => import('../management/MyFarmsPage').then(m => ({ 
 const SystemPage = lazy(() => import('../management/SystemPage').then(m => ({ default: m.SystemPage })))
 const SystemDashboardPage = lazy(() => import('../management/SystemDashboardPage').then(m => ({ default: m.SystemDashboardPage })))
 const InvitationPage = lazy(() => import('../management/InvitationPage').then(m => ({ default: m.InvitationPage })))
+const OwnerSurveyResultPage = lazy(() => import('../features/surveys/OwnerSurveyResultPage').then(m => ({ default: m.OwnerSurveyResultPage })))
 const OwnerPaymentsPage = lazy(() => import('../features/surveys/OwnerPaymentsPage').then(m => ({ default: m.OwnerPaymentsPage })))
 const ManagerBaseMapsPage = lazy(() => import('../features/surveys/ManagerBaseMapsPage').then(m => ({ default: m.ManagerBaseMapsPage })))
 const FarmBaseMapsPage = lazy(() => import('../features/baseMaps/FarmBaseMapsPage').then(m => ({ default: m.FarmBaseMapsPage })))
@@ -138,6 +139,7 @@ export function App() {
                         <Route path="/survey-payments" element={<OwnerPaymentsPage />} />
                         <Route path="/survey-payments/return" element={<OwnerPaymentsPage />} />
                         <Route path="/survey-payments/:orderId" element={<OwnerPaymentsPage />} />
+                        <Route path="/survey-payments/:orderId/result" element={<OwnerSurveyResultPage />} />
                       </Route>
                     </Route>
                     <Route element={<SystemAdminRoute />}>

@@ -151,3 +151,21 @@ test('V3 deposit is available again after refund or invalidation when BE sends t
   assert.equal(flow.canInitiateOwnerDeposit(confirmedOrder, undefined), false)
   assert.equal(flow.canInitiateOwnerDeposit(confirmedOrder, { ...history, surveyOrderId: appointmentId }), false)
 })
+
+test('Owner balance checkout and cancellation use separate V3 operations', async () => {
+  const cancellation = { expectedOrderVersion: 3, reasonCode: 'CUSTOMER_BEFORE_CAPTURE', reasonDescription: 'Xin hủy', operationId: 'operation', payloadFingerprint: 'f'.repeat(64) }
+  const calls = [
+    ['balance-checkouts', { checkoutToken: 'signed-current-invoice', idempotencyKey: 'checkout-key' }, { orderId, paymentId: 'payment', status: 'PENDING' }],
+    ['cancellation', cancellation, { success: true, orderId }],
+  ]
+  globalThis.fetch = async (url, options) => {
+    const [path, body, response] = calls.shift()
+    assert.equal(url, v3Base + '/' + orderId + '/' + path)
+    assert.equal(options.method, 'POST')
+    assert.deepEqual(JSON.parse(options.body), body)
+    return Response.json(response)
+  }
+  assert.equal((await api.createOwnerBalanceCheckout('owner', orderId, 'signed-current-invoice', 'checkout-key')).paymentId, 'payment')
+  assert.equal((await api.cancelOwnerOrder('owner', orderId, cancellation)).success, true)
+  assert.equal(calls.length, 0)
+})

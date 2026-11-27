@@ -39,6 +39,7 @@ export type RefundClaimWindow = {
   noticeCreatedAt: string | null
   deadlineExclusive: string | null
   canReport: boolean
+  v3PublicationId?: string | null
   reason: string | null
 }
 export type RefundFarmPlant = {
@@ -52,6 +53,7 @@ export type RefundFarmPlant = {
   lifecycleStatus: string
 }
 export type ReportRefundBody = {
+  publicationId?: string
   issues: RefundIssue[]
   description: string
   recipientBankName: string

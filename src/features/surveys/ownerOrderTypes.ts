@@ -11,4 +11,12 @@ export type OwnerSurveyOrder = {
 export type OwnerSurveyInvoice = {
   orderId: string; invoiceRevisionNumber: number; verifiedBillablePoleCount: number
   pricePerPole: number; currency: string; totalAmount: number; dueAmount: number
+  orderStatus: string; checkoutToken: string | null
+}
+export type OwnerBalanceCheckout = {
+  orderId: string; paymentId: string; invoiceRevisionId: string; invoiceRevisionNumber: number | null
+  amount: number; currency: string; paymentStatus: string; redirectUrl: string | null; expiresAt: string | null
+}
+export type OwnerCancellationBody = {
+  operationId: string; payloadFingerprint: string; expectedOrderVersion: number; reasonCode: string; reasonDescription: string
 }

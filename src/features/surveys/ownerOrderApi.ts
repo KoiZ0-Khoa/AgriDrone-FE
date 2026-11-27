@@ -1,9 +1,15 @@
 import { ApiError, apiRequest } from '../../api/client'
-import type { OwnerSurveyInvoice, OwnerSurveyOrder } from './ownerOrderTypes'
+import type { OwnerBalanceCheckout, OwnerCancellationBody, OwnerSurveyInvoice, OwnerSurveyOrder } from './ownerOrderTypes'
 import { ownerOrderStatusQuery } from './ownerOrderWorkflow'
 import type { Page } from './types'
 
 const base = '/api/v3/tenant-owner/survey-orders'
+export const createOwnerBalanceCheckout = (token: string, orderId: string, checkoutToken: string, idempotencyKey: string) =>
+  apiRequest<OwnerBalanceCheckout>(`${base}/${encodeURIComponent(orderId)}/balance-checkouts`, {
+    token, method: 'POST', body: { checkoutToken, idempotencyKey },
+  })
+export const cancelOwnerOrder = (token: string, orderId: string, body: OwnerCancellationBody) =>
+  apiRequest<{ success: boolean; orderId: string }>(`${base}/${encodeURIComponent(orderId)}/cancellation`, { token, method: 'POST', body })
 export function getOwnerOrders(token: string, pageNumber = 1, status = '', signal?: AbortSignal) {
   const params = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: '20' })
   if (status) {

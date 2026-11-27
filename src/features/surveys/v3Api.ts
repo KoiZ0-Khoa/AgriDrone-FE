@@ -6,6 +6,7 @@ import type { ApproveCaptureInputBody, ApproveCaptureInputResult, RecoverCapture
 import type { MarkCaptureBoundaryBody, MarkCaptureBoundaryResult } from './v3Types'
 import type { PrepareCaptureAttemptBody, PrepareCaptureAttemptResult, QualityReflightBody, QualityReflightResult } from './v3Types'
 import type { ComboReviewResult, FreezeResult, FreezeResultBody, RecordComboReviewBody, ResultReview } from './v3Types'
+import type { FinalizeManagerInvoiceBody, ManagerSurveyInvoice } from './v3Types'
 import type { AdminCancellationBody } from './systemOrderTypes'
 
 // Toàn bộ route api/v3/... của web. Mỗi giai đoạn thêm route của mình vào đây (xem docs/v3-migration-plan-2026-11-26.md).
@@ -61,6 +62,11 @@ export const recordComboReview = (token: string, orderId: string, body: RecordCo
   apiRequest<ComboReviewResult>(`${managerOrderPath(orderId)}/result-review/combo-reviews`, { method: 'POST', token, body })
 export const freezeResultReview = (token: string, orderId: string, body: FreezeResultBody) =>
   apiRequest<FreezeResult>(`${managerOrderPath(orderId)}/result-review/freeze`, { method: 'POST', token, body })
+
+export const getManagerInvoice = (token: string, orderId: string, signal?: AbortSignal) =>
+  apiRequest<ManagerSurveyInvoice>(`${managerOrderPath(orderId)}/invoice`, { token, signal, cache: 'no-store' })
+export const finalizeManagerInvoice = (token: string, orderId: string, body: FinalizeManagerInvoiceBody) =>
+  apiRequest<{ orderId: string; orderStatus: string; invoiceRevisionId: string }>(`${managerOrderPath(orderId)}/invoice/finalize`, { method: 'POST', token, body })
 
 // G2 — lịch hẹn bay (Capture). Response dùng chung SurveyAppointmentApiResponse với route cũ; riêng orderStatus của response
 // bị BE viết liền không gạch dưới cho trạng thái V3 (vd. AWAITINGDEPOSIT), nên FE luôn tải lại đơn thay vì đọc trường này.

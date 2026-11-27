@@ -24,11 +24,12 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
   try {
     const { AuthProvider } = await server.ssrLoadModule('/src/features/auth/AuthContext.tsx')
     const { ManagerResultReviewPage } = await server.ssrLoadModule('/src/features/surveys/ManagerResultReviewPage.tsx')
-    const render = review => {
+    const render = (review, invoice) => {
       Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => JSON.stringify({ role: 'SYSTEM_MANAGER', fullName: 'M', email: 'm@example.test', phone: null, accessToken: 'test-token', expiresAt: '2099-01-01T00:00:00Z', tenant: null }) } })
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, gcTime: Infinity, staleTime: Infinity } } })
       clients.push(client)
       client.setQueryData(['result-review', 'order'], review)
+      if (invoice) client.setQueryData(['manager-survey-invoice', 'order'], invoice)
       return renderToStaticMarkup(h(QueryClientProvider, { client }, h(MemoryRouter, { initialEntries: ['/manager/orders/order/result-review'] }, h(AuthProvider, null, h(Routes, null, h(Route, { path: '/manager/orders/:orderId/result-review', element: h(ManagerResultReviewPage) }))))))
     }
     const map = render(mapReview)
@@ -40,7 +41,7 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
     assert.match(map, /href="\/manager\/orders\/order"/)
 
     const comboPending = render({ ...mapReview, serviceCode: 'COMBO', screensDisease: true })
-    assert.match(comboPending, /Chưa có kết quả phân tích COMBO/)
+    assert.match(comboPending, /Chạy nhận diện bệnh/)
 
     const combo = render({ ...mapReview, serviceCode: 'COMBO', screensDisease: true, comboPendingBatch: batch })
     assert.match(combo, /Duyệt phát hiện, vùng bệnh và mục chặn/)
@@ -53,9 +54,15 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
     assert.match(combo, /Cần duyệt phát hiện, vùng bệnh và mục chặn trước khi chốt/)
     assert.match(combo, /<button[^>]*disabled[^>]*><span>Gửi kết quả duyệt<\/span><\/button>/)
 
-    const frozen = render({ ...mapReview, orderStatus: 'AWAITING_SETTLEMENT', captureAttemptStatus: 'ACCEPTED', currentApprovedResultRevisionId: 'r1', currentApprovedResultFingerprint: fp('d') })
+    const frozen = render({ ...mapReview, orderStatus: 'AWAITING_SETTLEMENT', captureAttemptStatus: 'ACCEPTED', currentApprovedResultRevisionId: 'r1', currentApprovedResultFingerprint: fp('d') }, {
+      orderId: 'order', invoiceRevisionNumber: 1, verifiedBillablePoleCount: 1234, pricePerPole: 100,
+      currency: 'VND', totalAmount: 123400, validAllocatedDepositNet: 20000, confirmedNetReceipts: 20000,
+      dueAmount: 103400, overpaymentAmount: 0, hasOpenReconciliation: false,
+    })
     assert.match(frozen, /Đã chốt kết quả nội bộ/)
-    assert.match(frozen, /chưa hiện cho Owner/)
+    assert.match(frozen, /Hóa đơn khảo sát/)
+    assert.match(frozen, /Còn phải trả/)
+    assert.match(frozen, /103\.400/)
     assert.doesNotMatch(frozen, /<span>Chốt kết quả nội bộ<\/span>/)
     for (const client of clients) client.clear()
   } finally {
