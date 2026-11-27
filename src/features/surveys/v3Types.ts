@@ -65,6 +65,7 @@ export type V3CaptureAttempt = {
   missionId: string | null
   parentAttemptId: string | null
   parentMissionId: string | null
+  mappingSourceAttemptId?: string | null
   startedAt: string | null
   endedAt: string | null
   history: V3CaptureAttemptHistory[]
@@ -141,6 +142,8 @@ export type PrepareCaptureAttemptBody = {
 export type PrepareCaptureAttemptResult = {
   success: boolean; attemptId: string; attemptIndex: number; missionId: string; status: string; version: number
 }
+
+export type DiseaseCaptureSchedule = { droneId: string; expectedOrderVersion: number; startAt: string; endAt: string }
 
 export type QualityReflightBody = {
   droneId: string

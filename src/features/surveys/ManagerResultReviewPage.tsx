@@ -36,14 +36,34 @@ export function ManagerResultReviewPage() {
   const client = useQueryClient()
   const query = useQuery({ queryKey: ['result-review', orderId], queryFn: ({ signal }) => getResultReview(token, orderId, signal), retry: false, refetchOnWindowFocus: false })
   const [frozen, setFrozen] = useState<FreezeResult | null>(null)
+  const checkingHandoff = useRef(false)
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   const back = <Link className="back-link" to={`/manager/orders/${encodeURIComponent(orderId)}`}><ArrowLeftOutlined /> Về đơn khảo sát</Link>
   async function reload() {
     await Promise.all([client.invalidateQueries({ queryKey: ['result-review', orderId] }), client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['capture-attempts', orderId] })])
   }
+  async function checkComboHandoff() {
+    if (checkingHandoff.current) return
+    checkingHandoff.current = true
+    try {
+      for (const delay of [0, 1000, 2000]) {
+        if (delay) await new Promise(resolve => setTimeout(resolve, delay))
+        if (!mounted.current) return
+        const result = await query.refetch()
+        if (result.isError || (result.data && result.data.comboPendingBatch)) return
+      }
+    } finally {
+      checkingHandoff.current = false
+    }
+  }
   if (query.isPending) return <>{back}<CommonState type="loading" title="Đang tải dữ liệu duyệt" /></>
   if (query.isError) return <>{back}<CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /></>
   const review = query.data
-  if (review === null) return <>{back}<PendingComboAnalysis token={token} orderId={orderId} reload={reload} /></>
+  if (review === null) return <>{back}<PendingComboAnalysis token={token} orderId={orderId} reload={reload} checkHandoff={checkComboHandoff} /></>
   const combo = isCombo(review)
   return <>
     {back}
@@ -60,13 +80,13 @@ export function ManagerResultReviewPage() {
       {isFrozen(review) || frozen ? <Alert className="workflow-notice" showIcon type="success" title="Đã chốt kết quả nội bộ"
         description={<>{frozen ? `Chốt lúc ${dateTime(frozen.frozenAt)} · ${frozen.verifiedBillablePoleCount.toLocaleString('vi-VN')} trụ · ${frozen.healthAssessmentStatus}. ` : ''}Sau khi chốt hóa đơn, Owner có thể kiểm tra số tiền còn lại.</>} /> : null}
     </section>
-    {combo ? <ComboReviewSection key={`${review.comboPendingBatch?.batchId}:${review.currentComboReview?.reviewRevisionId}`} token={token} review={review} reload={reload} /> : null}
+    {combo ? <ComboReviewSection key={`${review.comboPendingBatch?.batchId}:${review.currentComboReview?.reviewRevisionId}`} token={token} review={review} reload={reload} checkHandoff={checkComboHandoff} /> : null}
     {isFrozen(review) ? <ManagerInvoicePanel key={review.orderId} token={token} review={review} refreshing={query.isFetching} reload={reload} /> : null}
     {!isFrozen(review) && !frozen ? <FreezeSection key={review.expectedFreezeTokens.expectedComboReviewRevisionId ?? review.verifiedPoleCountSnapshotId} token={token} review={review} reload={reload} done={async result => { setFrozen(result); await reload() }} /> : null}
   </>
 }
 
-function PendingComboAnalysis({ token, orderId, reload }: { token: string; orderId: string; reload: () => Promise<void> }) {
+function PendingComboAnalysis({ token, orderId, reload, checkHandoff }: { token: string; orderId: string; reload: () => Promise<void>; checkHandoff: () => Promise<void> }) {
   const order = useQuery({
     queryKey: ['manager-order-context', orderId],
     queryFn: ({ signal }) => getAssignedOrder(token, orderId, signal),
@@ -87,18 +107,25 @@ function PendingComboAnalysis({ token, orderId, reload }: { token: string; order
   if (order.isPending || attempts.isPending) return <CommonState type="loading" title="Đang tải lần bay COMBO" />
 
   const processingAttempts = attempts.data.filter(attempt => attempt.status === 'PROCESSING')
-  const missionId = processingAttempts.length === 1 ? processingAttempts[0].missionId : null
+  const attempt = processingAttempts.length === 1 ? processingAttempts[0] : undefined
+  const missionId = attempt?.missionId
   const assigned = order.data
-  if (!assigned || assigned.surveyOrderId !== orderId || v3ServiceKind(assigned.surveyServiceCode) !== 'COMBO' ||
-    assigned.status !== 'PROCESSING' || !ownerGuid(assigned.farmId) || !missionId || !ownerGuid(missionId)) {
+  const isAssignedCombo = assigned?.surveyOrderId === orderId && v3ServiceKind(assigned.surveyServiceCode) === 'COMBO'
+  const hasDiseaseCapture = attempts.data.some(item => !!item.mappingSourceAttemptId)
+  if (isAssignedCombo && assigned.requiresBaselineMapping && !attempt?.mappingSourceAttemptId) {
+    return <Alert className="workflow-notice" showIcon type="info" title={hasDiseaseCapture ? 'Chờ duyệt dữ liệu chuyến bay bệnh' : 'Cần tạo chuyến bay bệnh'}
+      description={hasDiseaseCapture ? 'Hoàn tất chuyến bay bệnh và duyệt bộ dữ liệu đầu vào trên nhiệm vụ của chuyến đó.' : 'Dùng bản đồ đã duyệt để tạo chuyến bay bệnh từ trang đơn khảo sát.'}
+      action={<Link to={`/manager/orders/${encodeURIComponent(orderId)}`}>Mở đơn khảo sát</Link>} />
+  }
+  if (!assigned || !isAssignedCombo || assigned.status !== 'PROCESSING' || !ownerGuid(assigned.farmId) || !missionId || !ownerGuid(missionId)) {
     return <Alert className="workflow-notice" showIcon type="warning" title="Chưa xác định được nhiệm vụ để nhận diện bệnh"
       description="Kiểm tra lại đơn COMBO và lần bay đang xử lý trong trang đơn khảo sát." />
   }
   return <PlantHealthProcessingPanel key={missionId} token={token} farmId={assigned.farmId} missionId={missionId}
-    surveyOrderId={orderId} disabled={false} onComboHandoff={reload} />
+    surveyOrderId={orderId} disabled={false} onComboHandoff={checkHandoff} />
 }
 
-function ComboReviewSection({ token, review, reload }: { token: string; review: ResultReview; reload: () => Promise<void> }) {
+function ComboReviewSection({ token, review, reload, checkHandoff }: { token: string; review: ResultReview; reload: () => Promise<void>; checkHandoff: () => Promise<void> }) {
   const batch = review.comboPendingBatch
   const [draft, setDraft] = useState<ComboReviewDraft | null>(() => batch ? initialComboReviewDraft(review) : null)
   const operation = useRef<V3Operation | null>(null)
@@ -110,8 +137,9 @@ function ComboReviewSection({ token, review, reload }: { token: string; review: 
   }, onSuccess: async () => { await reload() } })
   if (!batch) {
     if (!isFrozen(review) && review.orderStatus.toUpperCase() === 'PROCESSING' && review.captureAttemptStatus.toUpperCase() === 'PROCESSING') {
+      if (review.mappingKind === 'FirstBaseline') return <PendingComboAnalysis token={token} orderId={review.orderId} reload={reload} checkHandoff={checkHandoff} />
       return <PlantHealthProcessingPanel key={review.missionId} token={token} farmId={review.farmId} missionId={review.missionId}
-        surveyOrderId={review.orderId} disabled={false} onComboHandoff={reload} />
+        surveyOrderId={review.orderId} disabled={false} onComboHandoff={checkHandoff} />
     }
     return <Alert className="workflow-notice" showIcon type="info" title="Chưa có kết quả phân tích COMBO"
       description="Nhận diện bệnh sẽ mở khi đơn và lần bay ở bước xử lý kết quả." />

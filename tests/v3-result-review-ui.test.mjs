@@ -42,7 +42,7 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
     assert.doesNotMatch(map, /Duyệt phát hiện, vùng bệnh và mục chặn/)
     assert.match(map, /href="\/manager\/orders\/order"/)
 
-    const comboPending = render({ ...mapReview, serviceCode: 'COMBO', screensDisease: true })
+    const comboPending = render({ ...mapReview, serviceCode: 'COMBO', screensDisease: true, mappingKind: 'FollowUp' })
     assert.match(comboPending, /Chạy nhận diện bệnh/)
 
     const assignedCombo = { surveyOrderId: 'order', surveyServiceCode: 'COMBO', status: 'PROCESSING', farmId: '10000000-0000-4000-8000-000000000001' }
@@ -50,6 +50,18 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
     const awaitingAnalysis = render(null, undefined, assignedCombo, [activeAttempt])
     assert.match(awaitingAnalysis, /Chạy nhận diện bệnh/)
     assert.doesNotMatch(awaitingAnalysis, /Không thể tải dữ liệu|Chốt kết quả nội bộ/)
+
+    const firstCombo = { ...assignedCombo, requiresBaselineMapping: true }
+    const mapOnly = render(null, undefined, firstCombo, [activeAttempt])
+    assert.match(mapOnly, /Cần tạo chuyến bay bệnh/)
+    assert.doesNotMatch(mapOnly, /Chạy nhận diện bệnh/)
+    const mapAttempt = { ...activeAttempt, captureAttemptId: 'map-attempt', status: 'ACCEPTED' }
+    const diseaseAttempt = { missionId: '10000000-0000-4000-8000-000000000004', mappingSourceAttemptId: mapAttempt.captureAttemptId }
+    const waiting = render(null, undefined, firstCombo, [mapAttempt, { ...diseaseAttempt, status: 'UPLOADED' }])
+    assert.match(waiting, /Chờ duyệt dữ liệu chuyến bay bệnh/)
+    assert.doesNotMatch(waiting, /Chạy nhận diện bệnh/)
+    const analyzing = render(null, undefined, firstCombo, [mapAttempt, { ...diseaseAttempt, status: 'PROCESSING' }])
+    assert.match(analyzing, /Chạy nhận diện bệnh/)
     for (const [order, attempts] of [
       [{ ...assignedCombo, surveyServiceCode: 'MAP' }, [activeAttempt]],
       [assignedCombo, [{ ...activeAttempt, status: 'ACCEPTED' }]],

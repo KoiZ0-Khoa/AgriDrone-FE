@@ -85,7 +85,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
   if (!query.data) return <>{back}<SurveyMutationError error={query.error} /><Button onClick={() => { void query.refetch() }}>Tải lại đơn</Button></>
   const order = query.data, appointment = order.currentAppointment
   const busy = query.isFetching || query.isError || writes > 0
-  const canCancel = validOwnerVersion(order.orderVersion) && ['AWAITING_APPOINTMENT', 'AWAITING_DEPOSIT', 'READY_FOR_CAPTURE'].includes(order.status)
+  const canCancel = appointment?.purpose !== 'DISEASE_CAPTURE' && validOwnerVersion(order.orderVersion) && ['AWAITING_APPOINTMENT', 'AWAITING_DEPOSIT', 'READY_FOR_CAPTURE'].includes(order.status)
   function askToCancel() {
     let operation: V3Operation | null = null
     setCancelAction({
@@ -114,7 +114,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
       </div>
     </section> : null}
     {!validOwnerVersion(order.orderVersion) ? <Alert className="workflow-notice" showIcon type="warning" title="Thông tin đơn chưa đầy đủ. Tải lại trước khi xác nhận lịch hoặc thanh toán." /> : null}
-    <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Lịch bay</strong><span>{appointment ? 'Manager đề xuất, bạn xác nhận' : 'Chờ Manager đề xuất lịch'}</span></div>{appointment ? <Tag>{appointmentStatusLabels[appointment.status] ?? appointment.status}</Tag> : null}</div>
+    <section className="resource-panel"><div className="resource-panel-heading"><div><strong>{appointment?.purpose === 'DISEASE_CAPTURE' ? 'Lịch bay bệnh' : 'Lịch bay'}</strong><span>{appointment?.purpose === 'DISEASE_CAPTURE' ? 'Manager đã xác nhận lịch bay bệnh' : appointment ? 'Manager đề xuất, bạn xác nhận' : 'Chờ Manager đề xuất lịch'}</span></div>{appointment ? <Tag>{appointmentStatusLabels[appointment.status] ?? appointment.status}</Tag> : null}</div>
       {appointment ? <><dl className="detail-list"><div><dt>Ngày bay</dt><dd>{appointmentScheduleLabel(null, null, null, appointment.startAt, appointment.endAt)}</dd></div></dl>
         <Space wrap>{canConfirmOwnerAppointment(order) ? <Button type="primary" disabled={busy || !!action} onClick={() => { setNotice(''); setAction({ kind: 'confirm', snapshot: order }) }}>Xác nhận lịch</Button> : null}
           {canRescheduleOwnerAppointment(order) ? <Button disabled={busy || !!action} onClick={() => { setNotice(''); setAction({ kind: 'reschedule', snapshot: order }) }}>Yêu cầu đổi lịch</Button> : null}

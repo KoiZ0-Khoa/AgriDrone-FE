@@ -20,7 +20,7 @@ export function isBaselineMappingMissionCode(missionCode: string): boolean {
 
 export function surveyOrderIdFromMissionCode(missionCode: string): string | null {
   // V3 Capture and reflight codes also embed the order ID in the N format.
-  const match = /^ORD-([0-9a-f]{32})-/i.exec(missionCode) ?? /^V3(?:CAP|R\d+)-([0-9a-f]{32})$/i.exec(missionCode)
+  const match = /^ORD-([0-9a-f]{32})-/i.exec(missionCode) ?? /^V3(?:CAP|DIS|R\d+)-([0-9a-f]{32})$/i.exec(missionCode)
   if (!match) return null
   const hex = match[1].toLowerCase()
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`

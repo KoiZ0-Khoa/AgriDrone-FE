@@ -79,6 +79,36 @@ test('reflight API posts to the parent attempt route and reads coordinator error
   }
 })
 
+test('disease capture uses a future Vietnam-time window and the new BE routes', async () => {
+  const now = Date.parse('2099-03-01T11:00:00Z')
+  const window = workflow.diseaseCaptureWindow('2099-03-01T19:00', '2099-03-01T20:30', now)
+  assert.deepEqual(window, { startAt: '2099-03-01T12:00:00.000Z', endAt: '2099-03-01T13:30:00.000Z' })
+  assert.equal(workflow.diseaseCaptureWindow('2099-03-01T18:00', '2099-03-01T21:00', now), null)
+  assert.equal(workflow.diseaseCaptureWindow('2099-03-01T20:00', '2099-03-01T19:00', now), null)
+  assert.equal(workflow.diseaseCaptureWindow('2099-02-30T19:00', '2099-03-01T20:00', now), null)
+  assert.equal(workflow.diseaseCaptureWindow('2099-03-01T24:00', '2099-03-02T20:00', now), null)
+
+  const root = '/api/v3/system-manager/survey-orders/o%2F1'
+  const schedule = { droneId: 'drone-2', expectedOrderVersion: 31, ...window }
+  const result = { success: true, attemptId: 'a2', attemptIndex: 2, missionId: 'm2', status: 'Planned', version: 1 }
+  const calls = []
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(input)
+    assert.equal(options.headers.Authorization, 'Bearer manager')
+    calls.push([options.method ?? 'GET', url.pathname, options.body ? JSON.parse(options.body) : Object.fromEntries(url.searchParams)])
+    return Response.json(options.method ? result : { drones: [] }, { status: options.method === 'POST' ? 201 : 200 })
+  }
+  const localWindow = { startAt: '2099-03-01T19:00:00+07:00', endAt: '2099-03-01T20:30:00+07:00' }
+  await v3Api.getV3CaptureDrones('manager', 'o/1', localWindow)
+  assert.deepEqual(await v3Api.scheduleDiseaseCapture('manager', 'o/1', { ...schedule, operationId: 'op' }), result)
+  assert.deepEqual(await v3Api.rescheduleDiseaseCapture('manager', 'o/1', 'a/2', schedule), result)
+  assert.deepEqual(calls, [
+    ['GET', root + '/drones/available', localWindow],
+    ['POST', root + '/disease-capture-attempts', { ...schedule, operationId: 'op' }],
+    ['PUT', root + '/disease-capture-attempts/a%2F2/appointment', schedule],
+  ])
+})
+
 test('every BE capture attempt action has a Vietnamese history label', () => {
   for (const action of ['CreateInitial', 'CreateSuccessor', 'MarkPreflightReady', 'InvalidatePreflight', 'StartFlight', 'RecordFlightCompleted', 'RecordFlightFailed', 'MarkUploaded', 'StartProcessing', 'AcceptProcessing', 'RequireReflight', 'Cancel']) {
     assert.ok(v3.captureAttemptActionLabels[action], action)

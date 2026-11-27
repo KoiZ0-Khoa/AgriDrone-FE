@@ -134,6 +134,19 @@ test('G5 restores capture review and shows the grid from the matching draft or Y
     const ready = render({ orderStatus: 'PROCESSING', missionStatus: 'READY_FOR_PROCESSING', attempt: { ...frozen, status: 'PROCESSING' } })
     assert.match(ready, /<span>Ghép bản đồ<\/span><\/button>/)
     assert.doesNotMatch(ready, /Khôi phục để ghép bản đồ/)
+
+    for (const prefix of ['V3DIS', 'V3R3']) {
+      const diseaseCode = `${prefix}-${orderHex}`
+      const diseaseAttempt = { ...frozen, mappingSourceAttemptId: '10000000-0000-0000-0000-000000000007' }
+      const toReview = render({ orderStatus: 'AWAITING_INPUT_REVIEW', missionCode: diseaseCode, orderParam: '', attempt: diseaseAttempt })
+      assert.match(toReview, /Nhiệm vụ bay bệnh COMBO/)
+      assert.match(toReview, /<span>Duyệt bộ dữ liệu<\/span>/)
+      const approvedDisease = render({ orderStatus: 'PROCESSING', missionStatus: 'READY_FOR_PROCESSING', missionCode: diseaseCode, orderParam: '',
+        attempt: { ...diseaseAttempt, status: 'PROCESSING' } })
+      assert.match(approvedDisease, /Mở bước nhận diện và duyệt bệnh/)
+      assert.match(approvedDisease, new RegExp(`/manager/orders/${orderId}/result-review`))
+      assert.doesNotMatch(approvedDisease, /Ghép bản đồ|GPS cây \(lưu nháp\)/)
+    }
     assert.doesNotMatch(currentManifest, /Khôi phục để ghép bản đồ/)
     assert.doesNotMatch(withoutTelemetry, /Khôi phục để ghép bản đồ/)
 

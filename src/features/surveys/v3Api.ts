@@ -4,7 +4,8 @@ import type { CaptureAppointmentBody, CaptureAppointmentOwnerBody, CaptureNoShow
 import type { FreezeCaptureInputBody, FrozenCaptureInput, V3CompleteFlightBody, V3FailFlightBody, V3FlightResult, V3StartFlightBody } from './v3Types'
 import type { ApproveCaptureInputBody, ApproveCaptureInputResult, RecoverCaptureMissionResult, ReopenCaptureInputBody, ReopenCaptureInputResult } from './v3Types'
 import type { MarkCaptureBoundaryBody, MarkCaptureBoundaryResult } from './v3Types'
-import type { PrepareCaptureAttemptBody, PrepareCaptureAttemptResult, QualityReflightBody, QualityReflightResult } from './v3Types'
+import type { AvailableDronesForOrder } from '../missions/missionTypes'
+import type { DiseaseCaptureSchedule, PrepareCaptureAttemptBody, PrepareCaptureAttemptResult, QualityReflightBody, QualityReflightResult } from './v3Types'
 import type { ComboReviewResult, FreezeResult, FreezeResultBody, RecordComboReviewBody, ResultReview } from './v3Types'
 import type { FinalizeManagerInvoiceBody, ManagerSurveyInvoice } from './v3Types'
 import type { AdminCancellationBody } from './systemOrderTypes'
@@ -52,6 +53,13 @@ export const markCaptureBoundary = (token: string, orderId: string, attemptId: s
   apiRequest<MarkCaptureBoundaryResult>(`${captureFlightPath(orderId, attemptId)}/farm-boundary/mark-orthophoto-corners`, { method: 'POST', token, body })
 
 // G6 — bay lại từ lần bay lỗi / cần bay lại. BE tạo lần bay mới, nhiệm vụ mới và lịch Capture chờ Owner xác nhận.
+export const getV3CaptureDrones = (token: string, orderId: string, window: { startAt: string; endAt: string }, signal?: AbortSignal) =>
+  apiRequest<Omit<AvailableDronesForOrder, 'purpose'> & { purpose: 'Capture' }>(`${managerOrderPath(orderId)}/drones/available?${new URLSearchParams(window)}`, { token, signal, cache: 'no-store' })
+export const scheduleDiseaseCapture = (token: string, orderId: string, body: DiseaseCaptureSchedule & { operationId: string }) =>
+  apiRequest<PrepareCaptureAttemptResult>(`${managerOrderPath(orderId)}/disease-capture-attempts`, { method: 'POST', token, body })
+export const rescheduleDiseaseCapture = (token: string, orderId: string, attemptId: string, body: DiseaseCaptureSchedule) =>
+  apiRequest<PrepareCaptureAttemptResult>(`${managerOrderPath(orderId)}/disease-capture-attempts/${encodeURIComponent(attemptId)}/appointment`, { method: 'PUT', token, body })
+
 export const createQualityReflight = (token: string, orderId: string, parentAttemptId: string, body: QualityReflightBody) =>
   apiRequest<QualityReflightResult>(`${captureFlightPath(orderId, parentAttemptId)}/quality-reflights`, { method: 'POST', token, body })
 

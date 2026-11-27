@@ -22,9 +22,11 @@ export function CaptureAttemptHistory({ attempts, error, loading, farmId, orderI
       : newestFirst.length === 0 ? <p className="form-hint">Chưa có lần bay nào.</p>
       : newestFirst.map(attempt => {
         const parent = attempt.parentAttemptId ? byId.get(attempt.parentAttemptId) : undefined
+        const mappingSource = attempt.mappingSourceAttemptId ? byId.get(attempt.mappingSourceAttemptId) : undefined
         return <article key={attempt.captureAttemptId} className="workflow-section">
           <p>
             <strong>Lần bay {attempt.attemptIndex}</strong>{' '}
+            {attempt.mappingSourceAttemptId ? <Tag>Bay bệnh{mappingSource ? ` · Dùng bản đồ lần ${mappingSource.attemptIndex}` : ''}</Tag> : null}
             <Tag color={statusColor(attempt.status)}>{statusLabel(attempt.status)}</Tag>
             {isActiveCaptureAttempt(attempt) ? <Tag>Đang hoạt động</Tag> : null}
             {attempt.parentAttemptId ? <span className="form-hint"> · Bay lại từ lần {parent?.attemptIndex ?? '?'}</span> : null}

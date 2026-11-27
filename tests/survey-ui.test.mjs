@@ -170,6 +170,24 @@ test('survey screens render real BE response shapes for public, Admin, Owner and
     const readyScope = { ...scope, orderStatus: 'READY_FOR_CAPTURE' }
     const firstCapture = { ...ready, surveyServiceCode: 'COMBO', currentAppointmentStartAt: '2099-01-01T00:00:00Z', currentAppointmentEndAt: '2099-01-01T17:00:00Z' }
     const noAttempts = [[['capture-attempts', 'order'], []]]
+    const mapAttempt = { attemptIndex: 1, captureAttemptId: 'map-attempt', status: 'PROCESSING', missionId: 'map-mission', history: [] }
+    const mapping = { ...firstCapture, status: 'PROCESSING' }
+    const mappingScope = { ...scope, orderStatus: 'PROCESSING' }
+    const approvedMap = { sourceSurveyOrderId: 'order', sourceMissionId: 'map-mission', status: 'INTERNAL_APPROVED' }
+    const mapData = [[['capture-attempts', 'order'], [mapAttempt]], [['combo-mapping-versions', 'farm', 'order', 51], [approvedMap]]]
+    assert.match(renderOrder(mapping, mappingScope, mapData), /<span>Tạo chuyến bay bệnh<\/span>/)
+    assert.doesNotMatch(renderOrder({ ...mapping, surveyServiceCode: 'MAP' }, mappingScope, mapData), /Tạo chuyến bay bệnh/)
+    const pendingMapData = [mapData[0], [mapData[1][0], [{ ...approvedMap, status: 'DRAFT' }]]]
+    assert.doesNotMatch(renderOrder(mapping, mappingScope, pendingMapData), /Tạo chuyến bay bệnh/)
+    const scheduledDisease = { ...firstCapture, currentAppointmentPurpose: 'DISEASE_CAPTURE' }
+    const diseaseData = [[['capture-attempts', 'order'], [
+      { ...mapAttempt, status: 'ACCEPTED' },
+      { attemptIndex: 2, captureAttemptId: 'disease-attempt', status: 'PLANNED', missionId: 'disease-mission', mappingSourceAttemptId: 'map-attempt', history: [] },
+    ]]]
+    const diseasePage = renderOrder(scheduledDisease, readyScope, diseaseData)
+    assert.match(diseasePage, /<span>Đổi lịch bay bệnh<\/span>/)
+    assert.match(diseasePage, /Bay bệnh · Dùng bản đồ lần 1/)
+    assert.doesNotMatch(diseasePage, /Báo khách vắng mặt|Tạo chuyến bay bệnh|Chuẩn bị lần bay/)
     assert.match(renderOrder(firstCapture, readyScope, noAttempts), /<span>Chuẩn bị lần bay<\/span>/)
     const missingCaptureWindow = renderOrder({ ...firstCapture, currentAppointmentEndAt: null }, readyScope, noAttempts)
     assert.doesNotMatch(missingCaptureWindow, /<span>Chuẩn bị lần bay<\/span>/)

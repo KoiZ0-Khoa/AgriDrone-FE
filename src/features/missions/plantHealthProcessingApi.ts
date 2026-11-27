@@ -9,7 +9,7 @@ export type DiseaseDetectResult = {
   jobId?: string | null
   sourceRevision?: number | null
 }
-export type HealthHandoffResult = { missionId: string; messageId: string; status: string }
+export type HealthHandoffResult = { missionId: string; messageId: string; status: string; handoffId?: string }
 export async function detectMissionDiseases(token: string, farmId: string, missionId: string, body: Partial<DiseaseDetectOptions>) {
   const data = await apiRequest<DiseaseDetectResult>(`/api/missions/${encodeURIComponent(missionId)}/farms/${encodeURIComponent(farmId)}/disease-detect`, { method: 'POST', token, body })
   if (data.missionId.toLowerCase() !== missionId.toLowerCase()) throw new Error('Kết quả nhận diện không khớp nhiệm vụ bay.')

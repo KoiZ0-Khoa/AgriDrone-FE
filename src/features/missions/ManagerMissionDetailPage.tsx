@@ -36,6 +36,7 @@ function gridValue(value: number | null, unit: string) {
 }
 
 const missionStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Ghép bản đồ', 'Ranh giới, YOLO & Publish GPS']
+const diseaseCaptureStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Chốt & duyệt dữ liệu', 'Nhận diện bệnh']
 const v3MissionStepTitles = ['Preflight', 'Bay', 'Upload & Telemetry', 'Chốt & duyệt dữ liệu', 'Ghép bản đồ', 'Ranh giới & YOLO']
 function missionStepIndex(status: string, preflightDone: boolean) {
   if (status === 'DRAFT') return 0
@@ -141,7 +142,7 @@ export function ManagerMissionDetailPage() {
 
   const missionQuery = useQuery({ queryKey: ['mission-detail', farmId, missionId], queryFn: ({ signal }) => api.findMissionById(token, farmId, missionId, signal) })
   const mission = missionQuery.data
-  const v3Capture = !!mission && (toScreamingSnakeCase(latest?.purpose ?? '') === 'CAPTURE' || /^V3(?:CAP|R\d+)-/i.test(mission.missionCode))
+  const v3Capture = !!mission && (toScreamingSnakeCase(latest?.purpose ?? '') === 'CAPTURE' || /^V3(?:CAP|DIS|R\d+)-/i.test(mission.missionCode))
   const status = latest?.status ?? mission?.status
   const version = latest?.version ?? mission?.version
   const draft = status === 'DRAFT'
@@ -160,7 +161,6 @@ export function ManagerMissionDetailPage() {
   // (luôn có sẵn từ GET .../missions) làm fallback, tránh im lặng không set được boundary vì isBaselineMapping sai thành false.
   const isBaselineMapping = latest?.purpose ? toScreamingSnakeCase(latest.purpose) === 'BASELINE_MAPPING' : Boolean(mission && isBaselineMappingMissionCode(mission.missionCode))
   const isPlantHealth = latest?.purpose ? toScreamingSnakeCase(latest.purpose) === 'PLANT_HEALTH' : Boolean(mission && /-HEALTH$/.test(mission.missionCode))
-  const plantGpsQuery = useQuery({ queryKey: ['mission-plant-gps', farmId, missionId], queryFn: ({ signal }) => api.getMissionPlantGps(token, farmId, missionId, signal), enabled: !!mission && !isPlantHealth })
   const canDetectDiseases = isPlantHealth && ['READY_FOR_PROCESSING', 'AWAITING_REVIEW', 'PROCESSING_FAILED'].includes(status ?? '')
   const farmBoundaryMissing = farmContextQuery.data ? !farmContextQuery.data.approvedBoundary : false
   const postFlight = ['FLIGHT_COMPLETED', 'UPLOADING', 'READY_FOR_PROCESSING', 'PROCESSING', 'AWAITING_REVIEW', 'COMPLETED'].includes(status ?? '')
@@ -168,7 +168,7 @@ export function ManagerMissionDetailPage() {
   // Farm links omit orderId. Use the mission's order and verify the farm and attempt through the API.
   const captureOrderId = (latest?.id === missionId ? latest.surveyOrderId : null) ??
     (mission && surveyOrderIdFromMissionCode(mission.missionCode)) ?? orderIdParam
-  const readCapture = v3Capture && postFlight && ownerGuid(captureOrderId)
+  const readCapture = v3Capture && (postFlight || scheduled || inFlight || flightFailed) && ownerGuid(captureOrderId)
   const captureOrder = useQuery({
     queryKey: ['manager-order-context', captureOrderId],
     queryFn: ({ signal }) => getAssignedOrder(token, captureOrderId, signal),
@@ -182,6 +182,8 @@ export function ManagerMissionDetailPage() {
     retry: false,
   })
   const captureAttempt = captureAttempts.data?.find(item => item.missionId === missionId)
+  const diseaseCapture = !!captureAttempt?.mappingSourceAttemptId || /^V3DIS-/i.test(mission?.missionCode ?? '')
+  const plantGpsQuery = useQuery({ queryKey: ['mission-plant-gps', farmId, missionId], queryFn: ({ signal }) => api.getMissionPlantGps(token, farmId, missionId, signal), enabled: !!mission && !isPlantHealth && !diseaseCapture && (!readCapture || captureAttempts.isSuccess) })
   const linkedCapture = captureOrder.data?.surveyOrderId === captureOrderId && captureOrder.data.farmId === farmId &&
     v3ServiceKind(captureOrder.data.surveyServiceCode) !== null && !!captureAttempt && ownerGuid(captureAttempt.captureAttemptId)
   const captureAwaitingUpload = linkedCapture && !captureOrder.isError && !captureAttempts.isError &&
@@ -190,13 +192,15 @@ export function ManagerMissionDetailPage() {
     captureOrder.data?.status === 'AWAITING_INPUT_REVIEW' && captureAttempt?.status === 'UPLOADED'
   const captureCanProcess = linkedCapture && !captureOrder.isError && !captureAttempts.isError &&
     captureOrder.data?.status === 'PROCESSING' && captureAttempt?.status === 'PROCESSING'
+  const diseaseReady = diseaseCapture && captureCanProcess && ['READY_FOR_PROCESSING', 'PROCESSING', 'AWAITING_REVIEW', 'PROCESSING_FAILED', 'COMPLETED'].includes(status ?? '')
+  const diseaseInputApproved = diseaseReady || (diseaseCapture && captureAttempt?.status === 'ACCEPTED')
   const captureFrozen = linkedCapture && ['UPLOADED', 'PROCESSING', 'ACCEPTED'].includes(captureAttempt?.status ?? '')
   const uploading = status === 'UPLOADING'
   const canResetUpload = !v3Capture && ['UPLOADING', 'UPLOAD_FAILED', 'READY_FOR_PROCESSING', 'PROCESSING_FAILED'].includes(status ?? '')
   const mediaQuery = useQuery({ queryKey: ['mission-media', farmId, missionId], queryFn: ({ signal }) => api.getMissionMedia(token, farmId, missionId, 1, 20, signal), enabled: postFlight })
   const readinessQuery = useQuery({ queryKey: ['mission-readiness', farmId, missionId], queryFn: ({ signal }) => api.getUploadReadiness(token, farmId, missionId, signal), enabled: v3Capture ? captureAwaitingUpload : uploading })
-  const canStartOrthophoto = !isPlantHealth && (!v3Capture || captureCanProcess) && (status === 'READY_FOR_PROCESSING' || status === 'AWAITING_REVIEW' || status === 'PROCESSING_FAILED')
-  const orthophotoProcessing = !isPlantHealth && (!v3Capture || captureCanProcess) && status === 'PROCESSING'
+  const canStartOrthophoto = !diseaseCapture && !isPlantHealth && (!v3Capture || captureCanProcess) && (status === 'READY_FOR_PROCESSING' || status === 'AWAITING_REVIEW' || status === 'PROCESSING_FAILED')
+  const orthophotoProcessing = !diseaseCapture && !isPlantHealth && (!v3Capture || captureCanProcess) && status === 'PROCESSING'
   const orthophotoEligible = canStartOrthophoto || orthophotoProcessing
   const orthophotoStatusQuery = useQuery({
     queryKey: ['mission-orthophoto-status', farmId, missionId],
@@ -205,7 +209,7 @@ export function ManagerMissionDetailPage() {
     refetchInterval: query => { const current = query.state.data; return current && current.status !== 'NOT_STARTED' && !isOrthophotoTerminal(current.status) ? 60000 : false },
   })
 
-  const canReadTiling = !isPlantHealth && orthophotoStatusQuery.data?.status === 'COMPLETED'
+  const canReadTiling = !diseaseCapture && !isPlantHealth && orthophotoStatusQuery.data?.status === 'COMPLETED'
   const tilingQueryKey = ['mission-tiling-job', farmId, missionId] as const
   const tilingQuery = useQuery({
     queryKey: tilingQueryKey,
@@ -344,7 +348,7 @@ export function ManagerMissionDetailPage() {
     link.remove()
     URL.revokeObjectURL(url)
   }
-  const captureMappingReady = v3Capture && captureCanProcess && orthophotoStatusQuery.data?.status === 'COMPLETED'
+  const captureMappingReady = !diseaseCapture && v3Capture && captureCanProcess && orthophotoStatusQuery.data?.status === 'COMPLETED'
   const captureBoundaryBound = ownerGuid(captureOrder.data?.farmBoundaryVersionId ?? '')
   const captureMappingRefreshing = captureOrder.isFetching || captureAttempts.isFetching || missionQuery.isFetching
   const captureMayMarkBoundary = captureMappingReady && captureOrder.data?.requiresBaselineMapping === true && !captureBoundaryBound
@@ -626,6 +630,7 @@ export function ManagerMissionDetailPage() {
     }
   }
 
+  const nextCaptureStep = orthophotoEligible || diseaseInputApproved ? 4 : captureFrozen ? 3 : 2
   const back = <Link className="back-link" to="/manager/orders"><ArrowLeftOutlined /> Đơn khảo sát được giao</Link>
   if (missionQuery.isPending) return <>{back}<CommonState type="loading" /></>
   if (missionQuery.isError) return <>{back}<CommonState type="error" description={missionError(missionQuery.error)} retry={() => missionQuery.refetch()} /></>
@@ -634,7 +639,7 @@ export function ManagerMissionDetailPage() {
   return <>
     {back}
     <section className="resource-page-heading">
-      <div><span className="page-kicker">NHIỆM VỤ BAY</span><h1>{latest?.purpose ? missionPurposeLabel(latest.purpose) : 'Nhiệm vụ bay'}</h1>{droneQuery.data ? <p>{droneQuery.data.name}</p> : null}<CopyReference value={mission.missionCode} label="Sao chép mã nhiệm vụ" /></div>
+      <div><span className="page-kicker">NHIỆM VỤ BAY</span><h1>{diseaseCapture ? 'Nhiệm vụ bay bệnh COMBO' : latest?.purpose ? missionPurposeLabel(latest.purpose) : 'Nhiệm vụ bay'}</h1>{droneQuery.data ? <p>{droneQuery.data.name}</p> : null}<CopyReference value={mission.missionCode} label="Sao chép mã nhiệm vụ" /></div>
       <Space wrap><Tag color="blue">{missionStatusLabel(status ?? mission.status)}</Tag><Button icon={<ReloadOutlined />} onClick={() => {
         void missionQuery.refetch()
         if (scheduled && !preflightDone) void checklistQuery.refetch()
@@ -649,8 +654,10 @@ export function ManagerMissionDetailPage() {
       </dl>
     </section>
     <Steps className="mission-steps" size="small"
-      current={v3Capture && postFlight ? orthophotoStatusQuery.data?.status === 'COMPLETED' ? 5 : orthophotoEligible ? 4 : captureFrozen ? 3 : 2 : missionStepIndex(status ?? mission.status, preflightDone)}
-      items={(v3Capture ? v3MissionStepTitles : isPlantHealth ? ['Preflight', 'Bay', 'Upload & Telemetry', 'Nhận diện bệnh', 'Chuyển kết quả kiểm duyệt'] : missionStepTitles).map(title => ({ title }))} />
+      current={v3Capture && postFlight
+        ? !diseaseCapture && orthophotoStatusQuery.data?.status === 'COMPLETED' ? 5 : nextCaptureStep
+        : missionStepIndex(status ?? mission.status, preflightDone)}
+      items={(diseaseCapture ? diseaseCaptureStepTitles : v3Capture ? v3MissionStepTitles : isPlantHealth ? ['Preflight', 'Bay', 'Upload & Telemetry', 'Nhận diện bệnh', 'Chuyển kết quả kiểm duyệt'] : missionStepTitles).map(title => ({ title }))} />
     {!draft && !scheduled && !inFlight && !flightFailed && !postFlight && !orthophotoEligible && !canResetUpload ? <Alert className="workflow-notice" type="info" showIcon message={`Nhiệm vụ đang ở trạng thái "${missionStatusLabel(status ?? mission.status)}", không ở bước có thao tác trong phạm vi đã triển khai.`} /> : null}
     {flightFailed ? <Alert className="workflow-notice" type="warning" showIcon message="Chuyến bay trước đã lỗi." description={v3Capture ? 'Xem quyết định bay lại trên đơn khảo sát.' : 'Chỉ lên lịch lại được nếu quyết định khắc phục khi báo lỗi là "Cần lên lịch lại".'} /> : null}
     {!draft ? <StepSection title="Checklist trước khi bay" status={scheduled && !preflightDone ? 'active' : 'done'} summary={preflightDone ? `Phù hợp để bay: ${preflightSuitable ? 'Có' : 'Không'}.` : undefined}>
@@ -750,7 +757,7 @@ export function ManagerMissionDetailPage() {
         {!v3Capture || telemetryEligible ? <Button type="primary" disabled={selectedSegmentIndexes.length === 0 || (v3Capture && uploadMutation.isPending)} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import telemetry đã chọn</Button> : null}
       </> : null}
     </StepSection> : null}
-    {v3Capture && postFlight ? <StepSection title="Chốt & duyệt dữ liệu đầu vào" status={orthophotoEligible ? 'done' : 'active'} summary="Đã duyệt bộ dữ liệu đầu vào.">
+    {v3Capture && postFlight ? <StepSection title="Chốt & duyệt dữ liệu đầu vào" status={orthophotoEligible || diseaseInputApproved ? 'done' : 'active'} summary="Đã duyệt bộ dữ liệu đầu vào.">
       {!readCapture ? <Alert showIcon type="info" title="Mở nhiệm vụ từ đơn khảo sát để tải dữ liệu lần bay." action={<Link to="/manager/orders">Đơn khảo sát được giao</Link>} />
         : captureOrder.isError || captureAttempts.isError ? <SurveyMutationError error={captureOrder.error ?? captureAttempts.error} />
         : captureOrder.isPending || captureAttempts.isPending ? <CommonState type="loading" />
@@ -769,12 +776,12 @@ export function ManagerMissionDetailPage() {
         </Flex>
         : captureFrozen ? <Flex vertical gap="middle">
           <Alert showIcon type="success" title="Đã duyệt bộ dữ liệu đầu vào" />
-          {captureCanProcess && !orthophotoEligible ? <>
-            <Alert showIcon type="info" title="Chờ nhiệm vụ sẵn sàng ghép bản đồ"
+          {captureCanProcess && !orthophotoEligible && !diseaseReady ? <>
+            <Alert showIcon type="info" title={diseaseCapture ? 'Chờ nhiệm vụ sẵn sàng nhận diện bệnh' : 'Chờ nhiệm vụ sẵn sàng ghép bản đồ'}
               description={`Trạng thái nhiệm vụ: ${missionStatusLabel(status ?? mission.status)}.`} />
             <Space wrap>
               {canRecoverCaptureMission ? <Button type="primary" loading={recoverCaptureMutation.isPending} disabled={captureRefreshing}
-                onClick={() => recoverCaptureMutation.mutate()}>Khôi phục để ghép bản đồ</Button> : null}
+                onClick={() => recoverCaptureMutation.mutate()}>{diseaseCapture ? 'Khôi phục để nhận diện bệnh' : 'Khôi phục để ghép bản đồ'}</Button> : null}
               <Button icon={<ReloadOutlined />} loading={captureRefreshing} disabled={recoverCaptureMutation.isPending}
                 onClick={async () => {
                   recoverCaptureMutation.reset()
@@ -795,7 +802,7 @@ export function ManagerMissionDetailPage() {
               <div><dt>Điểm telemetry</dt><dd>{readiness.telemetryPointCount}</dd></div>
             </dl>
             {readiness.hasActiveUploadSessions ? <Alert showIcon type="warning" title="Còn phiên tải tệp đang mở. Tải lại sau khi các tệp được xử lý." /> : null}
-            {readiness.rawImageCount === 0 ? <p className="form-hint">Tải ảnh gốc của lần bay để làm bản đồ.</p> : null}
+            {readiness.rawImageCount === 0 ? <p className="form-hint">{diseaseCapture ? 'Tải ảnh gốc của chuyến bay bệnh để chạy nhận diện.' : 'Tải ảnh gốc của lần bay để làm bản đồ.'}</p> : null}
             {readiness.telemetryPointCount < 2 ? <Alert showIcon type="warning" title="Cần nhập telemetry trước khi chốt"
               description="Giải mã log Blackbox của lần bay, chọn segment hợp lệ và bấm Import telemetry đã chọn." /> : null}
           </> : null}
@@ -876,7 +883,7 @@ export function ManagerMissionDetailPage() {
           </> : null}
       </> : null}
     </StepSection> : null}
-    {!isPlantHealth && orthophotoStatusQuery.data?.status === 'COMPLETED' && orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Vẽ ranh giới vườn + cắt tiles" status={sliceResult ? 'done' : 'active'} summary={sliceResult ? `${sliceResult.totalTiles} tile đã cắt.` : undefined}>
+    {!diseaseCapture && !isPlantHealth && orthophotoStatusQuery.data?.status === 'COMPLETED' && orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Vẽ ranh giới vườn + cắt tiles" status={sliceResult ? 'done' : 'active'} summary={sliceResult ? `${sliceResult.totalTiles} tile đã cắt.` : undefined}>
       <p className="form-hint">Click lên ảnh để thêm điểm ranh giới. Từ 3 điểm trở lên tự khép kín. Khóa viền trước khi cắt tiles.</p>
       <BoundaryTilingPanel key={`${missionId}:${tilingJob?.jobId ?? 'new'}`} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
         job={tilingJob} editing={editingTiling} loading={tilingQuery.isPending}
@@ -969,7 +976,11 @@ export function ManagerMissionDetailPage() {
         </Button>
       </> : null}
     </StepSection> : null}
-    {!isPlantHealth ? <section className="resource-panel workflow-section">
+    {diseaseReady ? <StepSection title="Nhận diện bệnh" status="active">
+      <p className="form-hint">Dùng ảnh đã duyệt của chuyến bay bệnh và bản đồ từ chuyến bay map.</p>
+      <Link className="workflow-detail-link" to={`/manager/orders/${encodeURIComponent(captureOrderId)}/result-review`}>Mở bước nhận diện và duyệt bệnh →</Link>
+    </StepSection> : null}
+    {!diseaseCapture && !isPlantHealth ? <section className="resource-panel workflow-section">
       <div className="resource-panel-heading"><div><strong>GPS cây (lưu nháp)</strong><span>Bước lưu nháp trước khi đưa vào hệ thống chính thức (xem mục Publish ở màn kết quả nhận diện cây). Lưu sẽ thay toàn bộ danh sách hiện có, không cộng dồn.</span></div>
         <Button disabled={publishPlantGpsMutation.isPending} onClick={() => setPastingPlantGps(true)}>Dán danh sách cây</Button>
       </div>
@@ -995,7 +1006,7 @@ export function ManagerMissionDetailPage() {
     </section> : null}
     {rescheduling && version !== undefined ? <RescheduleMissionModal token={token} farmId={farmId} missionId={missionId} currentVersion={version} currentDroneId={mission.droneId}
       close={() => setRescheduling(false)} onRescheduled={async result => { await refreshAfter(result); void message.success('Đã lên lịch lại nhiệm vụ bay.') }} /> : null}
-    {!isPlantHealth && pastingPlantGps ? <PlantGpsPasteModal token={token} farmId={farmId} missionId={missionId} close={() => setPastingPlantGps(false)}
+    {!diseaseCapture && !isPlantHealth && pastingPlantGps ? <PlantGpsPasteModal token={token} farmId={farmId} missionId={missionId} close={() => setPastingPlantGps(false)}
       onSaved={async result => { gpsDraftOperation.current = null; await client.invalidateQueries({ queryKey: ['mission-plant-gps', farmId, missionId] }); void message.success(`Đã lưu ${result.savedCount} cây.`) }} /> : null}
     {action ? <ActionModal action={action} close={() => setAction(null)} /> : null}
   </>

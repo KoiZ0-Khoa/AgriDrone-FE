@@ -6,6 +6,9 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
+import { getMapVersions } from '../baseMaps/api'
+import { mapState } from '../baseMaps/workflow'
+import { DiseaseCaptureScheduleModal } from './DiseaseCaptureScheduleModal'
 import { ManagerQualityRefundPanel } from './ManagerQualityRefundPanel'
 import { getAssignedOrder, getAssignedOrders, getOrderScope } from './orderApi'
 import type { Appointment, AssignedOrder } from './orderTypes'
@@ -51,17 +54,26 @@ export function ManagerOrderDetailPage() {
   const token = session.accessToken
   const { orderId = '' } = useParams()
   const client = useQueryClient()
-  const [action, setAction] = useState<'appointment' | 'no-show' | 'reflight' | 'boundary' | 'corners' | 'prepare-mission' | 'prepare-capture' | null>(null)
+  const [action, setAction] = useState<'appointment' | 'no-show' | 'reflight' | 'boundary' | 'corners' | 'prepare-mission' | 'prepare-capture' | 'schedule-disease' | 'reschedule-disease' | null>(null)
   const [appointment, setAppointment] = useState<Appointment | null>(null)
   const [noShow, setNoShow] = useState<CaptureNoShowResult | null>(null)
   const [prepared, setPrepared] = useState<(PrepareCaptureAttemptResult & { orderId: string }) | null>(null)
-  const [reflight, setReflight] = useState<(QualityReflightResult & { orderId: string }) | null>(null)
+  const [diseaseSchedule, setDiseaseSchedule] = useState<(PrepareCaptureAttemptResult & { orderId: string; rescheduled: boolean }) | null>(null)
+  const [reflight, setReflight] = useState<(QualityReflightResult & { orderId: string; disease: boolean }) | null>(null)
   const context = useQuery({ queryKey: ['manager-order-context', orderId], queryFn: ({ signal }) => getAssignedOrder(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.status) ? 10000 : false })
   const query = useQuery({ queryKey: ['manager-order-scope', orderId], queryFn: ({ signal }) => getOrderScope(token, orderId, signal), retry: false, refetchOnWindowFocus: action === null, refetchInterval: value => action === null && value.state.data && !['COMPLETED', 'CANCELLED'].includes(value.state.data.orderStatus) ? 10000 : false })
   const v3Order = v3ServiceKind(context.data?.surveyServiceCode) !== null
   const attempts = useQuery({ queryKey: ['capture-attempts', orderId], queryFn: ({ signal }) => getCaptureAttempts(token, orderId, signal), enabled: v3Order, retry: false })
+  const firstCombo = v3ServiceKind(context.data?.surveyServiceCode) === 'COMBO' && context.data?.requiresBaselineMapping === true
+  const diseaseAttempts = attempts.data?.filter(item => !!item.mappingSourceAttemptId) ?? []
+  const canLookUpMapping = firstCombo && context.data?.status === 'PROCESSING' && attempts.isSuccess && diseaseAttempts.length === 0
+  const mappingVersions = useQuery({
+    queryKey: ['combo-mapping-versions', context.data?.farmId, orderId, context.data?.orderVersion],
+    queryFn: ({ signal }) => getMapVersions(token, context.data!.farmId, false, signal),
+    enabled: canLookUpMapping, retry: false, refetchOnWindowFocus: false,
+  })
   const missionsQuery = useQuery({ queryKey: ['order-missions', context.data?.farmId, orderId], queryFn: ({ signal }) => findMissionsBySurveyOrder(token, context.data!.farmId, orderId, signal), enabled: Boolean(context.data) && !v3Order })
-  async function refresh() { await Promise.all([client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['manager-order-scope', orderId] }), client.invalidateQueries({ queryKey: ['manager-orders'] }), client.invalidateQueries({ queryKey: ['capture-attempts', orderId] })]) }
+  async function refresh() { await Promise.all([client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['manager-order-scope', orderId] }), client.invalidateQueries({ queryKey: ['manager-orders'] }), client.invalidateQueries({ queryKey: ['capture-attempts', orderId] }), client.invalidateQueries({ queryKey: ['combo-mapping-versions', context.data?.farmId, orderId] })]) }
   const back = <Link className="back-link" to="/manager/orders"><ArrowLeftOutlined /> Đơn khảo sát được giao</Link>
   if (query.isPending || context.isPending) return <>{back}<CommonState type="loading" /></>
   if (query.isError || context.isError) return <>{back}<CommonState type="error" description={workflowError(query.error ?? context.error)} retry={refresh} /></>
@@ -72,7 +84,14 @@ export function ManagerOrderDetailPage() {
   const busy = query.isFetching || context.isFetching
   const rescheduleRequested = order.currentAppointmentStatus === 'RESCHEDULE_REQUESTED'
   const canPropose = canProposeCaptureAppointment(order, scope)
-  const canNoShow = canRecordCaptureNoShow(order, scope)
+  const diseaseAppointment = order.currentAppointmentPurpose === 'DISEASE_CAPTURE'
+  const plannedDisease = diseaseAttempts.find(item => item.status === 'PLANNED' && item.missionId)
+  const canScheduleDisease = consistent && canLookUpMapping && mappingVersions.isSuccess &&
+    mappingVersions.data.some(map => map.sourceSurveyOrderId === orderId && mapState(map.status) === 'INTERNALAPPROVED' &&
+      attempts.data?.some(item => item.status === 'PROCESSING' && !!item.missionId && item.missionId === map.sourceMissionId))
+  const canRescheduleDisease = consistent && firstCombo && diseaseAppointment && scope.orderStatus === 'READY_FOR_CAPTURE' &&
+    order.currentAppointmentStatus === 'CONFIRMED' && attempts.isSuccess && !!plannedDisease
+  const canNoShow = diseaseAttempts.length === 0 && canRecordCaptureNoShow(order, scope)
   const canReflight = consistent && v3Order && attempts.isSuccess && canCreateQualityReflight(scope.orderStatus, attempts.data)
   const preparingFirstFlight = consistent && v3Order && scope.orderStatus === 'READY_FOR_CAPTURE' && attempts.isSuccess && attempts.data.length === 0
   const captureWindow = preparingFirstFlight && attempts.data ? capturePreparationWindow(order, scope, attempts.data) : null
@@ -87,17 +106,23 @@ export function ManagerOrderDetailPage() {
     {consistent && rescheduleRequested ? <Alert className="workflow-notice" type="warning" showIcon title="Cần đề xuất lịch bay mới" description="Owner đã yêu cầu đổi lịch hoặc đã ghi nhận vắng mặt. Đề xuất thời gian mới bằng nút bên dưới; Owner cần xác nhận lại lịch trước khi tiếp tục." /> : null}
     {noShow?.orderId === orderId ? <Alert className="workflow-notice" showIcon type={noShow.disposition === 'FreeReschedule' ? 'success' : 'warning'} title={`Đã ghi nhận vắng mặt lần ${noShow.occurrenceIndex}`} description={noShow.disposition === 'FreeReschedule' ? 'Trong số lần được đổi lịch miễn phí. Đề xuất lịch bay mới cho Owner.' : 'Đã vượt số lần đổi lịch miễn phí theo chính sách của đơn. System Admin sẽ xem xét trước khi tiếp tục.'} /> : null}
     <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Tiến độ khảo sát</strong><span>{orderStatusLabels[scope.orderStatus] ?? scope.orderStatus}</span></div><Tag>{scope.requiresBaselineMapping ? 'Cần bản đồ nền' : 'Đã có bản đồ nền'}</Tag></div>
-      <dl className="detail-list"><div><dt>Nông trại</dt><dd><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}`}>{order.farmName}</Link></dd></div><div><dt>Lịch bay</dt><dd>{order.currentAppointmentStatus ? appointmentStatusLabels[order.currentAppointmentStatus] ?? order.currentAppointmentStatus : 'Chưa có lịch hiện tại'}</dd></div><div><dt>Ranh giới đã xác minh</dt><dd>{scope.currentApprovedBoundary ? `Phiên bản ${scope.currentApprovedBoundary.versionNumber}` : 'Chưa có'}</dd></div><div><dt>Cập nhật</dt><dd>{dateTime(order.updatedAt)}</dd></div></dl>
+      <dl className="detail-list"><div><dt>Nông trại</dt><dd><Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}`}>{order.farmName}</Link></dd></div><div><dt>{diseaseAppointment ? 'Lịch bay bệnh' : 'Lịch bay'}</dt><dd>{order.currentAppointmentStatus ? appointmentStatusLabels[order.currentAppointmentStatus] ?? order.currentAppointmentStatus : 'Chưa có lịch hiện tại'}{diseaseAppointment && order.currentAppointmentStartAt && order.currentAppointmentEndAt ? <div>{appointmentScheduleLabel(null, null, null, order.currentAppointmentStartAt, order.currentAppointmentEndAt)}</div> : null}</dd></div><div><dt>Ranh giới đã xác minh</dt><dd>{scope.currentApprovedBoundary ? `Phiên bản ${scope.currentApprovedBoundary.versionNumber}` : 'Chưa có'}</dd></div><div><dt>Cập nhật</dt><dd>{dateTime(order.updatedAt)}</dd></div></dl>
       <Space wrap>{canPropose ? <Button type="primary" disabled={busy} onClick={() => { setNoShow(null); setAction('appointment') }}>{rescheduleRequested ? 'Đề xuất lịch bay mới' : 'Đề xuất lịch bay'}</Button> : null}
         {captureWindow && prepared?.orderId !== orderId ? <Button type="primary" disabled={busy || attempts.isFetching} onClick={() => setAction('prepare-capture')}>Chuẩn bị lần bay</Button> : null}
         {canNoShow ? <Button danger disabled={busy} onClick={() => { setAppointment(null); setAction('no-show') }}>Báo khách vắng mặt</Button> : null}
+        {canScheduleDisease ? <Button type="primary" disabled={busy || attempts.isFetching || mappingVersions.isFetching} onClick={() => setAction('schedule-disease')}>Tạo chuyến bay bệnh</Button> : null}
+        {canRescheduleDisease ? <Button disabled={busy || attempts.isFetching} onClick={() => setAction('reschedule-disease')}>Đổi lịch bay bệnh</Button> : null}
         {canReflight ? <Button type="primary" disabled={busy || attempts.isFetching} onClick={() => { setReflight(null); setAction('reflight') }}>Bay lại</Button> : null}
         {consistent && !scope.requiresBaselineMapping && scope.orderStatus === 'PENDING_BOUNDARY_VERIFICATION' ? <Button type="primary" disabled={busy} onClick={() => setAction('boundary')}>Xác minh ranh giới</Button> : null}
         {consistent && scope.requiresBaselineMapping && scope.orderStatus === 'AWAITING_BASELINE_REVIEW' ? <Button type="primary" disabled={busy} onClick={() => setAction('corners')}>Đánh dấu 4 góc trên ảnh trực giao</Button> : null}
         {missionPurpose ? <Button disabled={busy} onClick={() => setAction('prepare-mission')}>Chuẩn bị nhiệm vụ bay · {missionPurposeLabels[missionPurpose]}</Button> : null}</Space>
       {preparingFirstFlight && order.currentAppointmentStatus === 'CONFIRMED' && !captureWindow ? <Alert className="workflow-notice" showIcon type="warning" title="Chưa thể chuẩn bị lần bay" description={order.currentAppointmentEndAt && Date.parse(order.currentAppointmentEndAt) <= Date.now() ? 'Lịch bay đã hết giờ. Cần chốt lại lịch với Owner.' : 'Thiếu thông tin khung giờ Capture đã xác nhận. Tải lại đơn để kiểm tra.'} /> : null}
       {prepared?.orderId === orderId ? <Alert className="workflow-notice" showIcon type="success" title={`Đã chuẩn bị lần bay ${prepared.attemptIndex}`} description={<Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(prepared.missionId)}?orderId=${encodeURIComponent(orderId)}`}>Mở nhiệm vụ để làm checklist trước bay →</Link>} /> : null}
-      {reflight?.orderId === orderId ? <Alert className="workflow-notice" showIcon type="success" title={`Đã tạo lần bay lại (lần ${reflight.successorAttemptIndex})`} description={<>Lịch bay mới đang chờ Owner xác nhận. Sau khi xác nhận, hoàn tất checklist trên nhiệm vụ mới rồi bắt đầu bay. <Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(reflight.newMissionId)}?orderId=${encodeURIComponent(orderId)}`}>Mở nhiệm vụ mới →</Link></>} /> : null}
+      {canLookUpMapping && mappingVersions.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không kiểm tra được bản đồ đã duyệt" description={workflowError(mappingVersions.error)} /> : null}
+      {diseaseSchedule?.orderId === orderId ? <Alert className="workflow-notice" showIcon type="success"
+        title={diseaseSchedule.rescheduled ? 'Đã đổi lịch bay bệnh' : 'Đã tạo chuyến bay bệnh'}
+        description={<Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(diseaseSchedule.missionId)}?orderId=${encodeURIComponent(orderId)}`}>Mở nhiệm vụ bay bệnh để làm checklist →</Link>} /> : null}
+      {reflight?.orderId === orderId ? <Alert className="workflow-notice" showIcon type="success" title={`Đã tạo lần bay lại (lần ${reflight.successorAttemptIndex})`} description={<>{reflight.disease ? 'Manager đã xác nhận lịch bay bệnh. Hoàn tất checklist trên nhiệm vụ mới rồi bắt đầu bay. ' : 'Lịch bay mới đang chờ Owner xác nhận. Sau khi xác nhận, hoàn tất checklist trên nhiệm vụ mới rồi bắt đầu bay. '}<Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/missions/${encodeURIComponent(reflight.newMissionId)}?orderId=${encodeURIComponent(orderId)}`}>Mở nhiệm vụ mới →</Link></>} /> : null}
       {!v3Order && missionsQuery.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách nhiệm vụ bay của đơn này" description={workflowError(missionsQuery.error)} /> : null}
       {!v3Order && missionsQuery.data && missionsQuery.data.length > 0 ? <div className="form-hint">
         <strong>Nhiệm vụ bay: </strong>
@@ -115,11 +140,21 @@ export function ManagerOrderDetailPage() {
     {consistent && scope.orderStatus === 'COMPLETED' && ['MAP', 'COMBO', 'PLANT_HEALTH'].includes(order.surveyServiceCode) ? <ManagerQualityRefundPanel key={orderId} token={token} actor={session.email} orderId={orderId} /> : null}
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Phạm vi khu vực</strong><span>Các khu vực được trả về trong phạm vi đơn khảo sát</span></div></div><Table rowKey="zoneId" dataSource={scope.zones} pagination={false} scroll={{ x: 500 }} locale={{ emptyText: 'Chưa có khu vực trong phạm vi đơn.' }} columns={[{ title: 'Mã', dataIndex: 'code' }, { title: 'Khu vực', dataIndex: 'name' }, { title: 'Trạng thái', render: (_, zone) => zone.status === 'ACTIVE' ? 'Đang hoạt động' : zone.status }]} /></section>
     {action === 'appointment' ? <AppointmentModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setAppointment(result); setAction(null); await refresh() }} /> : null}
-    {action === 'reflight' && attempts.data ? <QualityReflightModal token={token} order={order} scope={scope} attempts={attempts.data} close={() => { setAction(null); void refresh() }} done={async result => { setReflight({ ...result, orderId }); setAction(null); await refresh() }} /> : null}
+    {action === 'reflight' && attempts.data ? <QualityReflightModal token={token} order={order} scope={scope} attempts={attempts.data} close={() => { setAction(null); void refresh() }} done={async (result, disease) => { setReflight({ ...result, orderId, disease }); setAction(null); await refresh() }} /> : null}
     {action === 'no-show' ? <NoShowModal token={token} order={order} scope={scope} close={() => { setAction(null); void refresh() }} done={async result => { setNoShow(result); setAction(null); await refresh() }} /> : null}
     {action === 'boundary' ? <BoundaryVerificationModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
     {action === 'corners' ? <OrthophotoCornersModal token={token} scope={scope} close={() => { setAction(null); void refresh() }} done={async () => { setAction(null); await refresh() }} /> : null}
     {action === 'prepare-capture' ? <PrepareCaptureAttemptModal key={orderId} token={token} order={order} captureWindow={captureWindow} close={() => { setAction(null); void refresh() }} done={async result => { setPrepared({ ...result, orderId }); setAction(null); await refresh() }} /> : null}
+    {(action === 'schedule-disease' || (action === 'reschedule-disease' && plannedDisease)) ? <DiseaseCaptureScheduleModal
+      key={`${orderId}:${action}`} token={token} order={order} attempt={action === 'reschedule-disease' ? plannedDisease : undefined}
+      close={() => { setAction(null); void refresh() }}
+      done={async result => {
+        setDiseaseSchedule({ ...result, orderId, rescheduled: action === 'reschedule-disease' })
+        setAction(null)
+        await Promise.all([refresh(), client.invalidateQueries({ queryKey: ['result-review', orderId] }),
+          client.invalidateQueries({ queryKey: ['mission-detail', order.farmId, result.missionId] }),
+          client.invalidateQueries({ queryKey: ['mission-checklist', order.farmId, result.missionId] })])
+      }} /> : null}
     {action === 'prepare-mission' ? <PrepareMissionModal token={token} order={order} orderStatus={scope.orderStatus} close={() => { setAction(null); void refresh() }} /> : null}
   </>
 }

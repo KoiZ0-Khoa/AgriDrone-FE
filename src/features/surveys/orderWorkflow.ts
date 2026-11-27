@@ -33,7 +33,7 @@ export function canProposeCaptureAppointment(order: AssignedOrder, scope: OrderS
 // Báo khách vắng mặt: đơn đã sẵn sàng bay và lịch đã được Owner xác nhận. BE kiểm thêm giờ vắng mặt nằm sau giờ bắt đầu lịch.
 export function canRecordCaptureNoShow(order: AssignedOrder, scope: OrderScope) {
   const current = currentAppointment(order)
-  return matchingOrderSnapshot(order, scope) && scope.orderStatus === 'READY_FOR_CAPTURE' && !!current && current.status === 'CONFIRMED' && validVersion(current.version)
+  return matchingOrderSnapshot(order, scope) && scope.orderStatus === 'READY_FOR_CAPTURE' && order.currentAppointmentPurpose !== 'DISEASE_CAPTURE' && !!current && current.status === 'CONFIRMED' && validVersion(current.version)
 }
 
 export function capturePreparationWindow(order: AssignedOrder, scope: OrderScope, attempts: readonly V3CaptureAttempt[], now = Date.now()) {
@@ -58,6 +58,13 @@ function isValidScheduledDate(value: string): boolean {
 // Sends the chosen day as-is; BE (SurveyAppointmentWindow.TryResolveForDate) resolves it to the
 // full Asia/Ho_Chi_Minh day Prepare Mission Set expects, so FE no longer does its own UTC/timezone math.
 export const operationsDate = (now = Date.now()) => new Date(now + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+export function diseaseCaptureWindow(start: string | undefined, end: string | undefined, now = Date.now()) {
+  if (!start || !end || ![start, end].every(value => /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) && isValidScheduledDate(value.slice(0, 10)))) return null
+  const startMs = Date.parse(`${start}:00+07:00`), endMs = Date.parse(`${end}:00+07:00`)
+  if (!(startMs > now && endMs > startMs)) return null
+  return { startAt: new Date(startMs).toISOString(), endAt: new Date(endMs).toISOString() }
+}
+
 export function captureAppointmentBody(order: AssignedOrder, scope: OrderScope, scheduledDate: string, now = Date.now()): CaptureAppointmentBody {
   if (!matchingOrderSnapshot(order, scope)) throw new Error('Dữ liệu đơn không đồng nhất hoặc thiếu version. Tải lại trước khi đề xuất lịch.')
   if (!canProposeCaptureAppointment(order, scope)) throw new Error('Đơn chưa ở bước chốt lịch bay hoặc đang có lịch chờ Owner xác nhận. Tải lại để kiểm tra.')

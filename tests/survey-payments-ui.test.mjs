@@ -86,6 +86,13 @@ test('Owner screens render paginated orders, appointment actions, payment eligib
     const readyToFly = render('OWNER', [], { order: { ...confirmedOrder, status: 'READY_FOR_CAPTURE' } })
     assert.match(readyToFly, /Đơn đã đủ điều kiện tiền cọc/)
     assert.equal(button(readyToFly, 'Trả cọc'), undefined)
+    const diseaseFlight = render('OWNER', [], { order: { ...confirmedOrder, status: 'READY_FOR_CAPTURE',
+      currentAppointment: { ...confirmedOrder.currentAppointment, purpose: 'DISEASE_CAPTURE', status: 'CONFIRMED' } } })
+    assert.match(diseaseFlight, /Lịch bay bệnh/)
+    assert.match(diseaseFlight, /Manager đã xác nhận lịch bay bệnh/)
+    for (const action of ['Xác nhận lịch', 'Yêu cầu đổi lịch', 'Trả cọc', 'Hủy đơn khảo sát']) {
+      assert.equal(button(diseaseFlight, action), undefined)
+    }
     const refunded = render('OWNER', [{ ...paymentItem, status: 'REFUNDED' }])
     assert.doesNotMatch(button(refunded, 'Trả cọc'), /disabled=""/)
     const invalidated = render('OWNER', [{ ...paymentItem, status: 'INVALIDATED' }])
