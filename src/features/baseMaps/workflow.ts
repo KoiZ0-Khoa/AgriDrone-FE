@@ -5,7 +5,9 @@ import type { CandidateReviewBody, MappingCandidate } from '../surveys/baseMapTy
 
 export const mapState = (value: string) => value.replace(/_/g, '').toUpperCase()
 export const isReleasedMap = (status: string) => ['PUBLISHED', 'SUPERSEDED'].includes(mapState(status))
-export const mapStatusLabel = (status: string) => ({ DRAFT: 'Bản nháp', PUBLISHED: 'Đã phát hành', SUPERSEDED: 'Phiên bản cũ' }[mapState(status)] ?? status)
+export const mapStatusLabel = (status: string) => ({ DRAFT: 'Bản nháp', INTERNALAPPROVED: 'Đã duyệt nội bộ', PUBLISHED: 'Đã phát hành', SUPERSEDED: 'Phiên bản cũ' }[mapState(status)] ?? status)
+const gridMeters = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 })
+export const formatGridMeters = (value: number | null | undefined) => typeof value === 'number' && Number.isFinite(value) ? `${gridMeters.format(value)} m` : '—'
 export const changeLabel = (value: string) => ({ CREATED: 'Thêm trụ', NEWPLANT: 'Thêm trụ', REMOVED: 'Loại bỏ trụ', REMOVEDPLANT: 'Loại bỏ trụ', RELOCATED: 'Dời trụ', MAPPINGDIFFERENCE: 'Điều chỉnh vị trí', REPLACED: 'Thay trụ', INITIALMAPPING: 'Lập bản đồ ban đầu' }[mapState(value)] ?? value)
 export const lifecycleLabel = (value: string) => ({ ACTIVE: 'Đang sử dụng', REMOVED: 'Đã loại bỏ', REPLACED: 'Đã thay thế', MISSING: 'Chưa tìm thấy' }[mapState(value)] ?? value)
 export const isPaymentLocked = (error: unknown) => error instanceof ApiError && error.status === 409 && !!error.code?.endsWith('.PaymentRequired')

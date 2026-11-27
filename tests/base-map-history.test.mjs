@@ -155,3 +155,13 @@ test('preview accepts signed HTTP URLs and rejects executable, credential-bearin
   assert.equal(workflow.previewUrl('https://storage.local/image.jpg?signature=example'), 'https://storage.local/image.jpg?signature=example')
   for (const url of ['javascript:alert(1)', 'data:image/svg+xml,test', 'minio://bucket/file', 'https://user:pass@storage.local/image.jpg', null]) assert.equal(workflow.previewUrl(url), null)
 })
+
+test('map summary rounds grid spacing and labels internally approved maps', () => {
+  assert.equal(workflow.formatGridMeters(2.774693988568154), '2,77 m')
+  assert.equal(workflow.formatGridMeters(2.2972451335892172), '2,3 m')
+  assert.equal(workflow.formatGridMeters(null), '—')
+  assert.equal(workflow.formatGridMeters(Number.NaN), '—')
+  assert.equal(workflow.mapStatusLabel('INTERNALAPPROVED'), 'Đã duyệt nội bộ')
+  assert.equal(workflow.mapStatusLabel('InternalApproved'), 'Đã duyệt nội bộ')
+  assert.equal(workflow.mapStatusLabel('INTERNAL_APPROVED'), 'Đã duyệt nội bộ')
+})
