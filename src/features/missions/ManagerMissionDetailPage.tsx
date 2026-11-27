@@ -12,7 +12,7 @@ import { getFarmContext } from '../surveys/farmOperationsApi'
 import { getAssignedOrder } from '../surveys/orderApi'
 import { ownerGuid, validOwnerVersion } from '../surveys/ownerOrderWorkflow'
 import { SurveyMutationError } from '../surveys/SurveyMutationError'
-import { freezeCaptureInput, getCaptureAttempts } from '../surveys/v3Api'
+import { freezeCaptureInput, getCaptureAttempts, recoverApprovedCaptureMission } from '../surveys/v3Api'
 import { captureAttemptStatusLabels, v3OperationFor, v3ServiceKind, type V3Operation } from '../surveys/v3Workflow'
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
@@ -363,6 +363,27 @@ export function ManagerMissionDetailPage() {
       client.invalidateQueries({ queryKey: ['mission-readiness', farmId, missionId] }),
     ])
   }
+  const canRecoverCaptureMission = captureCanProcess && uploading
+  const captureRefreshing = missionQuery.isFetching || captureOrder.isFetching || captureAttempts.isFetching
+  const recoverCaptureMutation = useMutation({
+    retry: false,
+    mutationFn: async () => {
+      if (!canRecoverCaptureMission || captureRefreshing || !captureAttempt) {
+        throw new Error('Trạng thái lần bay đã thay đổi. Kiểm tra lại trước khi khôi phục.')
+      }
+      const result = await recoverApprovedCaptureMission(token, captureOrderId, captureAttempt.captureAttemptId)
+      if (!result?.success || result.attemptId !== captureAttempt.captureAttemptId ||
+          result.missionId !== missionId || !validOwnerVersion(result.missionVersion)) {
+        throw new Error('Máy chủ chưa xác nhận khôi phục đúng nhiệm vụ.')
+      }
+      return result
+    },
+    onSuccess: async result => {
+      await refreshCaptureInput()
+      setLatest(null)
+      void message.success(result.alreadyReady ? 'Nhiệm vụ đã sẵn sàng ghép bản đồ.' : 'Đã khôi phục trạng thái nhiệm vụ để ghép bản đồ.')
+    },
+  })
   const captureUploadsBusy = uploadMutation.isPending || importMutation.isPending
   const readiness = readinessQuery.data
   const canFreeze = captureAwaitingUpload && !captureOrder.isFetching && !captureAttempts.isFetching &&
@@ -613,10 +634,21 @@ export function ManagerMissionDetailPage() {
         </Flex>
         : captureFrozen ? <Flex vertical gap="middle">
           <Alert showIcon type="success" title="Đã duyệt bộ dữ liệu đầu vào" />
-          {captureCanProcess && !orthophotoEligible ? <Alert showIcon type="info" title="Chờ nhiệm vụ sẵn sàng ghép bản đồ"
-            description={`Trạng thái nhiệm vụ: ${missionStatusLabel(status ?? mission.status)}.`}
-            action={<Button icon={<ReloadOutlined />} loading={missionQuery.isFetching}
-              onClick={async () => { await refreshCaptureInput(); setLatest(null) }}>Kiểm tra lại</Button>} /> : null}
+          {captureCanProcess && !orthophotoEligible ? <>
+            <Alert showIcon type="info" title="Chờ nhiệm vụ sẵn sàng ghép bản đồ"
+              description={`Trạng thái nhiệm vụ: ${missionStatusLabel(status ?? mission.status)}.`} />
+            <Space wrap>
+              {canRecoverCaptureMission ? <Button type="primary" loading={recoverCaptureMutation.isPending} disabled={captureRefreshing}
+                onClick={() => recoverCaptureMutation.mutate()}>Khôi phục để ghép bản đồ</Button> : null}
+              <Button icon={<ReloadOutlined />} loading={captureRefreshing} disabled={recoverCaptureMutation.isPending}
+                onClick={async () => {
+                  recoverCaptureMutation.reset()
+                  await refreshCaptureInput()
+                  setLatest(null)
+                }}>Kiểm tra lại</Button>
+            </Space>
+            <SurveyMutationError error={recoverCaptureMutation.error} />
+          </> : null}
         </Flex>
         : captureAwaitingUpload ? <Flex vertical gap="middle">
           {readinessQuery.isPending ? <CommonState type="loading" /> : null}
@@ -630,7 +662,7 @@ export function ManagerMissionDetailPage() {
             {readiness.hasActiveUploadSessions ? <Alert showIcon type="warning" title="Còn phiên tải tệp đang mở. Tải lại sau khi các tệp được xử lý." /> : null}
             {readiness.rawImageCount === 0 ? <p className="form-hint">Tải ảnh gốc của lần bay để làm bản đồ.</p> : null}
             {readiness.telemetryPointCount < 2 ? <Alert showIcon type="warning" title="Cần nhập telemetry trước khi chốt"
-              description="Giải mã log Blackbox, chọn segment nằm trong thời gian chuyến bay và bấm Import telemetry đã chọn." /> : null}
+              description="Giải mã log Blackbox của lần bay, chọn segment hợp lệ và bấm Import telemetry đã chọn." /> : null}
           </> : null}
           <Space wrap>
             <Button icon={<ReloadOutlined />} disabled={freezeMutation.isPending} onClick={() => { void refreshCaptureInput() }}>Kiểm tra lại</Button>

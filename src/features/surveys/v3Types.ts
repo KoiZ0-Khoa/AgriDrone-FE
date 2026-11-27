@@ -107,6 +107,16 @@ export type ApproveCaptureInputBody = V3AttemptOperation & {
   notes?: string
 }
 export type ApproveCaptureInputResult = V3FlightResult & { approvalId: string }
+export type RecoverCaptureMissionResult = {
+  success: boolean
+  attemptId: string
+  missionId: string
+  approvalId: string
+  manifestId: string
+  processingJobId: string
+  missionVersion: number
+  alreadyReady: boolean
+}
 
 // G6 — CreateV3QualityReflightRequest. Ngày bay lại theo giờ Việt Nam (yyyy-MM-dd); BE tự tạo lịch Capture cả ngày, ở trạng thái
 // chờ Owner xác nhận. Lý do và bằng chứng kỹ thuật 1–500 ký tự. Không thu thêm cọc.

@@ -181,3 +181,22 @@ test('V3 capture review sends the current manifest and versions to reopen or app
     error => error.status === 409 && error.code === 'CAPTURE_TELEMETRY_NOT_FROZEN')
   assert.equal(attempts, 1)
 })
+
+test('V3 recovery sends a bodyless POST for the approved attempt and surfaces a 409', async () => {
+  const receipt = {
+    success: true, attemptId: 'attempt/1', missionId: 'mission', approvalId: 'approval',
+    manifestId: 'manifest', processingJobId: 'job', missionVersion: 42, alreadyReady: true,
+  }
+  globalThis.fetch = async (url, options) => {
+    assert.equal(new URL(url).pathname, '/api/v3/system-manager/survey-orders/order%2F1/capture-attempts/attempt%2F1/input-approval/recover')
+    assert.equal(options.headers.Authorization, 'Bearer manager')
+    assert.equal(options.method, 'POST')
+    assert.equal(options.body, undefined)
+    return Response.json(receipt)
+  }
+  assert.deepEqual(await v3Api.recoverApprovedCaptureMission('manager', 'order/1', 'attempt/1'), receipt)
+
+  globalThis.fetch = async () => Response.json({ title: 'CAPTURE_APPROVAL_NOT_CURRENT' }, { status: 409 })
+  await assert.rejects(v3Api.recoverApprovedCaptureMission('manager', 'order/1', 'attempt/1'),
+    error => error.status === 409 && error.code === 'CAPTURE_APPROVAL_NOT_CURRENT')
+})

@@ -42,10 +42,10 @@ test('G5 reviews the current manifest and restores the telemetry requirement aft
         role: 'SYSTEM_MANAGER', fullName: 'Manager', accessToken: 'test-token', expiresAt: '2099-01-01T00:00:00Z',
       }) },
     })
-    const render = ({ orderStatus = 'AWAITING_CAPTURE_UPLOAD', pointCount = 0, attempt = {}, missionCode = 'V3CAP-TEST', orderParam = orderId } = {}) => {
+    const render = ({ orderStatus = 'AWAITING_CAPTURE_UPLOAD', pointCount = 0, attempt = {}, missionStatus = 'UPLOADING', missionCode = 'V3CAP-TEST', orderParam = orderId } = {}) => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } } })
       client.setQueryData(['mission-detail', farmId, missionId], {
-        id: missionId, farmId, missionCode, status: 'UPLOADING',
+        id: missionId, farmId, missionCode, status: missionStatus,
         version: 42, droneId: 'drone', preflightConfirmedAt: '2026-11-26T08:00:00Z',
       })
       client.setQueryData(['manager-order-context', orderId], {
@@ -108,7 +108,14 @@ test('G5 reviews the current manifest and restores the telemetry requirement aft
 
     const approved = render({ orderStatus: 'PROCESSING', attempt: { ...frozen, status: 'PROCESSING' } })
     assert.match(approved, /Chờ nhiệm vụ sẵn sàng ghép bản đồ/)
+    assert.match(approved, /<span>Khôi phục để ghép bản đồ<\/span>/)
     assert.doesNotMatch(approved, /<span>Ghép bản đồ<\/span><\/button>/)
+
+    const ready = render({ orderStatus: 'PROCESSING', missionStatus: 'READY_FOR_PROCESSING', attempt: { ...frozen, status: 'PROCESSING' } })
+    assert.match(ready, /<span>Ghép bản đồ<\/span><\/button>/)
+    assert.doesNotMatch(ready, /Khôi phục để ghép bản đồ/)
+    assert.doesNotMatch(currentManifest, /Khôi phục để ghép bản đồ/)
+    assert.doesNotMatch(withoutTelemetry, /Khôi phục để ghép bản đồ/)
   } finally {
     if (originalStorage) Object.defineProperty(globalThis, 'sessionStorage', originalStorage)
     else delete globalThis.sessionStorage
