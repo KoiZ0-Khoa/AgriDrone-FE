@@ -5,13 +5,13 @@ import { useMutation } from '@tanstack/react-query'
 import { lazy, Suspense, useRef } from 'react'
 import { reviewMappingBatch, reviewMappingCandidate } from './baseMapApi'
 import type { BaseMapDraft, ReviewDecision } from './baseMapTypes'
-import { batchReviewBody, candidateReviewBody, decisionLabels, draftFingerprint, editableDraft, reviewMapPosition, type ReviewValues } from './baseMapWorkflow'
+import { batchReviewBody, candidateReviewBody, decisionLabels, draftFingerprint, editableDraft, reviewMapPosition, type ReviewValues, type SubmittedReview } from './baseMapWorkflow'
 import { mutationNeedsReload, SurveyMutationError } from './SurveyMutationError'
 
 const DraftCandidatePositionMap = lazy(() => import('./DraftCandidatePositionMap'))
 
 export type ReviewSelection = { snapshot: BaseMapDraft; candidateIds: string[]; batch: boolean }
-export function BaseMapReviewDialog({ token, selection, current, disabled, close, done }: { token: string; selection: ReviewSelection; current: BaseMapDraft; disabled: boolean; close: () => void; done: (message: string) => Promise<void> }) {
+export function BaseMapReviewDialog({ token, selection, current, disabled, close, done }: { token: string; selection: ReviewSelection; current: BaseMapDraft; disabled: boolean; close: (reload: boolean) => void; done: (reviews: SubmittedReview[]) => Promise<void> }) {
   const [form] = Form.useForm<ReviewValues>()
   const decision = Form.useWatch('decision', form)
   const latitude = Form.useWatch('latitude', form), longitude = Form.useWatch('longitude', form)
@@ -25,13 +25,17 @@ export function BaseMapReviewDialog({ token, selection, current, disabled, close
       const body = batchReviewBody(snapshot, candidateIds, values.decision as 'CreateNew' | 'MatchExisting' | 'Reject', values.reason ?? '')
       const result = await reviewMappingBatch(token, snapshot.farmId, snapshot.draftId, body)
       if (result.totalReviewed !== candidateIds.length) throw new Error(`Máy chủ đã duyệt ${result.totalReviewed}/${candidateIds.length} điểm. Đóng và tải lại để kiểm tra kết quả.`)
-    } else await reviewMappingCandidate(token, snapshot.farmId, snapshot.draftId, candidate.candidateId, candidateReviewBody(candidate, values))
-  }, onSuccess: () => done(batch ? `Đã duyệt ${candidateIds.length} điểm.` : 'Đã lưu quyết định duyệt.'), onSettled: () => { pending.current = false } })
+      return body.reviews
+    }
+    const body = candidateReviewBody(candidate, values)
+    await reviewMappingCandidate(token, snapshot.farmId, snapshot.draftId, candidate.candidateId, body)
+    return [{ candidateId: candidate.candidateId, ...body }]
+  }, onSuccess: done, onSettled: () => { pending.current = false } })
   const blocked = disabled || stale || mutationNeedsReload(mutation.error) || mutation.isError
   const mapDisabled = blocked || mutation.isPending
   return <Modal open width={batch ? undefined : 880} centered={!batch}
     styles={batch ? undefined : { body: { maxHeight: 'calc(100dvh - 160px)', overflowY: 'auto' } }}
-    title={batch ? `Duyệt ${candidateIds.length} điểm đã chọn` : `Duyệt ${readableCode(candidate.treeId) ?? 'điểm nhận diện'}`} okText="Lưu quyết định" cancelText="Hủy" confirmLoading={mutation.isPending} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }} cancelButtonProps={{ disabled: mutation.isPending }} okButtonProps={{ disabled: blocked }} onCancel={() => { if (!mutation.isPending) close() }} onOk={() => form.submit()}>
+    title={batch ? `Duyệt ${candidateIds.length} điểm đã chọn` : `Duyệt ${readableCode(candidate.treeId) ?? 'điểm nhận diện'}`} okText="Lưu quyết định" cancelText="Hủy" confirmLoading={mutation.isPending} closable={!mutation.isPending} mask={{ closable: !mutation.isPending }} cancelButtonProps={{ disabled: mutation.isPending }} okButtonProps={{ disabled: blocked }} onCancel={() => { if (!mutation.isPending) close(stale || mutation.isError) }} onOk={() => form.submit()}>
     {stale ? <Alert showIcon type="warning" title="Bản đồ đã thay đổi. Đóng biểu mẫu và tải lại trước khi duyệt." /> : null}
     <Form form={form} layout="vertical" disabled={blocked || mutation.isPending} initialValues={batch ? {} : { decision: candidate.reviewDecision in decisionLabels && candidate.reviewDecision !== 'Pending' ? candidate.reviewDecision : undefined,
       longitude: candidate.correctedLongitude, latitude: candidate.correctedLatitude, row: candidate.correctedRowIndex, column: candidate.correctedColumnIndex,

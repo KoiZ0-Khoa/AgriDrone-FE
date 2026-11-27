@@ -29,15 +29,23 @@ test('Manager base-map UI checks assignment, renders real draft candidates and k
         h(Route, { path: '/manager/farms/:farmId/base-map-drafts/:draftId', element: h(ManagerBaseMapsPage) }),
       )))))
     }
-    const html = render(draft)
+    const html = render({ ...draft, rowSpacingM: 2.81, plantSpacingM: 2.68, gridBearingDeg: 270.4 })
     assert.match(html, /tree_r1_c2/)
     assert.doesNotMatch(html.replace(/<[^>]*>/g, ''), new RegExp(candidate.candidateId))
     assert.match(html, /108\.12/)
     assert.match(html, /Trong ranh giới/)
     assert.match(html, /Chưa duyệt/)
     assert.match(html, /Kiểm tra bản đồ/)
+    assert.match(html, /Thông số đã lưu · Khoảng cách hàng 2,81 m · Khoảng cách cây 2,68 m · Góc lưới 270,4°/)
     assert.match(html, /<button[^>]*disabled=""[^>]*><span>Duyệt nội bộ bản đồ<\/span>/)
     assert.match(html, new RegExp(`/manager/orders/${draft.sourceSurveyOrderId}`))
+    const corrected = render({ ...draft, batchStatus: 'ReviewInProgress', pendingCount: 0, acceptedCount: 1,
+      candidates: [{ ...candidate, reviewDecision: 'CreateNew', correctedLongitude: 108.121, correctedLatitude: 11.011 }] })
+    assert.match(corrected, /Tất cả điểm đã có quyết định duyệt/)
+    assert.match(corrected, /108\.121/)
+    assert.match(corrected, /Đã hiệu chỉnh/)
+    assert.doesNotMatch(html, /Đã hiệu chỉnh/)
+
     const published = render({ ...draft, status: 'Published', batchStatus: 'Approved', pendingCount: 0, candidates: [{ ...candidate, reviewDecision: 'CreateNew' }] })
     assert.match(published, /Bản đồ hiện chỉ được xem/)
     assert.match(published, /Đã phát hành/)

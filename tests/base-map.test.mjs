@@ -16,7 +16,7 @@ const root = `http://test.local/api/system-manager/farms/${farmId}/base-map-draf
 test('draft read uses assigned Manager contract, cancellation and refuses mismatched identities', async () => {
   const abort = new AbortController()
   globalThis.fetch = async (url, options) => {
-    assert.equal(url, root); assert.equal(options.headers.Authorization, 'Bearer manager'); assert.equal(options.signal, abort.signal)
+    assert.equal(url, root); assert.equal(options.headers.Authorization, 'Bearer manager'); assert.equal(options.signal, abort.signal); assert.equal(options.cache, 'no-store')
     return Response.json(draft)
   }
   assert.equal((await api.getBaseMapDraft('manager', farmId, draftId, abort.signal)).candidates[0].treeId, 'tree_r1_c2')
@@ -97,10 +97,28 @@ test('validation and publication use POST without invented expectedVersion or cl
   }
 })
 
+test('review confirmation requires the stored decision, coordinates and grid values on the same candidate', () => {
+  const review = { candidateId: candidate.candidateId, ...flow.candidateReviewBody(candidate, {
+    decision: 'CreateNew', longitude: 108.121, latitude: 11.011, row: 5, column: 6, reason: 'Đối chiếu ảnh',
+  }) }
+  const stored = { ...candidate, reviewDecision: 'CreateNew', correctedLongitude: 108.121, correctedLatitude: 11.011,
+    correctedRowIndex: 5, correctedColumnIndex: 6, reviewReason: 'Đối chiếu ảnh' }
+  assert.equal(flow.draftShowsReviews({ ...draft, candidates: [stored] }, [review]), true)
+  assert.equal(flow.draftShowsReviews(draft, [review]), false)
+  for (const patch of [{ candidateId: plantId }, { correctedLongitude: null }, { correctedColumnIndex: 2 }, { reviewDecision: 'Reject' }, { reviewReason: null }]) {
+    assert.equal(flow.draftShowsReviews({ ...draft, candidates: [{ ...stored, ...patch }] }, [review]), false)
+  }
+})
+
 test('publication requires a current server validation, a reviewable draft, no pending/errors and a positive pole count', () => {
   const ready = { ...draft, pendingCount: 0, acceptedCount: 1, batchStatus: 'ReviewInProgress' }
   const stamp = flow.draftFingerprint(ready)
   assert.equal(flow.canPublishDraft(ready, validation, stamp), true)
+  assert.equal(flow.canPublishDraft(ready, { ...validation, issues: [
+    { severity: 'Warning', code: 'RowBearingToleranceExceeded' },
+    { severity: 'Warning', code: 'PlantSpacingToleranceExceeded' },
+    { severity: 'Warning', code: 'RowSpacingToleranceExceeded' },
+  ] }, stamp), true)
   for (const changes of [{ status: 'Published' }, { status: 'Superseded' }, { batchStatus: 'Approved' }, { pendingCount: 1 }, { batchId: null }]) assert.equal(flow.canPublishDraft({ ...ready, ...changes }, validation, stamp), false)
   for (const value of [null, { ...validation, isValid: false }, { ...validation, pendingCount: 1 }, { ...validation, confirmedPublishablePoleCount: 0 }, { ...validation, totalCandidates: 2 }, { ...validation, issues: [{ severity: 'Error' }] }]) assert.equal(flow.canPublishDraft(ready, value, stamp), false)
   assert.equal(flow.canPublishDraft(ready, validation, flow.draftFingerprint(draft)), false)

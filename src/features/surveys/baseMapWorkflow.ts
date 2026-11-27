@@ -42,6 +42,20 @@ export function batchReviewBody(draft: BaseMapDraft, selected: string[], decisio
       plantId: candidate.correctedMatchedPlantId ?? candidate.proposedMatchedPlantId, reason }) }
   }) }
 }
+export type SubmittedReview = CandidateReviewBody & { candidateId: string }
+
+export function draftShowsReviews(draft: BaseMapDraft, reviews: SubmittedReview[]) {
+  const candidates = new Map(draft.candidates.map(candidate => [candidate.candidateId, candidate]))
+  return reviews.every(review => {
+    const stored = candidates.get(review.candidateId)
+    return stored && stateToken(stored.reviewDecision) === stateToken(review.decision)
+      && stored.correctedLongitude === review.correctedLongitude && stored.correctedLatitude === review.correctedLatitude
+      && stored.correctedRowIndex === review.correctedRowIndex && stored.correctedColumnIndex === review.correctedColumnIndex
+      && (review.correctedMatchedPlantId == null || stored.correctedMatchedPlantId?.toLowerCase() === review.correctedMatchedPlantId.toLowerCase())
+      && (stored.reviewReason?.trim() || null) === review.reason
+  })
+}
+
 export function canPublishDraft(draft: BaseMapDraft, validation: MappingValidation | null, validatedFingerprint: string | null) {
   return editableDraft(draft) && draft.pendingCount === 0 && !!validation && validation.isValid && validation.pendingCount === 0 && validation.confirmedPublishablePoleCount > 0 &&
     validation.totalCandidates === draft.totalCandidates && !validation.issues.some(issue => stateToken(issue.severity) === 'ERROR') && validatedFingerprint === draftFingerprint(draft)

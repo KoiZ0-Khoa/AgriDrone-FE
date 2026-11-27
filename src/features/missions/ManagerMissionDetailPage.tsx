@@ -17,7 +17,7 @@ import { captureAttemptStatusLabels, v3OperationFor, v3ServiceKind, type V3Opera
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
 import type { DetectMissionTreesOptions, GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, MissionTilingJob, MissionTreeDetection, MissionYoloJob, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, TelemetrySegment } from './missionTypes'
-import { captureBoundaryVertices, completedMissionTiling, completedMissionYolo, dateTime, fileSizeLabel, isBaselineMappingMissionCode, isMissionTilingActive, isMissionYoloActive, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
+import { captureBoundaryVertices, completedMissionTiling, completedMissionYolo, dateTime, fileSizeLabel, isBaselineMappingMissionCode, isMissionTilingActive, isMissionYoloActive, isNotFound, isOrthophotoTerminal, mappingGridFallback, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
 import { BoundaryTilingPanel } from './BoundaryTilingPanel'
 import { CaptureInputReview } from './CaptureInputReview'
 import { PlantGpsPasteModal } from './PlantGpsPasteModal'
@@ -123,9 +123,9 @@ export function ManagerMissionDetailPage() {
   const [tilingEditJobId, setTilingEditJobId] = useState<string | null>(null)
   const [jobDetection, setJobDetection] = useState<{ jobId: string; result: MissionTreeDetection } | null>(null)
   const [yoloRevision, setYoloRevision] = useState<{ jobId: string; version: number } | null>(null)
-  const [rowSpacingM, setRowSpacingM] = useState(3)
-  const [plantSpacingM, setPlantSpacingM] = useState(2.5)
-  const [gridBearingDeg, setGridBearingDeg] = useState(0)
+  const [rowSpacingOverride, setRowSpacingOverride] = useState<number | null>(null)
+  const [plantSpacingOverride, setPlantSpacingOverride] = useState<number | null>(null)
+  const [bearingOverride, setBearingOverride] = useState<number | null>(null)
   const gpsDraftOperation = useRef<(ReturnType<typeof operationFor> & { boundary?: MissionPlantGpsBoundaryPoint[] }) | null>(null)
   const publishOperation = useRef<ReturnType<typeof operationFor> | null>(null)
   const [publishResult, setPublishResult] = useState<PlantGpsPublishResult | null>(null)
@@ -235,6 +235,10 @@ export function ManagerMissionDetailPage() {
       sourceVersion: yoloRevision?.jobId === yoloJob.jobId ? yoloRevision.version : 1,
     }
     : null
+  const gridFallback = mappingGridFallback(yoloResult)
+  const rowSpacingM = rowSpacingOverride ?? gridFallback.rowSpacingM
+  const plantSpacingM = plantSpacingOverride ?? gridFallback.plantSpacingM
+  const gridBearingDeg = bearingOverride ?? gridFallback.gridBearingDeg
   const detectMutation = useMutation({
     mutationFn: (options: DetectMissionTreesOptions) => api.detectMissionTrees(token, farmId, missionId, options),
     onSuccess: async job => {
@@ -903,11 +907,15 @@ export function ManagerMissionDetailPage() {
           <SurveyMutationError error={markCaptureBoundaryMutation.error ?? farmContextQuery.error} />
         </Flex> : null}
         {v3Capture && !captureMayMarkBoundary && !captureBoundaryBound ? <Alert showIcon type="warning" title="Đơn khảo sát chưa có ranh giới đã gắn với lần bay." /> : null}
-        <Form layout="inline">
-          <Form.Item label="Khoảng cách hàng (m)"><InputNumber min={0.1} step={0.1} value={rowSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={value => setRowSpacingM(value ?? 3)} /></Form.Item>
-          <Form.Item label="Khoảng cách cây (m)"><InputNumber min={0.1} step={0.1} value={plantSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={value => setPlantSpacingM(value ?? 2.5)} /></Form.Item>
-          <Form.Item label="Góc lưới (độ)"><InputNumber min={0} max={359.9} step={1} value={gridBearingDeg} disabled={publishPlantGpsMutation.isPending} onChange={value => setGridBearingDeg(value ?? 0)} /></Form.Item>
-        </Form>
+        <div className="workflow-section">
+          <strong>Thông số lưới dự phòng</strong>
+          <p className="form-hint">Máy chủ tính thông số lưới từ tọa độ cây khi lưu GPS. Khi dữ liệu chưa đủ cho một thông số, máy chủ dùng giá trị tương ứng dưới đây. Các ô tự điền theo gợi ý YOLO nếu có.</p>
+          <Form layout="inline" className="workflow-toolbar">
+            <Form.Item label="Khoảng cách hàng (m)" htmlFor="gps-row-spacing"><InputNumber id="gps-row-spacing" min={0.1} step={0.1} value={rowSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={setRowSpacingOverride} /></Form.Item>
+            <Form.Item label="Khoảng cách cây (m)" htmlFor="gps-plant-spacing"><InputNumber id="gps-plant-spacing" min={0.1} step={0.1} value={plantSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={setPlantSpacingOverride} /></Form.Item>
+            <Form.Item label="Góc lưới (độ)" htmlFor="gps-grid-bearing"><InputNumber id="gps-grid-bearing" min={0} max={359.9} step={1} value={gridBearingDeg} disabled={publishPlantGpsMutation.isPending} onChange={setBearingOverride} /></Form.Item>
+          </Form>
+        </div>
         {!v3Capture && !isBaselineMapping ? <Alert type="warning" showIcon message="Nhiệm vụ này không phải Khảo sát bản đồ nền — yêu cầu sẽ bị từ chối." /> : null}
         {!v3Capture && isBaselineMapping && farmBoundaryMissing ? <Alert type="info" showIcon message="Nông trại này chưa có ranh giới nào." description="Ranh giới đã vẽ ở bước trên sẽ được dùng để set luôn ranh giới chính thức của nông trại khi bấm nút bên dưới." /> : null}
         {publishPlantGpsMutation.error ? <Alert type="error" showIcon message={publishPlantGpsError(publishPlantGpsMutation.error)} /> : null}

@@ -15,7 +15,7 @@ const yoloUrl = 'http://test.local/api/missions/mission-1/farms/farm-1/yolo-dete
 const queued = { jobId: 'yolo-1', missionId: 'mission-1', tilingJobId: 'job-1', status: 'QUEUED', createdAt: '2026-11-27T05:00:00Z', startedAt: null, completedAt: null, result: null, error: null }
 const detection = {
   missionId: 'mission-1', modelName: 'best.pt', totalTilesScanned: 45, totalRawDetections: 1, totalUniqueTrees: 1, totalMissingTrees: 0,
-  suggestedRowSpacing: 2.81, suggestedColSpacing: 2.68, maxRow: 1, maxCol: 1, csvDownloadUrl: '/csv',
+  suggestedRowSpacing: 2.81, suggestedColSpacing: 2.68, detectedBearingDeg: 270.4, maxRow: 1, maxCol: 1, csvDownloadUrl: '/csv',
   activeTrees: [{ id: 'tree_r1_c1', row: 1, col: 1, lat: 10.46, lon: 106.49, confidence: 0.94, status: 'DETECTED', source: 'YOLO', isAnchor: true }],
   missingTrees: [],
 }
@@ -59,6 +59,12 @@ test('latest YOLO lookup restores the running job and polls that job to completi
   assert.deepEqual(urls, [yoloUrl + '/jobs/latest', yoloUrl + '/jobs/yolo-1'])
   assert.equal(workflow.isMissionYoloActive(job), false)
   assert.deepEqual(workflow.completedMissionYolo(job, 'mission-1', 'job-1'), detection)
+})
+
+test('GPS uses the YOLO grid suggestions as fallback values and supports older jobs', () => {
+  assert.deepEqual(workflow.mappingGridFallback(detection), { rowSpacingM: 2.81, plantSpacingM: 2.68, gridBearingDeg: 270.4 })
+  assert.deepEqual(workflow.mappingGridFallback({ ...detection, detectedBearingDeg: undefined }), { rowSpacingM: 2.81, plantSpacingM: 2.68, gridBearingDeg: 0 })
+  assert.deepEqual(workflow.mappingGridFallback({ ...detection, detectedBearingDeg: 360, suggestedRowSpacing: -1, suggestedColSpacing: null }), { rowSpacingM: 3, plantSpacingM: 2.5, gridBearingDeg: 0 })
 })
 
 test('failed, malformed and mismatched results cannot populate the tree map', () => {

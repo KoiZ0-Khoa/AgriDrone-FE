@@ -122,7 +122,8 @@ export type DetectMissionTreesOptions = { tilingJobId: string; confidenceThresho
 export type RecalculateTreeGridOptions = { activeTrees: DetectedTree[]; rowSpacing?: number; colSpacing?: number; anchorLat?: number; anchorLon?: number; customAngleDeg?: number; polygonGeoJson?: GeoJsonPolygon }
 export type DetectMissionTreesResult = {
   missionId: string; modelName: string; totalTilesScanned: number; totalRawDetections: number; totalUniqueTrees: number; totalMissingTrees: number
-  suggestedRowSpacing: number | null; suggestedColSpacing: number | null; maxRow: number; maxCol: number; csvDownloadUrl: string | null
+  suggestedRowSpacing: number | null; suggestedColSpacing: number | null; detectedBearingDeg?: number | null
+  maxRow: number; maxCol: number; csvDownloadUrl: string | null
   activeTrees: DetectedTree[]; missingTrees: DetectedTree[]
 }
 export type MissionYoloJob = {

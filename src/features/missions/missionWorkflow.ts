@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client'
 import type { AssignedOrder } from '../surveys/orderTypes'
-import type { GeoJsonPolygon, MappingProcessingMetadata, MissionPurpose, MissionTilingJob, MissionYoloJob, OrthophotoBounds, PlantGpsTree } from './missionTypes'
+import type { DetectMissionTreesResult, GeoJsonPolygon, MappingProcessingMetadata, MissionPurpose, MissionTilingJob, MissionYoloJob, OrthophotoBounds, PlantGpsTree } from './missionTypes'
 
 // Bắt buộc người dùng chỉ chấm điểm (ranh giới, chấm thêm trụ...) trong phạm vi ảnh orthophoto, không phải trên nền vệ tinh/OSM xung quanh.
 export function isWithinOrthophotoBounds(lat: number, lon: number, bounds: OrthophotoBounds) {
@@ -86,6 +86,17 @@ export function completedMissionYolo(job: MissionYoloJob | null | undefined, mis
   const result = job.result
   if (result?.missionId !== missionId || !Array.isArray(result.activeTrees) || !Array.isArray(result.missingTrees)) return null
   return result
+}
+
+export function mappingGridFallback(result: DetectMissionTreesResult | null) {
+  const row = result?.suggestedRowSpacing
+  const plant = result?.suggestedColSpacing
+  const bearing = result?.detectedBearingDeg
+  return {
+    rowSpacingM: typeof row === 'number' && Number.isFinite(row) && row > 0 ? row : 3,
+    plantSpacingM: typeof plant === 'number' && Number.isFinite(plant) && plant > 0 ? plant : 2.5,
+    gridBearingDeg: typeof bearing === 'number' && Number.isFinite(bearing) && bearing >= 0 && bearing < 360 ? bearing : 0,
+  }
 }
 
 export function closedBoundaryPolygon(points: [number, number][]) {

@@ -5,12 +5,12 @@ const path = (farmId: string, draftId: string) => `/api/system-manager/farms/${e
 export async function getCurrentBaseMapDraft(token: string, farmId: string, surveyOrderId?: string, signal?: AbortSignal) {
   const params = new URLSearchParams()
   if (surveyOrderId) params.set('surveyOrderId', surveyOrderId)
-  const draft = await apiRequest<BaseMapDraft>(`/api/system-manager/farms/${encodeURIComponent(farmId)}/base-map-drafts${params.size ? `?${params}` : ''}`, { token, signal })
+  const draft = await apiRequest<BaseMapDraft>(`/api/system-manager/farms/${encodeURIComponent(farmId)}/base-map-drafts${params.size ? `?${params}` : ''}`, { token, signal, cache: 'no-store' })
   if (draft.farmId.toLowerCase() !== farmId.toLowerCase() || (surveyOrderId && draft.sourceSurveyOrderId.toLowerCase() !== surveyOrderId.toLowerCase())) throw new Error('Bản đồ nháp không khớp nông trại hoặc đơn khảo sát đã chọn.')
   return draft
 }
 export async function getBaseMapDraft(token: string, farmId: string, draftId: string, signal?: AbortSignal) {
-  const draft = await apiRequest<BaseMapDraft>(path(farmId, draftId), { token, signal })
+  const draft = await apiRequest<BaseMapDraft>(path(farmId, draftId), { token, signal, cache: 'no-store' })
   if (draft.farmId.toLowerCase() !== farmId.toLowerCase() || draft.draftId.toLowerCase() !== draftId.toLowerCase()) throw new Error('Bản đồ nháp không khớp nông trại hoặc mã đã chọn.')
   return draft
 }
