@@ -284,10 +284,11 @@ export function validateMappingProcessing(value: unknown): MappingProcessingMeta
     throw new Error('Khoảng cách hàng và khoảng cách cây phải lớn hơn 0.')
   }
   if (typeof algorithmVersion !== 'string' || !algorithmVersion.trim()) throw new Error('Thiếu phiên bản thuật toán nhận diện cây.')
-  if (typeof startedAt !== 'string' || !/T.*Z$/.test(startedAt) || !Number.isFinite(Date.parse(startedAt))) {
+  if (typeof startedAt !== 'string' || !/T.*(?:Z|\+00:00)$/.test(startedAt) || !Number.isFinite(Date.parse(startedAt))) {
     throw new Error('Thời điểm bắt đầu xử lý (startedAt) phải là thời gian UTC dạng ISO 8601.')
   }
-  return { modelVersionId, sourceVersion, gridBearingDeg, rowSpacingM, plantSpacingM, algorithmVersion: algorithmVersion.trim(), startedAt }
+  // .NET DateTimeOffset can use +00:00 for UTC. Keep the original fractional seconds.
+  return { modelVersionId, sourceVersion, gridBearingDeg, rowSpacingM, plantSpacingM, algorithmVersion: algorithmVersion.trim(), startedAt: startedAt.replace(/\+00:00$/, 'Z') }
 }
 
 export function parsePlantGpsImport(json: string) {

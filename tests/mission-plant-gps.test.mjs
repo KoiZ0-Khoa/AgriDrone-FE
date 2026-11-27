@@ -32,6 +32,13 @@ test('parsePlantGpsImport validates the pasted trees and processing metadata', (
   assert.throws(() => parse([sampleTree], { ...metadata, startedAt: '2026-11-25T20:00:00+07:00' }), /UTC/)
 })
 
+test('GPS processing accepts the UTC offset returned by .NET YOLO jobs and preserves fractional seconds', () => {
+  const startedAt = '2026-11-27T05:35:27.1234567'
+  assert.equal(workflow.validateMappingProcessing({ ...metadata, startedAt: startedAt + '+00:00' }).startedAt, startedAt + 'Z')
+  assert.equal(workflow.validateMappingProcessing({ ...metadata, startedAt: startedAt + 'Z' }).startedAt, startedAt + 'Z')
+  assert.throws(() => workflow.validateMappingProcessing({ ...metadata, startedAt }), /UTC/)
+})
+
 test('plant GPS GET/POST hit the mission-scoped route and replace sends trees and processing', async () => {
   const calls = []
   globalThis.fetch = async (url, options) => {
