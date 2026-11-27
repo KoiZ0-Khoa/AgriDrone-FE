@@ -125,4 +125,15 @@ export type DetectMissionTreesResult = {
   suggestedRowSpacing: number | null; suggestedColSpacing: number | null; maxRow: number; maxCol: number; csvDownloadUrl: string | null
   activeTrees: DetectedTree[]; missingTrees: DetectedTree[]
 }
+export type MissionYoloJob = {
+  jobId: string
+  missionId: string
+  tilingJobId: string
+  status: MissionTilingJob['status']
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+  result: DetectMissionTreesResult | null
+  error: string | null
+}
 export type MissionTreeDetection = DetectMissionTreesResult & Pick<MappingProcessingMetadata, 'startedAt' | 'sourceVersion'>

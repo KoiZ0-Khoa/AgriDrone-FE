@@ -2,7 +2,7 @@ import { ApiError, apiRequest, apiRequestFile } from '../../api/client'
 import type { AvailableDronesForOrder } from './missionTypes'
 import type { Drone } from '../drones/types'
 import type { Page } from '../surveys/types'
-import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MappingProcessingMetadata, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPlantGpsBoundaryPoint, MissionPurpose, MissionTilingJob, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, RecalculateTreeGridOptions, ReplacePlantGpsResult, ResetMissionUploadResult, UploadReadiness } from './missionTypes'
+import type { ActiveMissionChecklist, AvailableDrone, CompleteMissionPreflightResult, DetectMissionTreesOptions, DetectMissionTreesResult, FinalizeUploadResult, GeoJsonPolygon, ImportTelemetryPointInput, ImportTelemetryResult, MappingProcessingMetadata, MediaDownloadUrl, MediaUploadItemResult, MissionDetail, MissionListItem, MissionMedia, MissionPlantGpsBoundaryPoint, MissionPurpose, MissionTilingJob, MissionYoloJob, NormalizedTelemetryLog, OrthophotoStatus, PlantGpsPublishPayload, PlantGpsPublishResult, PlantGpsResult, PlantGpsTree, PrepareMissionSetResult, ProcessMetashapeOptions, ProcessMetashapeResult, RecalculateTreeGridOptions, ReplacePlantGpsResult, ResetMissionUploadResult, UploadReadiness } from './missionTypes'
 
 const farmPath = (farmId: string) => `/api/system-manager/farms/${encodeURIComponent(farmId)}`
 const missionPath = (farmId: string, missionId: string) => `${farmPath(farmId)}/missions/${encodeURIComponent(missionId)}`
@@ -128,8 +128,22 @@ export async function getMissionTilingJob(token: string, farmId: string, mission
     throw error
   }
 }
-export const detectMissionTrees = (token: string, farmId: string, missionId: string, options: DetectMissionTreesOptions) =>
-  apiRequest<DetectMissionTreesResult>(`${processingPath(farmId, missionId)}/yolo-detect`, { method: 'POST', token, body: options })
+export async function detectMissionTrees(token: string, farmId: string, missionId: string, options: DetectMissionTreesOptions) {
+  const job = await apiRequest<MissionYoloJob>(`${processingPath(farmId, missionId)}/yolo-detect`, { method: 'POST', token, body: options })
+  if (!job?.jobId || job.missionId !== missionId || job.tilingJobId !== options.tilingJobId) {
+    throw new Error('Máy chủ không trả mã lượt YOLO cho bộ tile đã chọn. Hãy kiểm tra trạng thái YOLO.')
+  }
+  return job
+}
+export async function getMissionYoloJob(token: string, farmId: string, missionId: string, jobId: string | undefined, signal?: AbortSignal) {
+  const segment = jobId ? encodeURIComponent(jobId) : 'latest'
+  try {
+    return await apiRequest<MissionYoloJob>(`${processingPath(farmId, missionId)}/yolo-detect/jobs/${segment}`, { token, signal, cache: 'no-store' })
+  } catch (error) {
+    if (!jobId && error instanceof ApiError && error.status === 404 && error.code === 'Yolo.JobNotFound') return null
+    throw error
+  }
+}
 // Chuẩn hóa Hàng & Cột: tính lại hàng/cột + cây khuyết cho danh sách cây hiện tại (đã sửa tay) mà không quét YOLO lại.
 export const recalculateMissionTreeGrid = (token: string, farmId: string, missionId: string, options: RecalculateTreeGridOptions) =>
   apiRequest<DetectMissionTreesResult>(`${processingPath(farmId, missionId)}/yolo-recalculate-grid`, { method: 'POST', token, body: options })

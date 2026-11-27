@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client'
 import type { AssignedOrder } from '../surveys/orderTypes'
-import type { GeoJsonPolygon, MappingProcessingMetadata, MissionPurpose, MissionTilingJob, OrthophotoBounds, PlantGpsTree } from './missionTypes'
+import type { GeoJsonPolygon, MappingProcessingMetadata, MissionPurpose, MissionTilingJob, MissionYoloJob, OrthophotoBounds, PlantGpsTree } from './missionTypes'
 
 // Bắt buộc người dùng chỉ chấm điểm (ranh giới, chấm thêm trụ...) trong phạm vi ảnh orthophoto, không phải trên nền vệ tinh/OSM xung quanh.
 export function isWithinOrthophotoBounds(lat: number, lon: number, bounds: OrthophotoBounds) {
@@ -79,6 +79,15 @@ export function completedMissionTiling(job: MissionTilingJob | null | undefined)
   return { jobId: job.jobId, result: job.result, polygon: job.polygonGeoJson }
 }
 
+export const isMissionYoloActive = (job: MissionYoloJob | null | undefined) => job?.status === 'QUEUED' || job?.status === 'RUNNING'
+
+export function completedMissionYolo(job: MissionYoloJob | null | undefined, missionId: string, tilingJobId: string | undefined) {
+  if (job?.status !== 'COMPLETED' || job.missionId !== missionId || job.tilingJobId !== tilingJobId) return null
+  const result = job.result
+  if (result?.missionId !== missionId || !Array.isArray(result.activeTrees) || !Array.isArray(result.missingTrees)) return null
+  return result
+}
+
 export function closedBoundaryPolygon(points: [number, number][]) {
   if (points.length < 3) throw new Error('Cần tối thiểu 3 điểm để tạo ranh giới.')
   const coordinates = [...points, points[0]] as [number, number][]
@@ -155,6 +164,8 @@ export function missionError(error: unknown) {
       'Mission.DroneNotAvailable': 'Drone đã chọn không còn khả dụng cho khoảng thời gian này.',
       'Mission.ScheduleConflict': 'Drone đã chọn có nhiệm vụ bay khác trùng thời gian.',
       'Mission.VersionConflict': 'Nhiệm vụ bay đã được cập nhật bởi người khác. Tải lại và kiểm tra trước khi tiếp tục.',
+      'Yolo.JobAlreadyActive': 'Một lượt YOLO đang chạy. Chờ lượt này kết thúc rồi thử lại.',
+      'Yolo.JobNotFound': 'Không tìm thấy lượt YOLO. Hãy kiểm tra lại trạng thái.',
       'Tiling.JobNotCompleted': 'Lượt cắt tiles chưa hoàn tất. Kiểm tra trạng thái cắt tiles rồi chạy YOLO lại.',
       'Tiling.JobNotFound': 'Không tìm thấy lượt cắt tiles. Kiểm tra lại trạng thái cắt tiles.',
       'Mission.InvalidTransition': 'Không thể chuyển sang trạng thái này từ trạng thái hiện tại của nhiệm vụ bay.',

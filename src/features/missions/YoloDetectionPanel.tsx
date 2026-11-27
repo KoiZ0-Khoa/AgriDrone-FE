@@ -5,8 +5,8 @@ import { useState } from 'react'
 import { CircleMarker, ImageOverlay, MapContainer, Polygon, Popup, useMapEvents } from 'react-leaflet'
 import { MapBaseLayers } from '../../components/MapBaseLayers'
 import * as api from './missionApi'
-import type { DetectedTree, GeoJsonPolygon, MissionTreeDetection, OrthophotoBounds } from './missionTypes'
-import { isWithinOrthophotoBounds, missionError } from './missionWorkflow'
+import type { DetectedTree, DetectMissionTreesOptions, GeoJsonPolygon, MissionTreeDetection, MissionYoloJob, OrthophotoBounds } from './missionTypes'
+import { isMissionYoloActive, isWithinOrthophotoBounds, missionError } from './missionWorkflow'
 
 // Giữ đúng token màu của app (global.css :root / workspace.css .app-shell) thay vì bảng màu map_picker.
 const activeColor = 'var(--mint)'
@@ -28,9 +28,14 @@ function renumberAfterRemoval<T extends DetectedTree>(trees: T[], row: number, r
   return trees.map(tree => tree.row === row && tree.col > removedCol ? { ...tree, col: tree.col - 1, id: `${tree.status === 'MISSING' ? 'missing' : 'tree'}_r${tree.row}_c${tree.col - 1}` } : tree)
 }
 
-export function YoloDetectionPanel({ token, farmId, missionId, tilingJobId, previewUrl, bounds, boundaryPolygon, onDetected }: {
+export function YoloDetectionPanel({
+  token, farmId, missionId, tilingJobId, previewUrl, bounds, boundaryPolygon, job, result,
+  loading, checking, starting, disabled, statusError, startError, onRefresh, onRun, onEdit,
+}: {
   token: string; farmId: string; missionId: string; previewUrl: string; bounds: OrthophotoBounds
-  tilingJobId: string; boundaryPolygon: GeoJsonPolygon; onDetected: (result: MissionTreeDetection) => void
+  tilingJobId: string; boundaryPolygon: GeoJsonPolygon; job: MissionYoloJob | null | undefined; result: MissionTreeDetection | null
+  loading: boolean; checking: boolean; starting: boolean; disabled: boolean; statusError: unknown; startError: unknown
+  onRefresh: () => void; onRun: (options: DetectMissionTreesOptions) => void; onEdit: (result: MissionTreeDetection) => void
 }) {
   const { message } = App.useApp()
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.25)
@@ -39,22 +44,18 @@ export function YoloDetectionPanel({ token, farmId, missionId, tilingJobId, prev
   const [anchor, setAnchor] = useState<{ lat: number; lon: number } | null>(null)
   const [pickingAnchor, setPickingAnchor] = useState(false)
   const [manualAddMode, setManualAddMode] = useState(false)
-  const [result, setResult] = useState<MissionTreeDetection | null>(null)
   const leafletBounds: [[number, number], [number, number]] = [[bounds.minLat, bounds.minLon], [bounds.maxLat, bounds.maxLon]]
+  const active = isMissionYoloActive(job)
 
-  const detectMutation = useMutation({
-    mutationFn: async () => {
-      const startedAt = new Date().toISOString()
-      const sourceVersion = (result?.sourceVersion ?? 0) + 1
-      const detected = await api.detectMissionTrees(token, farmId, missionId, {
-        tilingJobId, confidenceThreshold, rowSpacing, colSpacing,
-        anchorLat: anchor?.lat, anchorLon: anchor?.lon,
-        polygonGeoJson: boundaryPolygon,
-      })
-      return { ...detected, startedAt, sourceVersion }
-    },
-    onSuccess: data => { setResult(data); onDetected(data); setPickingAnchor(false) },
-  })
+  function runDetection() {
+    setPickingAnchor(false)
+    setManualAddMode(false)
+    onRun({
+      tilingJobId, confidenceThreshold, rowSpacing, colSpacing,
+      anchorLat: anchor?.lat, anchorLon: anchor?.lon,
+      polygonGeoJson: boundaryPolygon,
+    })
+  }
 
   // Chuẩn hóa Hàng & Cột (học theo nút renumberAllRowsAndColumns của map_picker.py): gửi danh sách cây hiện tại (kể cả đã sửa tay)
   // lên BE tính lại hàng/cột + cây khuyết, không quét YOLO lại. Cây neo (nếu đã chọn) luôn thành Hàng 1 - Cột 1.
@@ -73,7 +74,7 @@ export function YoloDetectionPanel({ token, farmId, missionId, tilingJobId, prev
       message.success(`Đã chuẩn hóa Hàng & Cột: ${data.activeTrees.length} cây · ${data.missingTrees.length} nghi khuyết · ${data.maxRow} hàng × ${data.maxCol} cột`)
     },
   })
-  const busy = detectMutation.isPending || recalculateMutation.isPending
+  const busy = disabled || starting || active || recalculateMutation.isPending
 
   function pickTreeAsAnchor(tree: DetectedTree) {
     if (!pickingAnchor) return
@@ -83,11 +84,8 @@ export function YoloDetectionPanel({ token, farmId, missionId, tilingJobId, prev
   const isPickedAnchor = (tree: DetectedTree) => tree.isAnchor || (anchor !== null && anchor.lat === tree.lat && anchor.lon === tree.lon)
 
   // Toàn bộ thao tác sửa tay dưới đây chỉ là state cục bộ trên FE (giống cách map_picker.py làm, không có API riêng) —
-  // mỗi lần sửa gọi lại onDetected() để yoloResult ở trang cha (dùng cho CSV/Publish) luôn khớp dữ liệu đã sửa.
-  function applyEdit(next: MissionTreeDetection) {
-    setResult(next)
-    onDetected(next)
-  }
+  // Mỗi lần sửa cập nhật kết quả ở trang cha để CSV và GPS dùng cùng danh sách cây.
+  const applyEdit = onEdit
   function confirmMissingTree(tree: DetectedTree) {
     if (!result) return
     const missingTrees = result.missingTrees.filter(t => t.id !== tree.id)
@@ -131,13 +129,13 @@ export function YoloDetectionPanel({ token, farmId, missionId, tilingJobId, prev
     <div style={{ margin: '8px 0' }}>
       {anchor ? <Space>Cây neo: Đã chọn ({anchor.lat.toFixed(5)}, {anchor.lon.toFixed(5)})<Button size="small" onClick={() => setAnchor(null)}>↺ Hủy</Button></Space>
         : pickingAnchor ? <span className="form-hint">🎯 Nhấp vào 1 cây góc trên bản đồ bên dưới</span>
-        : <Space>Cây neo: 🟢 Tự động<Button size="small" disabled={!result} onClick={() => { setPickingAnchor(true); setManualAddMode(false) }}>📍 Chọn Cây Neo (H1-C1)</Button></Space>}
+        : <Space>Cây neo: 🟢 Tự động<Button size="small" disabled={!result || busy} onClick={() => { setPickingAnchor(true); setManualAddMode(false) }}>📍 Chọn Cây Neo (H1-C1)</Button></Space>}
     </div>
     <Space style={{ marginBottom: 8 }}>
-      <Button size="small" type={manualAddMode ? 'primary' : 'default'} disabled={!result} onClick={() => { setManualAddMode(value => !value); setPickingAnchor(false) }}>
+      <Button size="small" type={manualAddMode ? 'primary' : 'default'} disabled={!result || busy} onClick={() => { setManualAddMode(value => !value); setPickingAnchor(false) }}>
         {manualAddMode ? '🎯 Đang chấm trụ (click bản đồ để thêm)' : '➕ Chấm thêm trụ bằng tay'}
       </Button>
-      <Button size="small" icon={<span aria-hidden>⚡</span>} loading={recalculateMutation.isPending} disabled={!result || result.activeTrees.length === 0 || detectMutation.isPending}
+      <Button size="small" icon={<span aria-hidden>⚡</span>} loading={recalculateMutation.isPending} disabled={!result || result.activeTrees.length === 0 || busy}
         title="Tính lại hàng/cột và cây khuyết từ danh sách cây hiện tại (không chạy YOLO lại)" onClick={() => result && recalculateMutation.mutate(result)}>
         Chuẩn hóa Hàng & Cột
       </Button>
@@ -147,7 +145,7 @@ export function YoloDetectionPanel({ token, farmId, missionId, tilingJobId, prev
         <MapBaseLayers />
         <ImageOverlay url={previewUrl} bounds={leafletBounds} />
         {boundaryPolygon ? <Polygon positions={boundaryPolygon.coordinates[0].map(([lng, lat]): [number, number] => [lat, lng])} pathOptions={{ color: activeColor, fillOpacity: 0.03 }} /> : null}
-        <ClickCapture enabled={manualAddMode} bounds={bounds} onAdd={addManualTree} onOutsideBounds={() => message.warning('Chỉ chấm trụ được trong phạm vi ảnh orthophoto.')} />
+        <ClickCapture enabled={manualAddMode && !busy} bounds={bounds} onAdd={addManualTree} onOutsideBounds={() => message.warning('Chỉ chấm trụ được trong phạm vi ảnh orthophoto.')} />
         {result?.missingTrees.map(tree => <CircleMarker key={tree.id} center={[tree.lat, tree.lon]} radius={6} pathOptions={{ color: missingColor, fillColor: '#fff', fillOpacity: 0.6, dashArray: '2 2' }}>
           <Popup><div style={{ fontSize: 12 }}>
             <strong>Nghi ngờ khuyết: Hàng {tree.row} - Cột {tree.col}</strong>
@@ -170,9 +168,17 @@ export function YoloDetectionPanel({ token, farmId, missionId, tilingJobId, prev
         </CircleMarker>)}
       </MapContainer>
     </div>
-    {detectMutation.error ? <Alert type="error" showIcon message={missionError(detectMutation.error)} /> : null}
+    {loading ? <Alert type="info" showIcon message="Đang kiểm tra lượt YOLO gần nhất…" /> : null}
+    {active ? <Alert type="info" showIcon message={job?.status === 'QUEUED' ? 'YOLO đang chờ xử lý' : 'YOLO đang nhận diện cây'} /> : null}
+    {job?.tilingJobId === tilingJobId && job.status === 'FAILED' ? <Alert type="error" showIcon message="Chạy YOLO thất bại" description={job.error || 'Bạn có thể chạy lại YOLO.'} /> : null}
+    {job?.tilingJobId === tilingJobId && job.status === 'COMPLETED' && !result ? <Alert type="warning" showIcon message="Lượt YOLO đã kết thúc nhưng thiếu dữ liệu nhận diện. Hãy kiểm tra lại hoặc chạy lại YOLO." /> : null}
+    {startError ? <Alert type="error" showIcon message={missionError(startError)} /> : null}
+    {statusError ? <Alert type="error" showIcon message="Chưa đọc được trạng thái YOLO" description={missionError(statusError)} /> : null}
     {recalculateMutation.error ? <Alert type="error" showIcon style={{ marginBottom: 8 }} message={missionError(recalculateMutation.error)} /> : null}
-    <Button type="primary" loading={detectMutation.isPending} disabled={recalculateMutation.isPending} onClick={() => detectMutation.mutate()}>Chạy YOLO</Button>
+    <Space wrap style={{ marginTop: 8 }}>
+      <Button type="primary" loading={starting} disabled={busy || loading} onClick={runDetection}>Chạy YOLO</Button>
+      {active || !!statusError || !!startError ? <Button loading={checking} disabled={starting} onClick={onRefresh}>Kiểm tra lại YOLO</Button> : null}
+    </Space>
     {result ? <>
       <Alert style={{ marginTop: 12 }} type="success" showIcon message={`Quét ${result.totalTilesScanned} tile · ${result.totalUniqueTrees} cây phát hiện · ${result.totalMissingTrees} cây thiếu (nội suy).`} description={`Model: ${result.modelName}`} />
       <Space wrap style={{ marginTop: 8 }}>
