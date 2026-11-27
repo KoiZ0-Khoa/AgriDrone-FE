@@ -1,6 +1,6 @@
 import { ApiError } from '../../api/client'
 import type { AssignedOrder } from '../surveys/orderTypes'
-import type { MappingProcessingMetadata, MissionPurpose, OrthophotoBounds, PlantGpsTree } from './missionTypes'
+import type { GeoJsonPolygon, MappingProcessingMetadata, MissionPurpose, OrthophotoBounds, PlantGpsTree } from './missionTypes'
 
 // Bắt buộc người dùng chỉ chấm điểm (ranh giới, chấm thêm trụ...) trong phạm vi ảnh orthophoto, không phải trên nền vệ tinh/OSM xung quanh.
 export function isWithinOrthophotoBounds(lat: number, lon: number, bounds: OrthophotoBounds) {
@@ -76,6 +76,18 @@ export function closedBoundaryPolygon(points: [number, number][]) {
   const coordinates = [...points, points[0]] as [number, number][]
   return { type: 'Polygon' as const, coordinates: [coordinates] }
 }
+export function captureBoundaryCorners(polygon: GeoJsonPolygon | null) {
+  if (!polygon || polygon.coordinates.length !== 1) return null
+  const ring = polygon.coordinates[0]
+  // The crop ring ends by repeating the first point. The boundary API expects only four distinct vertices.
+  if (ring.length !== 5) return null
+  const [longitude, latitude] = ring[0]
+  if (ring[4][0] !== longitude || ring[4][1] !== latitude) return null
+  const vertices = ring.slice(0, -1)
+  if (new Set(vertices.map(point => point.join(','))).size !== 4) return null
+  return vertices.map(([longitude, latitude], index) => ({ sequence: index + 1, longitude, latitude }))
+}
+
 // Planar equirectangular approximation around the centroid latitude — adequate for farm-scale plots, not a geodesic calculation.
 export function estimateAreaHectares(points: [number, number][]) {
   if (points.length < 3) return 0

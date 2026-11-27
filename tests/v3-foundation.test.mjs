@@ -182,6 +182,21 @@ test('V3 capture review sends the current manifest and versions to reopen or app
   assert.equal(attempts, 1)
 })
 
+test('V3 boundary uses the CaptureAttempt endpoint and the current Order, Mission and Farm boundary versions', async () => {
+  const corners = [[106.491, 10.461], [106.492, 10.461], [106.492, 10.462], [106.491, 10.462]]
+    .map(([longitude, latitude], index) => ({ sequence: index + 1, longitude, latitude }))
+  const body = { expectedOrderVersion: 41, expectedMissionVersion: 43, expectedBoundaryVersionNumber: 2, corners }
+  const receipt = { surveyOrderId: 'order/1', farmBoundaryId: 'boundary', boundaryVersionNumber: 3, orderVersion: 44, missionVersion: 44 }
+  globalThis.fetch = async (url, options) => {
+    assert.equal(new URL(url).pathname, '/api/v3/system-manager/survey-orders/order%2F1/capture-attempts/attempt%2F1/farm-boundary/mark-orthophoto-corners')
+    assert.equal(options.method, 'POST')
+    assert.equal(options.headers.Authorization, 'Bearer manager')
+    assert.deepEqual(JSON.parse(options.body), body)
+    return Response.json(receipt)
+  }
+  assert.deepEqual(await v3Api.markCaptureBoundary('manager', 'order/1', 'attempt/1', body), receipt)
+})
+
 test('V3 recovery sends a bodyless POST for the approved attempt and surfaces a 409', async () => {
   const receipt = {
     success: true, attemptId: 'attempt/1', missionId: 'mission', approvalId: 'approval',

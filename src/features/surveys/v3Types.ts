@@ -118,6 +118,21 @@ export type RecoverCaptureMissionResult = {
   alreadyReady: boolean
 }
 
+export type MarkCaptureBoundaryBody = {
+  expectedOrderVersion: number
+  expectedMissionVersion: number
+  expectedBoundaryVersionNumber: number | null
+  corners: { sequence: number; longitude: number; latitude: number }[]
+}
+export type MarkCaptureBoundaryResult = {
+  surveyOrderId: string
+  farmBoundaryId: string
+  boundaryVersionNumber: number
+  orderVersion: number
+  missionVersion: number
+  markedAt: string
+}
+
 // G6 — CreateV3QualityReflightRequest. Ngày bay lại theo giờ Việt Nam (yyyy-MM-dd); BE tự tạo lịch Capture cả ngày, ở trạng thái
 // chờ Owner xác nhận. Lý do và bằng chứng kỹ thuật 1–500 ký tự. Không thu thêm cọc.
 export type PrepareCaptureAttemptBody = {

@@ -146,6 +146,7 @@ export const v3ErrorMessages: Record<string, string> = {
   CAPTURE_PROCESSING_JOB_MISMATCH: 'Mã xử lý không khớp với bộ dữ liệu đã chốt. Tải lại để kiểm tra.',
   CAPTURE_MANIFEST_REOPEN_CONFLICT: 'Không thể mở lại bộ dữ liệu. Tải lại để kiểm tra trạng thái.',
   CAPTURE_MISSION_STATE_CONFLICT: 'Trạng thái nhiệm vụ không cho phép thao tác này. Tải lại để kiểm tra.',
+  'CaptureBoundary.OrthophotoUnavailable': 'Chưa xác nhận được ảnh trực giao hiện hành hoặc lần bay đã có bản đồ nháp. Tải lại nhiệm vụ để kiểm tra.',
   CAPTURE_APPROVAL_NOT_CURRENT: 'Máy chủ chưa xác nhận bản duyệt đầu vào hiện hành của lần bay này.',
   CAPTURE_MISSION_RECOVERY_CONFLICT: 'Chưa thể khôi phục trạng thái nhiệm vụ. Tải lại để kiểm tra.',
   CAPTURE_JOB_STATE_CONFLICT: 'Job xử lý đã chuyển bước. Tải lại để kiểm tra trạng thái.',

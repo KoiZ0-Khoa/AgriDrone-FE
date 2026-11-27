@@ -1,6 +1,6 @@
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App, Button, Checkbox, Divider, Flex, Form, Input, InputNumber, Modal, Radio, Space, Steps, Table, Tag } from 'antd'
+import { Alert, App, Button, Checkbox, Divider, Flex, Form, Input, InputNumber, Modal, Popconfirm, Radio, Space, Steps, Table, Tag } from 'antd'
 import { useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
@@ -11,13 +11,13 @@ import { useAuth } from '../auth/AuthContext'
 import { getFarmContext } from '../surveys/farmOperationsApi'
 import { getAssignedOrder } from '../surveys/orderApi'
 import { ownerGuid, validOwnerVersion } from '../surveys/ownerOrderWorkflow'
-import { SurveyMutationError } from '../surveys/SurveyMutationError'
-import { freezeCaptureInput, getCaptureAttempts, recoverApprovedCaptureMission } from '../surveys/v3Api'
+import { mutationNeedsReload, SurveyMutationError } from '../surveys/SurveyMutationError'
+import { freezeCaptureInput, getCaptureAttempts, markCaptureBoundary, recoverApprovedCaptureMission } from '../surveys/v3Api'
 import { captureAttemptStatusLabels, v3OperationFor, v3ServiceKind, type V3Operation } from '../surveys/v3Workflow'
 import { operationFor } from '../surveys/workflow'
 import * as api from './missionApi'
 import type { GeoJsonPolygon, ImportTelemetryResult, MediaUploadItemResult, MissionDetail, MissionMedia, MissionPlantGpsBoundaryPoint, MissionTreeDetection, NormalizedTelemetryLog, PlantGpsPublishResult, PlantGpsTree, ReplacePlantGpsResult, SliceTilesResult, TelemetrySegment } from './missionTypes'
-import { dateTime, fileSizeLabel, isBaselineMappingMissionCode, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
+import { captureBoundaryCorners, dateTime, fileSizeLabel, isBaselineMappingMissionCode, isNotFound, isOrthophotoTerminal, mediaRoleLabels, mediaTypeLabels, mediaUploadStatusLabels, missionError, missionPurposeLabel, missionStatusLabel, orthophotoStatusLabel, publishPlantGpsError, surveyOrderIdFromMissionCode, toScreamingSnakeCase, uploadBlockerLabel, validateMappingProcessing } from './missionWorkflow'
 import { BoundaryTilingPanel } from './BoundaryTilingPanel'
 import { CaptureInputReview } from './CaptureInputReview'
 import { PlantGpsPasteModal } from './PlantGpsPasteModal'
@@ -267,9 +267,51 @@ export function ManagerMissionDetailPage() {
     link.remove()
     URL.revokeObjectURL(url)
   }
+  const captureMappingReady = v3Capture && captureCanProcess && orthophotoStatusQuery.data?.status === 'COMPLETED'
+  const captureBoundaryBound = ownerGuid(captureOrder.data?.farmBoundaryVersionId ?? '')
+  const captureMappingRefreshing = captureOrder.isFetching || captureAttempts.isFetching || missionQuery.isFetching
+  const captureMayMarkBoundary = captureMappingReady && captureOrder.data?.requiresBaselineMapping === true && !captureBoundaryBound
+  const captureCorners = captureMayMarkBoundary ? captureBoundaryCorners(boundaryPolygon) : null
+  const canPublishCaptureGps = captureMappingReady && captureBoundaryBound && !captureMappingRefreshing
+  const canMarkCaptureBoundary = captureMayMarkBoundary && !!captureCorners && !captureMappingRefreshing &&
+    farmContextQuery.isSuccess && !farmContextQuery.isFetching && farmContextQuery.data.farmId === farmId &&
+    validOwnerVersion(captureOrder.data?.orderVersion ?? 0)
+
+  const refreshCaptureBoundary = async () => {
+    await Promise.all([refreshCaptureInput(), farmContextQuery.refetch()])
+    setLatest(null)
+  }
+  const markCaptureBoundaryMutation = useMutation({
+    retry: false,
+    mutationFn: async () => {
+      if (!canMarkCaptureBoundary || !captureOrder.data || !captureAttempt || !captureCorners) {
+        throw new Error('Cần chọn đúng 4 góc và tải đủ thông tin lần bay để xác nhận ranh giới.')
+      }
+      const currentMission = await api.getMissionVersion(token, farmId, missionId)
+      if (currentMission.id !== missionId || !validOwnerVersion(currentMission.version)) {
+        throw new Error('Chưa xác nhận được phiên bản nhiệm vụ. Tải lại để kiểm tra.')
+      }
+      const result = await markCaptureBoundary(token, captureOrderId, captureAttempt.captureAttemptId, {
+        expectedOrderVersion: captureOrder.data.orderVersion,
+        expectedMissionVersion: currentMission.version,
+        expectedBoundaryVersionNumber: farmContextQuery.data.approvedBoundary?.versionNumber ?? null,
+        corners: captureCorners,
+      })
+      if (result.surveyOrderId !== captureOrderId || !ownerGuid(result.farmBoundaryId)) {
+        throw new Error('Máy chủ chưa xác nhận ranh giới của đơn này.')
+      }
+    },
+    onSuccess: async () => {
+      await refreshCaptureBoundary()
+      void message.success('Đã xác nhận ranh giới của lần bay.')
+    },
+    onError: async error => { if (mutationNeedsReload(error)) await refreshCaptureBoundary() },
+  })
+
   const publishPlantGpsMutation = useMutation({
     mutationFn: async () => {
       if (!yoloResult || yoloResult.missionId !== missionId) throw new Error('Chưa có kết quả nhận diện cây của nhiệm vụ này.')
+      if (v3Capture && !canPublishCaptureGps) throw new Error('Cần xác nhận lần bay và ranh giới của đơn trước khi gửi GPS.')
       const modelName = import.meta.env.VITE_MAPPING_MODEL_NAME?.trim()
       const modelVersionId = import.meta.env.VITE_MAPPING_MODEL_VERSION_ID?.trim()
       const algorithmVersion = import.meta.env.VITE_MAPPING_ALGORITHM_VERSION?.trim()
@@ -285,7 +327,7 @@ export function ManagerMissionDetailPage() {
       })
       // latest.surveyOrderId chỉ có trong cùng phiên vừa hoàn tất chuyến bay/upload (MissionDetail không có API GET riêng).
       // Sau khi tải lại trang, suy ngược lại từ missionCode (luôn có sẵn từ GET .../missions) thay vì chặn hẳn thao tác publish.
-      const surveyOrderId = latest?.surveyOrderId ?? (mission ? surveyOrderIdFromMissionCode(mission.missionCode) : null)
+      const surveyOrderId = v3Capture ? captureOrderId : latest?.surveyOrderId ?? (mission ? surveyOrderIdFromMissionCode(mission.missionCode) : null)
       if (!surveyOrderId) throw new Error('Thiếu mã đơn khảo sát (surveyOrderId) của nhiệm vụ — không suy ra được từ mã nhiệm vụ. Hãy publish trong cùng phiên vừa hoàn tất chuyến bay/upload, hoặc liên hệ dev kiểm tra.')
       const trees: PlantGpsTree[] = [
         ...yoloResult.activeTrees.map(tree => ({ treeId: tree.id, row: tree.row, col: tree.col, latitude: tree.lat, longitude: tree.lon, confidence: tree.confidence, status: 'DETECTED' as const, source: tree.source })),
@@ -295,7 +337,7 @@ export function ManagerMissionDetailPage() {
       // Chỉ gửi kèm boundary khi: đúng mission Khảo sát bản đồ nền (ranh giới vẽ trên ảnh mission này mới có ý nghĩa
       // là ranh giới chính thức farm) VÀ farm hiện chưa có ranh giới nào — tránh gửi lại mỗi lần publish, ghi đè
       // ranh giới farm đã đúng bằng polygon vẽ hơi khác ở lần chạy YOLO lại.
-      const shouldSetFarmBoundary = isBaselineMapping && farmBoundaryMissing && Boolean(boundaryPolygon)
+      const shouldSetFarmBoundary = !v3Capture && isBaselineMapping && farmBoundaryMissing && Boolean(boundaryPolygon)
       const boundary: MissionPlantGpsBoundaryPoint[] | undefined = shouldSetFarmBoundary
         ? boundaryPolygon!.coordinates[0].map(([longitude, latitude]) => ({ longitude, latitude }))
         : undefined
@@ -317,7 +359,9 @@ export function ManagerMissionDetailPage() {
     },
     onSuccess: ({ publishResult, replaceResult }) => {
       setPublishResult(publishResult)
-      void message.success(replaceResult.boundaryId ? 'Đã lưu nháp, set ranh giới nông trại và gửi yêu cầu đưa vào hệ thống chính thức.' : 'Đã lưu nháp và gửi yêu cầu đưa vào hệ thống chính thức.')
+      if (v3Capture) void client.invalidateQueries({ queryKey: ['manager-current-base-map-draft', farmId, captureOrderId] })
+      void message.success(v3Capture ? 'Đã gửi GPS cây để duyệt bản đồ.' :
+        replaceResult.boundaryId ? 'Đã lưu nháp, set ranh giới nông trại và gửi yêu cầu đưa vào hệ thống chính thức.' : 'Đã lưu nháp và gửi yêu cầu đưa vào hệ thống chính thức.')
     },
   })
   const normalizeMutation = useMutation({
@@ -744,10 +788,10 @@ export function ManagerMissionDetailPage() {
     {!isPlantHealth && orthophotoStatusQuery.data?.status === 'COMPLETED' && orthophotoStatusQuery.data.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title="Vẽ ranh giới vườn + cắt tiles" status={sliceResult ? 'done' : 'active'} summary={sliceResult ? `${sliceResult.totalTiles} tile đã cắt.` : undefined}>
       <p className="form-hint">Click lên ảnh để thêm điểm ranh giới. Từ 3 điểm trở lên tự khép kín. Khóa viền trước khi cắt tiles.</p>
       <BoundaryTilingPanel key={missionId} token={token} farmId={farmId} missionId={missionId} previewUrl={orthophotoStatusQuery.data.previewUrl} bounds={orthophotoStatusQuery.data.bounds}
-        disabled={publishPlantGpsMutation.isPending}
+        disabled={publishPlantGpsMutation.isPending || markCaptureBoundaryMutation.isPending}
         approvedBoundary={v3Capture ? farmContextQuery.data?.approvedBoundary?.geometry?.coordinates : undefined}
         onSliced={(result, polygon) => { setSliceResult(result); setBoundaryPolygon(polygon) }}
-        onUnlock={() => { setSliceResult(null); setBoundaryPolygon(null); setYoloResult(null); setPublishResult(null); setBoundaryUpdateResult(null); publishPlantGpsMutation.reset() }} />
+        onUnlock={() => { setSliceResult(null); setBoundaryPolygon(null); setYoloResult(null); setPublishResult(null); setBoundaryUpdateResult(null); publishPlantGpsMutation.reset(); markCaptureBoundaryMutation.reset() }} />
       {sliceResult ? <p className="form-hint">Đã sẵn sàng {sliceResult.totalTiles} tile để nhận diện cây ở bước tiếp theo.</p> : null}
     </StepSection> : null}
     {!isPlantHealth && sliceResult && boundaryPolygon && orthophotoStatusQuery.data?.previewUrl && orthophotoStatusQuery.data.bounds ? <StepSection title={v3Capture ? 'Nhận diện cây YOLO' : 'Nhận diện cây YOLO & Publish GPS'} status={publishResult ? 'done' : 'active'} summary={publishResult ? `Đã gửi yêu cầu publish (${publishResult.status}).` : yoloResult ? `${yoloResult.totalUniqueTrees} cây đã nhận diện.` : undefined}>
@@ -757,22 +801,40 @@ export function ManagerMissionDetailPage() {
       {yoloResult ? <>
         <p className="form-hint">Kết quả gần nhất: {yoloResult.totalUniqueTrees} cây, {yoloResult.totalMissingTrees} vị trí thiếu — dùng ở bước lưu nháp GPS cây tiếp theo.</p>
         <Button onClick={downloadTreesCsv}>Tải CSV kết quả cây</Button>
-        {v3Capture ? <Alert showIcon type="info" title="Có thể tải CSV kết quả. Gửi tọa độ trụ V3 đang chờ máy chủ hỗ trợ đúng liên kết lần bay và ranh giới." /> : <>
         <Divider />
-        <div className="resource-panel-heading"><div><strong>Đưa vào hệ thống chính thức</strong><span>Lưu nháp lại danh sách cây ở trên rồi gửi yêu cầu publish cho đơn khảo sát. Chỉ áp dụng cho nhiệm vụ Khảo sát bản đồ nền.</span></div></div>
+        <div className="resource-panel-heading"><div>
+          <strong>{v3Capture ? 'Gửi GPS để duyệt bản đồ' : 'Đưa vào hệ thống chính thức'}</strong>
+          <span>{v3Capture ? 'Lưu tọa độ từ kết quả nhận diện và gửi sang bước duyệt nội bộ bản đồ.' : 'Lưu nháp lại danh sách cây ở trên rồi gửi yêu cầu publish cho đơn khảo sát. Chỉ áp dụng cho nhiệm vụ Khảo sát bản đồ nền.'}</span>
+        </div></div>
+        {captureMayMarkBoundary ? <Flex vertical gap="middle">
+          <Alert showIcon type="info" title="Cần xác nhận ranh giới của đơn khảo sát lần đầu"
+            description={captureCorners ? 'Xác nhận dùng 4 góc đã vẽ làm ranh giới chính thức của nông trại và lần bay.' : 'Quay lại bản đồ, mở khóa và chọn đúng 4 góc ranh giới theo thứ tự quanh vườn. Sau đó cắt tiles và chạy YOLO lại.'} />
+          <Space wrap>
+            <Popconfirm title="Dùng 4 góc đã vẽ làm ranh giới chính thức?" okText="Xác nhận" cancelText="Quay lại"
+              disabled={!canMarkCaptureBoundary || markCaptureBoundaryMutation.isPending}
+              onConfirm={() => markCaptureBoundaryMutation.mutate()}>
+              <Button disabled={!canMarkCaptureBoundary} loading={markCaptureBoundaryMutation.isPending}>Xác nhận ranh giới</Button>
+            </Popconfirm>
+          </Space>
+          <SurveyMutationError error={markCaptureBoundaryMutation.error ?? farmContextQuery.error} />
+        </Flex> : null}
+        {v3Capture && !captureMayMarkBoundary && !captureBoundaryBound ? <Alert showIcon type="warning" title="Đơn khảo sát chưa có ranh giới đã gắn với lần bay." /> : null}
         <Form layout="inline">
           <Form.Item label="Khoảng cách hàng (m)"><InputNumber min={0.1} step={0.1} value={rowSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={value => setRowSpacingM(value ?? 3)} /></Form.Item>
           <Form.Item label="Khoảng cách cây (m)"><InputNumber min={0.1} step={0.1} value={plantSpacingM} disabled={publishPlantGpsMutation.isPending} onChange={value => setPlantSpacingM(value ?? 2.5)} /></Form.Item>
           <Form.Item label="Góc lưới (độ)"><InputNumber min={0} max={359.9} step={1} value={gridBearingDeg} disabled={publishPlantGpsMutation.isPending} onChange={value => setGridBearingDeg(value ?? 0)} /></Form.Item>
         </Form>
-        {!isBaselineMapping ? <Alert type="warning" showIcon message="Nhiệm vụ này không phải Khảo sát bản đồ nền — yêu cầu sẽ bị từ chối." /> : null}
-        {isBaselineMapping && farmBoundaryMissing ? <Alert type="info" showIcon message="Nông trại này chưa có ranh giới nào." description="Ranh giới đã vẽ ở bước trên sẽ được dùng để set luôn ranh giới chính thức của nông trại khi bấm nút bên dưới." /> : null}
+        {!v3Capture && !isBaselineMapping ? <Alert type="warning" showIcon message="Nhiệm vụ này không phải Khảo sát bản đồ nền — yêu cầu sẽ bị từ chối." /> : null}
+        {!v3Capture && isBaselineMapping && farmBoundaryMissing ? <Alert type="info" showIcon message="Nông trại này chưa có ranh giới nào." description="Ranh giới đã vẽ ở bước trên sẽ được dùng để set luôn ranh giới chính thức của nông trại khi bấm nút bên dưới." /> : null}
         {publishPlantGpsMutation.error ? <Alert type="error" showIcon message={publishPlantGpsError(publishPlantGpsMutation.error)} /> : null}
-        {publishResult ? <Alert type="success" showIcon message={`Đã gửi yêu cầu (${publishResult.status})`}
-          description={`messageId: ${publishResult.messageId} — hệ thống xử lý không đồng bộ, kiểm tra lại sau ít phút.`} /> : null}
+        {publishResult ? <Alert type="success" showIcon message={v3Capture ? 'Đã gửi GPS để duyệt bản đồ' : `Đã gửi yêu cầu (${publishResult.status})`}
+          description={v3Capture ? <Link to={`/manager/farms/${encodeURIComponent(farmId)}/base-map-drafts?surveyOrderId=${encodeURIComponent(captureOrderId)}`}>Mở trang duyệt bản đồ →</Link> :
+            `messageId: ${publishResult.messageId} — hệ thống xử lý không đồng bộ, kiểm tra lại sau ít phút.`} /> : null}
         {boundaryUpdateResult?.boundaryId ? <Alert type="success" showIcon message="Đã set ranh giới nông trại." description={`boundaryId: ${boundaryUpdateResult.boundaryId} · phiên bản ${boundaryUpdateResult.boundaryVersionNumber} · ${boundaryUpdateResult.boundaryPointCount} điểm.`} /> : null}
-        <Button type="primary" loading={publishPlantGpsMutation.isPending} onClick={() => publishPlantGpsMutation.mutate()}>Đưa vào hệ thống chính thức</Button>
-        </>}
+        <Button type="primary" disabled={v3Capture && (!canPublishCaptureGps || markCaptureBoundaryMutation.isPending)}
+          loading={publishPlantGpsMutation.isPending} onClick={() => publishPlantGpsMutation.mutate()}>
+          {v3Capture ? 'Gửi GPS để duyệt' : 'Đưa vào hệ thống chính thức'}
+        </Button>
       </> : null}
     </StepSection> : null}
     {!isPlantHealth ? <section className="resource-panel workflow-section">
