@@ -24,12 +24,14 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
   try {
     const { AuthProvider } = await server.ssrLoadModule('/src/features/auth/AuthContext.tsx')
     const { ManagerResultReviewPage } = await server.ssrLoadModule('/src/features/surveys/ManagerResultReviewPage.tsx')
-    const render = (review, invoice) => {
+    const render = (review, invoice, context, attempts) => {
       Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => JSON.stringify({ role: 'SYSTEM_MANAGER', fullName: 'M', email: 'm@example.test', phone: null, accessToken: 'test-token', expiresAt: '2099-01-01T00:00:00Z', tenant: null }) } })
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, gcTime: Infinity, staleTime: Infinity } } })
       clients.push(client)
       client.setQueryData(['result-review', 'order'], review)
       if (invoice) client.setQueryData(['manager-survey-invoice', 'order'], invoice)
+      if (context) client.setQueryData(['manager-order-context', 'order'], context)
+      if (attempts) client.setQueryData(['capture-attempts', 'order'], attempts)
       return renderToStaticMarkup(h(QueryClientProvider, { client }, h(MemoryRouter, { initialEntries: ['/manager/orders/order/result-review'] }, h(AuthProvider, null, h(Routes, null, h(Route, { path: '/manager/orders/:orderId/result-review', element: h(ManagerResultReviewPage) }))))))
     }
     const map = render(mapReview)
@@ -42,6 +44,21 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
 
     const comboPending = render({ ...mapReview, serviceCode: 'COMBO', screensDisease: true })
     assert.match(comboPending, /Chạy nhận diện bệnh/)
+
+    const assignedCombo = { surveyOrderId: 'order', surveyServiceCode: 'COMBO', status: 'PROCESSING', farmId: '10000000-0000-4000-8000-000000000001' }
+    const activeAttempt = { missionId: '10000000-0000-4000-8000-000000000002', status: 'PROCESSING' }
+    const awaitingAnalysis = render(null, undefined, assignedCombo, [activeAttempt])
+    assert.match(awaitingAnalysis, /Chạy nhận diện bệnh/)
+    assert.doesNotMatch(awaitingAnalysis, /Không thể tải dữ liệu|Chốt kết quả nội bộ/)
+    for (const [order, attempts] of [
+      [{ ...assignedCombo, surveyServiceCode: 'MAP' }, [activeAttempt]],
+      [assignedCombo, [{ ...activeAttempt, status: 'ACCEPTED' }]],
+      [assignedCombo, [activeAttempt, { ...activeAttempt, missionId: '10000000-0000-4000-8000-000000000003' }]],
+    ]) {
+      const unavailable = render(null, undefined, order, attempts)
+      assert.match(unavailable, /Chưa xác định được nhiệm vụ để nhận diện bệnh/)
+      assert.doesNotMatch(unavailable, /Chạy nhận diện bệnh/)
+    }
 
     const combo = render({ ...mapReview, serviceCode: 'COMBO', screensDisease: true, comboPendingBatch: batch })
     assert.match(combo, /Duyệt phát hiện, vùng bệnh và mục chặn/)

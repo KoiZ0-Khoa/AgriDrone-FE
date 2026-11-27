@@ -1,4 +1,4 @@
-import { apiRequest } from '../../api/client'
+import { ApiError, apiRequest } from '../../api/client'
 import type { Appointment, PaymentSession } from './orderTypes'
 import type { CaptureAppointmentBody, CaptureAppointmentOwnerBody, CaptureNoShowBody, CaptureNoShowResult, CaptureRescheduleBody, V3CaptureAttempt } from './v3Types'
 import type { FreezeCaptureInputBody, FrozenCaptureInput, V3CompleteFlightBody, V3FailFlightBody, V3FlightResult, V3StartFlightBody } from './v3Types'
@@ -55,9 +55,15 @@ export const markCaptureBoundary = (token: string, orderId: string, attemptId: s
 export const createQualityReflight = (token: string, orderId: string, parentAttemptId: string, body: QualityReflightBody) =>
   apiRequest<QualityReflightResult>(`${captureFlightPath(orderId, parentAttemptId)}/quality-reflights`, { method: 'POST', token, body })
 
-// G7 — duyệt kết quả V3. Lỗi 409 (dữ liệu cũ) → tải lại GET result-review để người dùng xác nhận lại đúng phiên bản.
-export const getResultReview = (token: string, orderId: string, signal?: AbortSignal) =>
-  apiRequest<ResultReview>(`${managerOrderPath(orderId)}/result-review`, { token, signal, cache: 'no-store' })
+// The first COMBO analysis must be submitted before the review API can return a batch.
+export async function getResultReview(token: string, orderId: string, signal?: AbortSignal): Promise<ResultReview | null> {
+  try {
+    return await apiRequest<ResultReview>(`${managerOrderPath(orderId)}/result-review`, { token, signal, cache: 'no-store' })
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409 && error.code === 'ComboBatch.NotFound') return null
+    throw error
+  }
+}
 export const recordComboReview = (token: string, orderId: string, body: RecordComboReviewBody) =>
   apiRequest<ComboReviewResult>(`${managerOrderPath(orderId)}/result-review/combo-reviews`, { method: 'POST', token, body })
 export const freezeResultReview = (token: string, orderId: string, body: FreezeResultBody) =>

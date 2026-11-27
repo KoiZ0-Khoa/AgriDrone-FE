@@ -8,15 +8,17 @@ import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { PlantHealthProcessingPanel } from '../missions/PlantHealthProcessingPanel'
 import { ManagerInvoicePanel } from './ManagerInvoicePanel'
+import { getAssignedOrder } from './orderApi'
+import { ownerGuid } from './ownerOrderWorkflow'
 import { orderStatusLabels } from './orderWorkflow'
 import {
   blockerItems, blockerResolutionLabels, comboReviewBody, comboReviewProblems, defaultFreezeDecision, findingDecisionLabels, freezeBlocker,
   freezeDecisionLabels, freezeResultBody, initialComboReviewDraft, isCombo, isFrozen, isStaleReviewError, outcomeLabels, zoneDecisionLabels,
   type ComboReviewDraft,
 } from './resultReviewWorkflow'
-import { freezeResultReview, getResultReview, recordComboReview } from './v3Api'
+import { freezeResultReview, getCaptureAttempts, getResultReview, recordComboReview } from './v3Api'
 import type { ComboBlockerResolutionValue, ComboFindingDecisionValue, ComboPendingFinding, ComboPendingZone, FreezeResult, FreezeResultReviewDecision, ResultReview } from './v3Types'
-import { captureAttemptStatusLabels, v3OperationFor, type V3Operation } from './v3Workflow'
+import { captureAttemptStatusLabels, v3OperationFor, v3ServiceKind, type V3Operation } from './v3Workflow'
 import { dateTime, workflowError } from './workflow'
 
 function MutationError({ error, reload }: { error: Error | null; reload: () => void }) {
@@ -41,6 +43,7 @@ export function ManagerResultReviewPage() {
   if (query.isPending) return <>{back}<CommonState type="loading" title="Đang tải dữ liệu duyệt" /></>
   if (query.isError) return <>{back}<CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /></>
   const review = query.data
+  if (review === null) return <>{back}<PendingComboAnalysis token={token} orderId={orderId} reload={reload} /></>
   const combo = isCombo(review)
   return <>
     {back}
@@ -61,6 +64,38 @@ export function ManagerResultReviewPage() {
     {isFrozen(review) ? <ManagerInvoicePanel key={review.orderId} token={token} review={review} refreshing={query.isFetching} reload={reload} /> : null}
     {!isFrozen(review) && !frozen ? <FreezeSection key={review.expectedFreezeTokens.expectedComboReviewRevisionId ?? review.verifiedPoleCountSnapshotId} token={token} review={review} reload={reload} done={async result => { setFrozen(result); await reload() }} /> : null}
   </>
+}
+
+function PendingComboAnalysis({ token, orderId, reload }: { token: string; orderId: string; reload: () => Promise<void> }) {
+  const order = useQuery({
+    queryKey: ['manager-order-context', orderId],
+    queryFn: ({ signal }) => getAssignedOrder(token, orderId, signal),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+  const attempts = useQuery({
+    queryKey: ['capture-attempts', orderId],
+    queryFn: ({ signal }) => getCaptureAttempts(token, orderId, signal),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+  if (order.isError || attempts.isError) {
+    return <CommonState type="error" description={workflowError(order.error ?? attempts.error)} retry={reload} />
+  }
+  if (order.isPending || attempts.isPending) return <CommonState type="loading" title="Đang tải lần bay COMBO" />
+
+  const processingAttempts = attempts.data.filter(attempt => attempt.status === 'PROCESSING')
+  const missionId = processingAttempts.length === 1 ? processingAttempts[0].missionId : null
+  const assigned = order.data
+  if (!assigned || assigned.surveyOrderId !== orderId || v3ServiceKind(assigned.surveyServiceCode) !== 'COMBO' ||
+    assigned.status !== 'PROCESSING' || !ownerGuid(assigned.farmId) || !missionId || !ownerGuid(missionId)) {
+    return <Alert className="workflow-notice" showIcon type="warning" title="Chưa xác định được nhiệm vụ để nhận diện bệnh"
+      description="Kiểm tra lại đơn COMBO và lần bay đang xử lý trong trang đơn khảo sát." />
+  }
+  return <PlantHealthProcessingPanel key={missionId} token={token} farmId={assigned.farmId} missionId={missionId}
+    surveyOrderId={orderId} disabled={false} onComboHandoff={reload} />
 }
 
 function ComboReviewSection({ token, review, reload }: { token: string; review: ResultReview; reload: () => Promise<void> }) {
