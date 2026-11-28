@@ -10,6 +10,7 @@ export type MapVersion = {
 }
 export type MapPlant = {
   plantId: string; plantCode: string; row: number; col: number; lat: number; lon: number; lifecycleStatus: string
+  plantProfileId?: string | null
   mappingCandidateId?: string | null
 }
 export type ManualMapChange = {

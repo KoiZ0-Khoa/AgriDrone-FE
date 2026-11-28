@@ -14,6 +14,8 @@ import {
 import { getOwnerOrder } from './ownerOrderApi'
 import { OwnerQualityRefundPanel } from './OwnerQualityRefundPanel'
 import { ownerGuid } from './ownerOrderWorkflow'
+import { PublishedPlantFindings, publishedFindingsByProfile } from './PublishedPlantFindings'
+import { comboFindingLabel } from './resultReviewWorkflow'
 import { SurveyMutationError } from './SurveyMutationError'
 
 const dateInVietnam = (value: string) => new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
@@ -59,7 +61,7 @@ function PublishedResult({ token, tenantId, orderId }: { token: string; tenantId
       <Table rowKey="findingId" size="small" dataSource={result.findings} pagination={{ pageSize: 10 }} scroll={{ x: 620 }}
         locale={{ emptyText: 'Không ghi nhận phát hiện nghi bệnh trong kết quả đã phát hành.' }} columns={[
           { title: 'Trụ', render: (_, finding) => polesByProfile.get(finding.plantProfileId) ?? '—' },
-          { title: 'Nhãn nghi ngờ', dataIndex: 'suspectedClassCode' },
+          { title: 'Nhãn nghi ngờ', render: (_, finding) => comboFindingLabel(finding.suspectedClassCode) },
           { title: 'Độ tin cậy', render: (_, finding) => `${(finding.confidence * 100).toFixed(1)}%` },
           { title: 'Ghi nhận lúc', render: (_, finding) => dateInVietnam(finding.observedAt) },
           { title: 'Giới hạn', render: (_, finding) => finding.limitations.join(', ') || '—' },
@@ -82,14 +84,25 @@ function PublishedSurveyMap({ result }: { result: PublishedSurveyResult }) {
   const points = [...boundary.flat(), ...result.poles.map(polePosition)]
   if (!points.length) return <p>Chưa có tọa độ bản đồ cho đợt khảo sát này.</p>
   const mapProps = points.length === 1 ? { center: points[0], zoom: 17 } : { bounds: points, boundsOptions: { padding: [20, 20] as [number, number], maxZoom: 19 } }
-  return <MapContainer {...mapProps} maxZoom={22} style={{ height: 440, width: '100%' }}>
-    <MapBaseLayers />
-    {boundary.length ? <Polygon positions={boundary} pathOptions={{ color: '#147658', fillOpacity: 0.08 }} /> : null}
-    {result.zones.map(zone => <Polygon key={zone.sourceProposalId} positions={zone.geometry.coordinates.map(ring => ring.map(([lng, lat]): [number, number] => [lat, lng]))}
-      pathOptions={{ color: '#ae620e', fillOpacity: 0.22 }}><Popup>Vùng nghi bệnh · {zone.suspectedClassCode}</Popup></Polygon>)}
-    {result.poles.map(pole => <CircleMarker key={pole.plantProfileId} center={polePosition(pole)} radius={4}
-      pathOptions={{ color: '#147658', fillOpacity: 0.75 }}><Popup>{pole.plantCode} · Hàng / cột {poleGrid(pole)}</Popup></CircleMarker>)}
-  </MapContainer>
+  const findingsByProfile = publishedFindingsByProfile(result)
+  return <>
+    {result.poles.some(pole => findingsByProfile.has(pole.plantProfileId.toLowerCase())) ? <p className="form-hint">Trụ màu đỏ có dấu hiệu nghi bệnh. Bấm vào trụ để xem chi tiết.</p> : null}
+    <MapContainer {...mapProps} maxZoom={22} style={{ height: 440, width: '100%' }}>
+      <MapBaseLayers />
+      {boundary.length ? <Polygon positions={boundary} pathOptions={{ color: '#147658', fillOpacity: 0.08 }} /> : null}
+      {result.zones.map(zone => <Polygon key={zone.sourceProposalId} positions={zone.geometry.coordinates.map(ring => ring.map(([lng, lat]): [number, number] => [lat, lng]))}
+        pathOptions={{ color: '#ae620e', fillOpacity: 0.22 }}><Popup>Vùng nghi bệnh · {comboFindingLabel(zone.suspectedClassCode)}</Popup></Polygon>)}
+      {result.poles.map(pole => {
+        const findings = findingsByProfile.get(pole.plantProfileId.toLowerCase())
+        return <CircleMarker key={pole.plantProfileId} center={polePosition(pole)} radius={findings ? 6 : 4}
+          pathOptions={{ color: findings ? '#b42318' : '#147658', fillOpacity: 0.75 }}>
+          <Popup><strong>{pole.plantCode}</strong> · Hàng / cột {poleGrid(pole)}
+            {findings ? <PublishedPlantFindings findings={findings} /> : null}
+          </Popup>
+        </CircleMarker>
+      })}
+    </MapContainer>
+  </>
 }
 
 function PublishedSurveyImages({ token, tenantId, result }: { token: string; tenantId: string; result: PublishedSurveyResult }) {
