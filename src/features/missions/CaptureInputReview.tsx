@@ -10,7 +10,7 @@ import { v3OperationFor, type V3Operation } from '../surveys/v3Workflow'
 
 type ReviewAction = 'reopen' | 'approve'
 
-export function CaptureInputReview({ token, orderId, orderVersion, attempt, refreshing, refresh, onReopened }: {
+export function CaptureInputReview({ token, orderId, orderVersion, attempt, refreshing, refresh, onReopened, replaceApprovedInput = false }: {
   token: string
   orderId: string
   orderVersion: number
@@ -18,6 +18,7 @@ export function CaptureInputReview({ token, orderId, orderVersion, attempt, refr
   refreshing: boolean
   refresh: () => Promise<void>
   onReopened: () => void
+  replaceApprovedInput?: boolean
 }) {
   const { message } = App.useApp()
   const [dialog, setDialog] = useState<{ action: ReviewAction; snapshot: string } | null>(null)
@@ -27,9 +28,11 @@ export function CaptureInputReview({ token, orderId, orderVersion, attempt, refr
   const { captureAttemptId, version, manifestId, manifestFingerprint, processingJobId } = attempt
   const snapshot = JSON.stringify([orderId, orderVersion, captureAttemptId, version, manifestId, manifestFingerprint, processingJobId])
   const snapshotChanged = !!dialog && dialog.snapshot !== snapshot
+  const hasProcessingJob = !!manifestFingerprint?.trim() && !!processingJobId && ownerGuid(processingJobId)
   const canReopen = !!manifestId && ownerGuid(manifestId) && validOwnerVersion(orderVersion) &&
-    attempt.orderVersion === orderVersion && validOwnerVersion(version)
-  const canApprove = canReopen && !!manifestFingerprint?.trim() && !!processingJobId && ownerGuid(processingJobId)
+    attempt.orderVersion === orderVersion && validOwnerVersion(version) &&
+    (replaceApprovedInput ? attempt.status === 'PROCESSING' && hasProcessingJob : attempt.status === 'UPLOADED')
+  const canApprove = !replaceApprovedInput && canReopen && hasProcessingJob
 
   const review = useMutation({
     retry: false,
@@ -39,14 +42,16 @@ export function CaptureInputReview({ token, orderId, orderVersion, attempt, refr
       const note = comment.trim()
       if (action === 'reopen') {
         if (!note || note.length > 500) throw new Error('Nhập lý do mở lại từ 1 đến 500 ký tự.')
-        const body = { ...base, reason: note }
+        const body = { ...base, reason: note, ...(replaceApprovedInput ? { replaceApprovedInput: true } : {}) }
         const next = await v3OperationFor(operation.current, body)
         operation.current = next
         const result = await reopenCaptureInput(token, orderId, captureAttemptId, {
           ...body, operationId: next.operationId, payloadFingerprint: next.payloadFingerprint,
         })
         if (!result.success || result.attemptId !== captureAttemptId || result.missionId !== attempt.missionId ||
-            result.supersededManifestId !== manifestId) {
+            result.supersededManifestId !== manifestId ||
+            (replaceApprovedInput && (!validOwnerVersion(result.version) || result.version <= version ||
+              !validOwnerVersion(result.orderVersion) || result.orderVersion <= orderVersion))) {
           throw new Error('Máy chủ chưa xác nhận mở lại bộ dữ liệu này.')
         }
       } else {
@@ -67,7 +72,8 @@ export function CaptureInputReview({ token, orderId, orderVersion, attempt, refr
       if (action === 'reopen') onReopened()
       setDialog(null)
       await refresh()
-      void message.success(action === 'reopen' ? 'Đã mở lại bộ dữ liệu.' : 'Đã duyệt bộ dữ liệu đầu vào.')
+      void message.success(action === 'approve' ? 'Đã duyệt bộ dữ liệu đầu vào.'
+        : replaceApprovedInput ? 'Đã mở lại bước Upload & Telemetry.' : 'Đã mở lại bộ dữ liệu.')
     },
     onSettled: () => { submitting.current = false },
   })
@@ -79,31 +85,35 @@ export function CaptureInputReview({ token, orderId, orderVersion, attempt, refr
   }
 
   const reopening = dialog?.action === 'reopen'
-  const label = reopening ? 'Mở lại bộ dữ liệu' : 'Duyệt bộ dữ liệu'
+  const reopenLabel = replaceApprovedInput ? 'Quay lại Upload' : 'Mở lại bộ dữ liệu'
+  const label = reopening ? reopenLabel : 'Duyệt bộ dữ liệu'
   const busy = refreshing || review.isPending
   const reloadNeeded = snapshotChanged || mutationNeedsReload(review.error)
 
   return <>
-    {!canReopen && !refreshing ? <Alert showIcon type="warning" title="Chưa xác nhận được bộ dữ liệu hiện hành. Kiểm tra lại để tiếp tục." /> : null}
-    {canReopen && !canApprove ? <Alert showIcon type="warning" title="Bộ dữ liệu chưa có đủ thông tin để duyệt."
+    {!replaceApprovedInput && !canReopen && !refreshing ? <Alert showIcon type="warning" title="Chưa xác nhận được bộ dữ liệu hiện hành. Kiểm tra lại để tiếp tục." /> : null}
+    {!replaceApprovedInput && canReopen && !canApprove ? <Alert showIcon type="warning" title="Bộ dữ liệu chưa có đủ thông tin để duyệt."
       description="Hãy mở lại bộ dữ liệu, kiểm tra telemetry Blackbox và chốt lại." /> : null}
-    <Space wrap>
+    {replaceApprovedInput ? <Button size="small" danger loading={review.isPending} disabled={busy || !canReopen}
+      onClick={() => open('reopen')}>{reopenLabel}</Button> : <Space wrap>
       <Button icon={<ReloadOutlined />} loading={refreshing} disabled={review.isPending} onClick={() => { void refresh() }}>Kiểm tra lại</Button>
-      <Button disabled={busy || !canReopen} onClick={() => open('reopen')}>Mở lại bộ dữ liệu</Button>
+      <Button disabled={busy || !canReopen} onClick={() => open('reopen')}>{reopenLabel}</Button>
       <Button type="primary" disabled={busy || !canApprove} onClick={() => open('approve')}>Duyệt bộ dữ liệu</Button>
-    </Space>
+    </Space>}
     <Modal open={!!dialog} title={label} okText={label} cancelText="Quay lại"
       styles={{ footer: { paddingBlockStart: 12 } }}
       confirmLoading={review.isPending} closable={!review.isPending} mask={{ closable: !review.isPending }}
       cancelButtonProps={{ disabled: review.isPending }}
-      okButtonProps={{ disabled: busy || reloadNeeded || (reopening ? !canReopen || !comment.trim() : !canApprove) }}
+      okButtonProps={{ danger: replaceApprovedInput, disabled: busy || reloadNeeded || (reopening ? !canReopen || !comment.trim() : !canApprove) }}
       onCancel={() => { if (!submitting.current) setDialog(null) }}
       onOk={() => {
         if (!dialog || submitting.current || busy || reloadNeeded || (reopening ? !canReopen || !comment.trim() : !canApprove)) return
         submitting.current = true
         review.mutate(dialog.action)
       }}>
-      <p>{reopening ? 'Sau khi mở lại, bạn có thể bổ sung ảnh hoặc nhập telemetry Blackbox rồi chốt lại.' : 'Kiểm tra ảnh và telemetry của bộ dữ liệu này trước khi duyệt.'}</p>
+      <p>{replaceApprovedInput
+        ? 'Ảnh và telemetry đã duyệt sẽ được lưu trong lịch sử. Bạn cần tải bộ ảnh thay thế, nhập lại telemetry Blackbox và duyệt bộ dữ liệu mới trước khi chạy nhận diện.'
+        : reopening ? 'Sau khi mở lại, bạn có thể bổ sung ảnh hoặc nhập telemetry Blackbox rồi chốt lại.' : 'Kiểm tra ảnh và telemetry của bộ dữ liệu này trước khi duyệt.'}</p>
       <Form.Item layout="vertical" htmlFor="capture-review-comment"
         label={reopening ? 'Lý do mở lại (bắt buộc)' : 'Ghi chú (không bắt buộc)'}>
         <Input.TextArea id="capture-review-comment" rows={3} value={comment} onChange={event => setComment(event.target.value)}

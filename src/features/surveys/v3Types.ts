@@ -95,7 +95,7 @@ export type FrozenCaptureInput = V3FlightResult & {
   orderVersion?: number | null
 }
 
-export type ReopenCaptureInputBody = V3AttemptOperation & { manifestId: string; reason: string }
+export type ReopenCaptureInputBody = V3AttemptOperation & { manifestId: string; reason: string; replaceApprovedInput?: boolean }
 export type ReopenCaptureInputResult = V3FlightResult & {
   missionId: string
   supersededManifestId: string

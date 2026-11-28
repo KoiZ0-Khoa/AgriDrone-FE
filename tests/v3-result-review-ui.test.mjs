@@ -65,6 +65,12 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
     assert.doesNotMatch(waiting, /Chạy nhận diện bệnh/)
     const analyzing = render(null, undefined, firstCombo, [mapAttempt, { ...diseaseAttempt, status: 'PROCESSING' }])
     assert.match(analyzing, /Chạy nhận diện bệnh/)
+    const replacement = { ...diseaseAttempt, status: 'AWAITING_UPLOAD',
+      history: [{ action: 'ReopenApprovedUpload', createdAt: '2026-11-28T10:00:00Z' }] }
+    const reopened = render(null, undefined, { ...firstCombo, status: 'AWAITING_CAPTURE_UPLOAD' }, [mapAttempt, replacement])
+    assert.match(reopened, /Chờ bộ dữ liệu thay thế của chuyến bay bệnh/)
+    assert.ok(reopened.includes(`href="/manager/farms/${firstCombo.farmId}/missions/${diseaseAttempt.missionId}?orderId=order"`))
+    assert.doesNotMatch(reopened, /Chạy nhận diện bệnh/)
     for (const [order, attempts] of [
       [{ ...assignedCombo, surveyServiceCode: 'MAP' }, [activeAttempt]],
       [assignedCombo, [{ ...activeAttempt, status: 'ACCEPTED' }]],

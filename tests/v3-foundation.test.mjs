@@ -159,6 +159,9 @@ test('V3 capture review sends the current manifest and versions to reopen or app
       { status: 'AwaitingUpload', missionId: 'mission', supersededManifestId: 'manifest', orderVersion: 57 }],
     [v3Api.approveCaptureInput, 'input-approval', { ...base, manifestFingerprint: 'A'.repeat(64), processingJobId: 'job', notes: 'Đã kiểm tra ảnh và log' },
       { status: 'Processing', approvalId: 'approval' }],
+    [v3Api.reopenCaptureInput, 'input-manifest/reopen', { ...base, expectedOrderVersion: 57, expectedAttemptVersion: 7,
+      reason: 'Thay ảnh chuyến bay bệnh', replaceApprovedInput: true },
+      { status: 'AwaitingUpload', missionId: 'mission', supersededManifestId: 'manifest', orderVersion: 58, version: 8 }],
   ]
   for (const [send, route, body, response] of actions) {
     const receipt = { success: true, attemptId: 'attempt/1', version: 7, ...response }

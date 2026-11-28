@@ -117,6 +117,7 @@ export function ManagerMissionDetailPage() {
   const [pastingPlantGps, setPastingPlantGps] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const mediaInputRef = useRef<HTMLInputElement>(null)
+  const uploadAnchor = useRef<HTMLDivElement>(null)
   const [mediaDropActive, setMediaDropActive] = useState(false)
   const [uploadResults, setUploadResults] = useState<MediaUploadItemResult[] | null>(null)
   const [confirmFreeze, setConfirmFreeze] = useState<{ missionVersion: number; orderVersion: number; attemptVersion: number } | null>(null)
@@ -503,6 +504,8 @@ export function ManagerMissionDetailPage() {
     ])
   }
   const canRecoverCaptureMission = captureCanProcess && uploading
+  const canReplaceApprovedInput = v3Capture && captureCanProcess && status === 'READY_FOR_PROCESSING' &&
+    v3ServiceKind(captureOrder.data?.surveyServiceCode) === 'COMBO' && ownerGuid(captureAttempt?.mappingSourceAttemptId ?? '')
   const captureRefreshing = missionQuery.isFetching || captureOrder.isFetching || captureAttempts.isFetching
   const recoverCaptureMutation = useMutation({
     retry: false,
@@ -559,6 +562,28 @@ export function ManagerMissionDetailPage() {
   const canEditCaptureUpload = captureAwaitingUpload && !frozenInput && !freezeMutation.isPending
   const telemetryEligible = (status === 'FLIGHT_COMPLETED' || uploading) && (!v3Capture || canEditCaptureUpload)
   const canEditMedia = !v3Capture || (canEditCaptureUpload && ['FLIGHT_COMPLETED', 'UPLOADING', 'UPLOAD_FAILED'].includes(status ?? ''))
+  async function refreshReplacementUpload() {
+    setLatest(null)
+    setSelectedFiles([])
+    setUploadResults(null)
+    setShowAllMedia(false)
+    if (mediaInputRef.current) mediaInputRef.current.value = ''
+    uploadMutation.reset()
+    setLogFile(null)
+    setNormalized(null)
+    setSelectedSegmentIndexes([])
+    setTelemetryOperation(null)
+    setImportResult(null)
+    normalizeMutation.reset()
+    importMutation.reset()
+    await Promise.all([
+      refreshCaptureInput(),
+      client.invalidateQueries({ queryKey: ['mission-media', farmId, missionId] }),
+      client.invalidateQueries({ queryKey: ['mission-disease-job', farmId, missionId] }),
+      client.invalidateQueries({ queryKey: ['result-review', captureOrderId] }),
+    ])
+    uploadAnchor.current?.scrollIntoView({ block: 'start' })
+  }
   const finalizeMutation = useMutation({
     mutationFn: () => { if (version === undefined) throw new Error('Chưa tải được phiên bản nhiệm vụ.'); return api.finalizeMissionUpload(token, farmId, missionId, version) },
     onSuccess: async data => {
@@ -698,6 +723,7 @@ export function ManagerMissionDetailPage() {
       {completeFlightMutation.error ? <Alert type="error" showIcon message={missionError(completeFlightMutation.error)} /> : null}
       <Button type="primary" loading={completeFlightMutation.isPending} onClick={() => completeFlightMutation.mutate()}>Kết thúc chuyến bay</Button>
     </StepSection> : null}
+    {v3Capture && postFlight ? <div ref={uploadAnchor} /> : null}
     {postFlight ? <StepSection title="Upload ảnh/video" status={v3Capture ? canEditMedia ? 'active' : 'done' : status === 'FLIGHT_COMPLETED' || uploading || status === 'UPLOAD_FAILED' ? 'active' : 'done'} summary={mediaQuery.data ? `${mediaQuery.data.totalCount} file đã upload.` : 'Xem danh sách tệp'}>
       {canEditMedia ? <>
       <p className="form-hint">Chọn ảnh/video từ drone, hoặc kéo-thả cả thư mục vào đây để lấy toàn bộ file bên trong.</p>
@@ -759,7 +785,11 @@ export function ManagerMissionDetailPage() {
         {!v3Capture || telemetryEligible ? <Button type="primary" disabled={selectedSegmentIndexes.length === 0 || (v3Capture && uploadMutation.isPending)} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import telemetry đã chọn</Button> : null}
       </> : null}
     </StepSection> : null}
-    {v3Capture && postFlight ? <StepSection title="Chốt & duyệt dữ liệu đầu vào" status={orthophotoEligible || diseaseInputApproved ? 'done' : 'active'} summary="Đã duyệt bộ dữ liệu đầu vào.">
+    {v3Capture && postFlight ? <StepSection title="Chốt & duyệt dữ liệu đầu vào" status={orthophotoEligible || diseaseInputApproved ? 'done' : 'active'} summary="Đã duyệt bộ dữ liệu đầu vào."
+      actions={canReplaceApprovedInput && captureOrder.data && captureAttempt ? <CaptureInputReview key={captureAttempt.captureAttemptId}
+        token={token} orderId={captureOrderId} orderVersion={captureOrder.data.orderVersion} attempt={captureAttempt} replaceApprovedInput
+        refreshing={captureRefreshing} refresh={refreshReplacementUpload}
+        onReopened={() => { setConfirmFreeze(null); freezeMutation.reset(); freezeOperation.current = null }} /> : null}>
       {!readCapture ? <Alert showIcon type="info" title="Mở nhiệm vụ từ đơn khảo sát để tải dữ liệu lần bay." action={<Link to="/manager/orders">Đơn khảo sát được giao</Link>} />
         : captureOrder.isError || captureAttempts.isError ? <SurveyMutationError error={captureOrder.error ?? captureAttempts.error} />
         : captureOrder.isPending || captureAttempts.isPending ? <CommonState type="loading" />

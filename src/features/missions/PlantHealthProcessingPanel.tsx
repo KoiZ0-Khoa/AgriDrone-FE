@@ -8,9 +8,9 @@ import type { GeoJsonPolygon } from '../farms/types'
 import { surveyOrderIdFromMissionCode } from './missionWorkflow'
 import { detectMissionDiseases, getMissionDiseaseJob, isDiseaseJobActive, publishMissionPlantHealth, publishMissionComboAnalysis, type DiseaseDetectOptions, type DiseaseDetectResult, type HealthHandoffResult, type MissionDiseaseJob } from './plantHealthProcessingApi'
 
-export function PlantHealthProcessingPanel({ token, farmId, missionId, missionCode, surveyOrderId, boundary, disabled, onComboHandoff, importedSourceRevision }: {
+export function PlantHealthProcessingPanel({ token, farmId, missionId, missionCode, surveyOrderId, boundary, disabled, onComboHandoff, importedSourceRevision, inputReopenedAt }: {
   token: string; farmId: string; missionId: string; missionCode?: string; surveyOrderId?: string | null; boundary?: GeoJsonPolygon | null
-  disabled: boolean; onComboHandoff?: () => Promise<void>; importedSourceRevision?: number
+  disabled: boolean; onComboHandoff?: () => Promise<void>; importedSourceRevision?: number; inputReopenedAt?: string
 }) {
   const client = useQueryClient()
   const [form] = Form.useForm<Omit<DiseaseDetectOptions, 'polygonGeoJson'>>()
@@ -19,12 +19,14 @@ export function PlantHealthProcessingPanel({ token, farmId, missionId, missionCo
   const detecting = useRef(false), publishing = useRef(false)
   const combo = Boolean(onComboHandoff)
   const orderId = surveyOrderId ?? (missionCode && surveyOrderIdFromMissionCode(missionCode))
-  const jobKey = ['mission-disease-job', farmId, missionId] as const
+  const jobKey = ['mission-disease-job', farmId, missionId, ...(inputReopenedAt ? [inputReopenedAt] : [])] as const
+  const isCurrentInputJob = (job: MissionDiseaseJob) => !inputReopenedAt || Date.parse(job.createdAt) >= Date.parse(inputReopenedAt)
   const jobQuery = useQuery({
     queryKey: jobKey,
-    queryFn: ({ signal }) => {
+    queryFn: async ({ signal }) => {
       const current = client.getQueryData<MissionDiseaseJob | null>(jobKey)
-      return getMissionDiseaseJob(token, farmId, missionId, isDiseaseJobActive(current) ? current?.jobId : undefined, signal)
+      const job = await getMissionDiseaseJob(token, farmId, missionId, isDiseaseJobActive(current) ? current?.jobId : undefined, signal)
+      return job && isCurrentInputJob(job) ? job : null
     },
     refetchInterval: query => query.state.status !== 'error' && isDiseaseJobActive(query.state.data) ? 5000 : false,
     retry: false,
@@ -57,7 +59,11 @@ export function PlantHealthProcessingPanel({ token, farmId, missionId, missionCo
       onComboHandoff?.(),
     ])
   }, onSettled: () => { publishing.current = false } })
-  const detect = useMutation({ retry: false, mutationFn: (values: Omit<DiseaseDetectOptions, 'polygonGeoJson'>) => detectMissionDiseases(token, farmId, missionId, combo ? {} : { ...values, ...(boundary ? { polygonGeoJson: boundary } : {}) }),
+  const detect = useMutation({ retry: false, mutationFn: async (values: Omit<DiseaseDetectOptions, 'polygonGeoJson'>) => {
+    const job = await detectMissionDiseases(token, farmId, missionId, combo ? {} : { ...values, ...(boundary ? { polygonGeoJson: boundary } : {}) })
+    if (!isCurrentInputJob(job)) throw new Error('Lượt nhận diện trước khi thay ảnh vẫn đang chạy. Chờ lượt đó kết thúc rồi chạy nhận diện bộ ảnh mới.')
+    return job
+  },
     onMutate: () => { publish.reset() },
     onSuccess: async data => {
       await client.cancelQueries({ queryKey: jobKey, exact: true })

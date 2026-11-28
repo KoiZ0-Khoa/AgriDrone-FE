@@ -113,6 +113,14 @@ function PendingComboAnalysis({ token, orderId, reload, checkHandoff }: { token:
   const missionId = attempt?.missionId
   const assigned = order.data
   const isAssignedCombo = assigned?.surveyOrderId === orderId && v3ServiceKind(assigned.surveyServiceCode) === 'COMBO'
+  const replacement = isAssignedCombo && ['AWAITING_CAPTURE_UPLOAD', 'AWAITING_INPUT_REVIEW'].includes(assigned.status)
+    ? attempts.data.findLast(item => item.mappingSourceAttemptId && ['AWAITING_UPLOAD', 'UPLOADED'].includes(item.status) &&
+      item.history?.some(transition => transition.action === 'ReopenApprovedUpload')) : undefined
+  if (replacement?.missionId && assigned && ownerGuid(assigned.farmId) && ownerGuid(replacement.missionId)) {
+    return <Alert className="workflow-notice" showIcon type="info" title="Chờ bộ dữ liệu thay thế của chuyến bay bệnh"
+      description="Hoàn tất upload, nhập telemetry và duyệt bộ dữ liệu thay thế trước khi chạy nhận diện."
+      action={<Link to={`/manager/farms/${encodeURIComponent(assigned.farmId)}/missions/${encodeURIComponent(replacement.missionId)}?orderId=${encodeURIComponent(orderId)}`}>Mở nhiệm vụ bay bệnh</Link>} />
+  }
   const hasDiseaseCapture = attempts.data.some(item => !!item.mappingSourceAttemptId)
   if (isAssignedCombo && assigned.requiresBaselineMapping && !attempt?.mappingSourceAttemptId) {
     return <Alert className="workflow-notice" showIcon type="info" title={hasDiseaseCapture ? 'Chờ duyệt dữ liệu chuyến bay bệnh' : 'Cần tạo chuyến bay bệnh'}
@@ -123,8 +131,9 @@ function PendingComboAnalysis({ token, orderId, reload, checkHandoff }: { token:
     return <Alert className="workflow-notice" showIcon type="warning" title="Chưa xác định được nhiệm vụ để nhận diện bệnh"
       description="Kiểm tra lại đơn COMBO và lần bay đang xử lý trong trang đơn khảo sát." />
   }
-  return <PlantHealthProcessingPanel key={missionId} token={token} farmId={assigned.farmId} missionId={missionId}
-    surveyOrderId={orderId} disabled={false} onComboHandoff={checkHandoff} />
+  const inputReopenedAt = attempt?.history?.findLast(transition => transition.action === 'ReopenApprovedUpload')?.createdAt
+  return <PlantHealthProcessingPanel key={`${missionId}:${inputReopenedAt ?? ''}`} token={token} farmId={assigned.farmId} missionId={missionId}
+    surveyOrderId={orderId} disabled={false} onComboHandoff={checkHandoff} inputReopenedAt={inputReopenedAt} />
 }
 
 function ComboReviewSection({ token, review, reload, checkHandoff }: { token: string; review: ResultReview; reload: () => Promise<void>; checkHandoff: (afterSourceRevision?: number) => Promise<void> }) {
