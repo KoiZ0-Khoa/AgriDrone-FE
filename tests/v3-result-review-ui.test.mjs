@@ -92,6 +92,7 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
     assert.match(combo, /Ngoài ranh giới/)
     assert.match(combo, /Mục cần xử lý \(1\/1 nhóm\)/)
     assert.match(combo, /Ngoài ranh giới · Phát hiện cần xem lại/)
+    assert.match(combo, /Chọn tất cả \(1\)/)
     assert.match(combo, /Loại phát hiện đã chọn/)
     assert.equal((combo.match(/Mở trên bản đồ/g) ?? []).length, 3) // phát hiện, vùng và mục chặn
     assert.ok(combo.indexOf('Bản đồ và ảnh minh chứng') < combo.indexOf('Danh sách phát hiện'))
@@ -106,6 +107,14 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
     assert.match(newer, /<button(?:(?!disabled)[^>])*><span>Gửi kết quả sơ bộ sang đơn khảo sát<\/span><\/button>/)
     const closed = render({ ...pendingReview, captureAttemptStatus: 'ACCEPTED' })
     assert.doesNotMatch(closed, /Phân tích lại ảnh chuyến bay bệnh/)
+    const processedReview = { ...pendingReview, currentComboReview: { reviewRevisionId: 'review-1', revisionNumber: 1,
+      outcome: 'Approved', reviewedAt: batch.importedAt, unresolvedBlockersCount: 0, findingDecisions: [], zoneDecisions: [],
+      blockerResolutions: [
+        { sourceType: 'BOUNDARY_EXCEPTION', sourceId: 'f1', reasonCode: 'OUT_OF_BOUNDARY', resolution: 'Excluded', reason: 'Ngoài vườn' },
+        { sourceType: 'FINDING_UNCERTAINTY', sourceId: 'f1', reasonCode: 'REQUIRES_REVIEW', resolution: 'Excluded', reason: 'Ngoài vườn' },
+      ],
+    } }
+    assert.doesNotMatch(render(processedReview), /Chọn tất cả|Loại phát hiện đã chọn/)
 
     const frozen = render({ ...mapReview, orderStatus: 'AWAITING_SETTLEMENT', captureAttemptStatus: 'ACCEPTED', currentApprovedResultRevisionId: 'r1', currentApprovedResultFingerprint: fp('d') }, {
       orderId: 'order', invoiceRevisionNumber: 1, verifiedBillablePoleCount: 1234, pricePerPole: 100,

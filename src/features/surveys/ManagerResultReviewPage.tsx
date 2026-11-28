@@ -169,6 +169,7 @@ function ComboReviewSection({ token, review, reload, checkHandoff }: { token: st
   const pendingGroups = groups.filter(group => group.items.some(item => draft.blockers[item.key]?.resolution === 'Unresolved')).length
   const eligible = groups.filter(group => canExcludeComboGroup(draft, group))
   const selected = eligible.filter(group => selectedGroups.includes(group.key))
+  const allSelected = eligible.length > 0 && selected.length === eligible.length
   const locate = (next: ComboReviewSelection) => {
     setSelection(next)
     mapAnchor.current?.scrollIntoView({ block: 'start' })
@@ -219,6 +220,9 @@ function ComboReviewSection({ token, review, reload, checkHandoff }: { token: st
     <details className="combo-review-list">
     <summary>Mục cần xử lý ({pendingGroups}/{groups.length} nhóm)</summary>
     {editable && eligible.length ? <Space wrap className="workflow-toolbar">
+      <Button disabled={disabled} onClick={() => setSelectedGroups(allSelected ? [] : eligible.map(group => group.key))}>
+        {allSelected ? 'Bỏ chọn tất cả' : `Chọn tất cả (${eligible.length})`}
+      </Button>
       <Button danger disabled={disabled || !selected.length} onClick={() => setBulkReason('')}>Loại phát hiện đã chọn{selected.length ? ` (${selected.length})` : ''}</Button>
     </Space> : null}
     <Table<ComboBlockerGroup> rowKey="key" size="small" dataSource={groups} pagination={groups.length > 10 ? { pageSize: 10 } : false} scroll={{ x: 760 }} locale={{ emptyText: 'Không có mục chặn.' }}
