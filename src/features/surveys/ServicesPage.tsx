@@ -41,7 +41,7 @@ export function ServicesPage() {
   return <>
     <section className="resource-page-heading">
       <div>
-        <span className="page-kicker">DỊCH VỤ KHẢO SÁT</span>
+        <span className="page-kicker">Dịch vụ khảo sát</span>
         <h1>Dịch vụ & đơn giá</h1>
         <p>Cấu hình danh mục V3 dùng trên trang Đăng ký khảo sát.</p>
       </div>

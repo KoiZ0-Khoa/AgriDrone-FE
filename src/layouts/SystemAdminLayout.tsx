@@ -77,12 +77,12 @@ export function SystemAdminLayout() {
         <button className="sidebar-close" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)}><CloseOutlined aria-hidden="true" /></button>
       </div>
       <div className="workspace-context system-workspace-context">
-        <span>PHẠM VI QUẢN TRỊ</span>
+        <span>Phạm vi quản trị</span>
         <strong>Toàn hệ thống</strong>
-        <small>SYSTEM ADMIN</small>
+        <small>System Admin</small>
       </div>
       <nav className="sidebar-navigation" aria-label="Điều hướng quản trị hệ thống">
-        <span className="sidebar-group-label">QUẢN TRỊ</span>
+        <span className="sidebar-group-label">Quản trị</span>
         {navigation.map(item => <NavLink end={item.end} to={item.to} aria-label={item.label} title={item.label} onClick={() => setMenuOpen(false)} key={item.to}>{item.icon}<span>{item.label}</span></NavLink>)}
       </nav>
       <div className="sidebar-footer">

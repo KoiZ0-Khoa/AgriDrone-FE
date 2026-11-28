@@ -62,7 +62,7 @@ export function ManagerHealthReviewPage() {
 
   return <>
     {back}
-    <section className="resource-page-heading"><div><span className="page-kicker">KIỂM DUYỆT KẾT QUẢ SỨC KHỎE CÂY</span><h1>{order.farmName}</h1><p>{order.surveyServiceName} · {dateTime(order.createdAt)}</p></div>
+    <section className="resource-page-heading"><div><span className="page-kicker">Kiểm duyệt kết quả sức khỏe cây</span><h1>{order.farmName}</h1><p>{order.surveyServiceName} · {dateTime(order.createdAt)}</p></div>
       <Space wrap>
         <Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(order.farmId)}/plant-health`}>Bản đồ sức khỏe cây →</Link>
         <Button icon={<ReloadOutlined />} loading={summary.isFetching || context.isFetching} onClick={() => { void refresh() }}>Tải lại</Button>

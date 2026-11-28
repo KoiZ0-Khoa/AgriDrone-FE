@@ -83,7 +83,7 @@
 }
 .app-shell .dw-manager .dw-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .app-shell .dw-manager .dw-main-grid { grid-template-columns: minmax(0, 1.25fr) minmax(300px, 1fr); }
-.app-shell .dw-manager .dw-farm-row { grid-template-columns: 42px minmax(0, 1fr) 12px; }
+.app-shell .dw-manager .dw-farm-row { grid-template-columns: 40px minmax(0, 1fr) 12px; }
 .app-shell .dw-manager .dw-request-row { grid-template-columns: minmax(0, 1fr) 12px; }
 .app-shell .dw-manager .dw-request-row .dw-badge { align-self: flex-start; }
 .app-shell .payment-page-icon { color: var(--mint); font-size: 32px; }

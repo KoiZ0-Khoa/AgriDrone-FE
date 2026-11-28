@@ -38,7 +38,7 @@ export function PlantHealthPage() {
     }, success: 'Đã tạo bản nháp hướng dẫn' }
   }
   return <>
-    <section className="resource-page-heading"><div><span className="page-kicker">DỮ LIỆU PLANT HEALTH</span><h1>Nhãn và hướng dẫn</h1><p>Quản lý nhãn nhận định sơ bộ và hướng dẫn có tài liệu tham chiếu.</p></div><Button icon={<ReloadOutlined />} onClick={() => { void catalogue.refetch(); void history.refetch() }}>Tải lại</Button></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">Dữ liệu Plant Health</span><h1>Nhãn và hướng dẫn</h1><p>Quản lý nhãn nhận định sơ bộ và hướng dẫn có tài liệu tham chiếu.</p></div><Button icon={<ReloadOutlined />} onClick={() => { void catalogue.refetch(); void history.refetch() }}>Tải lại</Button></section>
     <Alert className="workflow-notice" showIcon type="info" title="Nhận định sơ bộ, không thay thế chẩn đoán" description="Các nhãn do nhóm xây dựng để hỗ trợ nhận định sơ bộ. Nhãn nghi ngờ bệnh và nhãn dễ nhầm không thể hiện mức độ nặng hoặc chẩn đoán xác định." />
     <section className="resource-panel"><div className="resource-panel-heading"><div><strong>Nhãn đang sử dụng</strong><span>Giới hạn diễn giải và phiên bản bộ dữ liệu</span></div><Link className="workflow-detail-link" to="/system/plant-conditions">Quản lý tình trạng cây →</Link></div>
       {catalogue.isError ? <CommonState type="error" description={workflowError(catalogue.error)} retry={() => catalogue.refetch()} /> : <Table<PlantHealthLabel> rowKey="id" loading={catalogue.isPending} dataSource={catalogue.data?.labels ?? []} pagination={false} scroll={{ x: 800 }} columns={[

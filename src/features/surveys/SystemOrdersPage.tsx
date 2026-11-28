@@ -29,7 +29,7 @@ export function SystemOrdersPage() {
     setPage(1); setParams(next)
   }
   return <>
-    <section className="resource-page-heading"><div><span className="page-kicker">QUẢN LÝ KHẢO SÁT</span><h1>Đơn khảo sát</h1><p>Theo dõi tiến độ khảo sát trên toàn hệ thống.</p></div><Space wrap><Link className="workflow-detail-link" to="/system/survey-orders/quality-refunds">Hồ sơ báo sai và hoàn tiền</Link><Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => { void query.refetch() }}>Tải lại</Button></Space></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">Quản lý khảo sát</span><h1>Đơn khảo sát</h1><p>Theo dõi tiến độ khảo sát trên toàn hệ thống.</p></div><Space wrap><Link className="workflow-detail-link" to="/system/survey-orders/quality-refunds">Hồ sơ báo sai và hoàn tiền</Link><Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => { void query.refetch() }}>Tải lại</Button></Space></section>
     <section className="resource-panel">
       <div className="workflow-toolbar">
         <Select aria-label="Trạng thái đơn khảo sát" value={filters.status} onChange={value => filter('status', value)} options={[{ value: '', label: 'Tất cả trạng thái' }, ...Object.entries(orderStatusLabels).map(([value, label]) => ({ value, label }))]} />

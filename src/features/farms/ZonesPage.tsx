@@ -121,7 +121,7 @@ export function ZonesPage() {
       <>
         <section className="resource-page-heading">
           <div>
-            <span className="page-kicker">KHU VỰC</span>
+            <span className="page-kicker">Khu vực</span>
             <h1>Chọn nông trại</h1>
             <p>Mỗi khu vực thuộc một nông trại. Chọn phạm vi để xem dữ liệu phù hợp.</p>
           </div>
@@ -160,7 +160,7 @@ export function ZonesPage() {
       </button>
       <section className="resource-page-heading detail-heading">
         <div>
-          <span className="page-kicker">KHU VỰC CANH TÁC</span>
+          <span className="page-kicker">Khu vực canh tác</span>
           <h1>{farmQuery.data?.name ?? 'Đang tải nông trại'}</h1>
           <p>Xem các khu vực canh tác đã được Manager thiết lập.</p>
         </div>

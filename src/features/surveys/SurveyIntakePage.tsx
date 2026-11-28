@@ -54,7 +54,7 @@ export function SurveyIntakePage({ owner = false }: { owner?: boolean }) {
   if (owner && session?.role !== 'OWNER') return <CommonState type="forbidden" description="Chủ đơn vị gửi yêu cầu khảo sát cho nông trại." />
   const newFarm = !owner || mode === 'new'
   const content = <>
-    <section className="resource-page-heading"><div><span className="page-kicker">DỊCH VỤ AGRIDRONE</span><h1>Đăng ký khảo sát</h1><p>{owner ? 'Yêu cầu khảo sát cho nông trại mới hoặc nông trại đang quản lý.' : 'Gửi thông tin nông trại. Chúng tôi sẽ xét duyệt và gửi lời mời tham gia qua email khi yêu cầu được chấp nhận.'}</p></div></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">Dịch vụ AgriDrone</span><h1>Đăng ký khảo sát</h1><p>{owner ? 'Yêu cầu khảo sát cho nông trại mới hoặc nông trại đang quản lý.' : 'Gửi thông tin nông trại. Chúng tôi sẽ xét duyệt và gửi lời mời tham gia qua email khi yêu cầu được chấp nhận.'}</p></div></section>
     {mutation.isSuccess ? <section className="resource-panel" aria-live="polite">
       <Alert showIcon type="success" title="Đã tiếp nhận yêu cầu khảo sát" description="Yêu cầu đang chờ xét duyệt. Đây chưa phải xác nhận lịch bay hay thanh toán." />
       {mutation.data.indicativeQuote ? <p className="form-hint workflow-section">

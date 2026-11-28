@@ -34,7 +34,7 @@ export function ManagersPage() {
   }
   const manager = detail.data
   return <>
-    <section className="resource-page-heading"><div><span className="page-kicker">NHÂN SỰ VẬN HÀNH</span><h1>System Manager</h1><p>Quản lý hồ sơ và khả năng nhận công việc khảo sát.</p></div>
+    <section className="resource-page-heading"><div><span className="page-kicker">Nhân sự vận hành</span><h1>System Manager</h1><p>Quản lý hồ sơ và khả năng nhận công việc khảo sát.</p></div>
       <Space wrap><Button onClick={() => setAssignmentOpen(true)}>Phân công nông trại</Button><Button onClick={() => setCreateOpen(true)}>Tạo hồ sơ từ tài khoản</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => setAction({ title: 'Mời System Manager', description: 'Gửi lời mời qua email. Người đã có tài khoản sử dụng tài khoản hiện tại để chấp nhận.', fields: [emailField], success: 'Đã tạo lời mời System Manager', run: values => api.inviteManager(token, text(values, 'email')) })}>Mời System Manager</Button></Space>
     </section>
     <section className="resource-panel">

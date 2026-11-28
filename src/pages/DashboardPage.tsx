@@ -23,11 +23,10 @@ export function DashboardPage() {
   const healthStatus = health.isPending ? 'loading' : health.isSuccess ? 'online' : 'offline'
   const refreshing = health.isFetching || farms.isFetching
   const refresh = () => { void Promise.all([health.refetch(), ...(canManage ? [farms.refetch()] : [])]) }
-  const firstName = session.fullName.trim().split(/\s+/).at(-1) ?? session.fullName
 
   // The current BE no longer exposes tenant-member or personal farm-assignment reads.
   if (!canManage) return <div className="workspace-dashboard dw-tenant">
-    <DashboardHeading title={'Chào ' + firstName} description={session.tenant.name} health={healthStatus} refreshing={refreshing} refresh={refresh} />
+    <DashboardHeading title="Tổng quan nông trại" description={session.tenant.name} health={healthStatus} refreshing={refreshing} refresh={refresh} />
     <section className="dw-panel"><DashboardState empty="Phân công chưa khả dụng"><p>Phiên bản hiện tại chưa hỗ trợ xem phân công thành viên. Liên hệ quản trị viên để được hỗ trợ.</p><Link className="dw-text-link" to="/account">Tài khoản của tôi <ArrowRightOutlined aria-hidden="true" /></Link></DashboardState></section>
   </div>
 
@@ -35,7 +34,7 @@ export function DashboardPage() {
   const summary = farmPageSummary(visibleFarms)
 
   return <div className="workspace-dashboard dw-tenant">
-    <DashboardHeading title={'Chào ' + firstName} description={session.tenant.name} health={healthStatus} refreshing={refreshing} refresh={refresh} action={<Link className="dw-button dw-button-primary" to={owner ? '/survey-requests/new' : '/farms'}>{owner ? <PlusOutlined aria-hidden="true" /> : <HomeOutlined aria-hidden="true" />}{owner ? 'Đăng ký khảo sát' : 'Xem nông trại'}</Link>} />
+    <DashboardHeading title="Tổng quan nông trại" description={session.tenant.name} health={healthStatus} refreshing={refreshing} refresh={refresh} action={<Link className="dw-button dw-button-primary" to={owner ? '/survey-requests/new' : '/farms'}>{owner ? <PlusOutlined aria-hidden="true" /> : <HomeOutlined aria-hidden="true" />}{owner ? 'Đăng ký khảo sát' : 'Xem nông trại'}</Link>} />
 
     {farms.isError ? <div className="dw-notice" role="alert"><span>Chưa tải được nông trại.</span><button type="button" className="dw-text-button" onClick={refresh}>Tải lại</button></div> : null}
 

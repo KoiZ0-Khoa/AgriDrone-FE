@@ -634,7 +634,7 @@ export function ManagerMissionDetailPage() {
   return <>
     {back}
     <section className="resource-page-heading">
-      <div><span className="page-kicker">NHIỆM VỤ BAY</span><h1>{latest?.purpose ? missionPurposeLabel(latest.purpose) : 'Nhiệm vụ bay'}</h1>{droneQuery.data ? <p>{droneQuery.data.name}</p> : null}<CopyReference value={mission.missionCode} label="Sao chép mã nhiệm vụ" /></div>
+      <div><span className="page-kicker">Nhiệm vụ bay</span><h1>{latest?.purpose ? missionPurposeLabel(latest.purpose) : 'Nhiệm vụ bay'}</h1>{droneQuery.data ? <p>{droneQuery.data.name}</p> : null}<CopyReference value={mission.missionCode} label="Sao chép mã nhiệm vụ" /></div>
       <Space wrap><Tag color="blue">{missionStatusLabel(status ?? mission.status)}</Tag><Button icon={<ReloadOutlined />} onClick={() => {
         void missionQuery.refetch()
         if (scheduled && !preflightDone) void checklistQuery.refetch()

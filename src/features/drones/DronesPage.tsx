@@ -39,7 +39,7 @@ export function DronesPage() {
 
   return <>
     <section className="resource-page-heading">
-      <div><span className="page-kicker">QUẢN TRỊ VẬN HÀNH</span><h1>Drone hệ thống</h1><p>Đăng ký, cập nhật và theo dõi trạng thái vận hành của drone dùng cho nhiệm vụ bay.</p></div>
+      <div><span className="page-kicker">Quản trị vận hành</span><h1>Drone hệ thống</h1><p>Đăng ký, cập nhật và theo dõi trạng thái vận hành của drone dùng cho nhiệm vụ bay.</p></div>
       <Space wrap><Button icon={<ReloadOutlined />} onClick={() => { void query.refetch() }}>Tải lại</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => setFormDrone('new')}>Tạo Drone</Button></Space>
     </section>
     <section className="resource-panel">

@@ -29,7 +29,7 @@ export function ManagerOrdersPage() {
   const [status, setStatus] = useState('')
   const query = useQuery({ queryKey: ['manager-orders', page, status], queryFn: ({ signal }) => getAssignedOrders(token, page, status, signal), refetchOnWindowFocus: true, refetchInterval: 10000 })
   return <>
-    <section className="resource-page-heading"><div><span className="page-kicker">CÔNG VIỆC KHẢO SÁT</span><h1>Đơn khảo sát được giao</h1><p>Theo dõi công việc tại các nông trại bạn đang phụ trách.</p></div><Button icon={<ReloadOutlined />} onClick={() => { void query.refetch() }}>Tải lại</Button></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">Công việc khảo sát</span><h1>Đơn khảo sát được giao</h1><p>Theo dõi công việc tại các nông trại bạn đang phụ trách.</p></div><Button icon={<ReloadOutlined />} onClick={() => { void query.refetch() }}>Tải lại</Button></section>
     <section className="resource-panel"><div className="workflow-toolbar"><Select aria-label="Trạng thái đơn khảo sát" value={status} onChange={value => { setPage(1); setStatus(value) }} options={[{ value: '', label: 'Tất cả trạng thái' }, ...Object.entries(orderStatusLabels).map(([value, label]) => ({ value, label }))]} /></div>
       {query.isError ? <CommonState type="error" description={workflowError(query.error)} retry={() => query.refetch()} /> : <>
         <Table<AssignedOrder> rowKey="surveyOrderId" loading={query.isPending} dataSource={query.data?.items ?? []} pagination={false} scroll={{ x: 850 }} locale={{ emptyText: 'Chưa có đơn khảo sát phù hợp.' }} columns={[
@@ -79,7 +79,7 @@ export function ManagerOrderDetailPage() {
   const missionPurpose = consistent && !v3Order ? missionPurposeFor(order, scope.orderStatus) : null
   return <>
     {back}
-    <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT</span><h1>{order.farmName}</h1><p>{order.surveyServiceName} · {dateTime(order.createdAt)}</p><CopyReference value={scope.orderNumber} label="Sao chép mã đơn" /></div><Space wrap><Button icon={<CopyOutlined />} onClick={async () => {
+    <section className="resource-page-heading"><div><span className="page-kicker">Đơn khảo sát</span><h1>{order.farmName}</h1><p>{order.surveyServiceName} · {dateTime(order.createdAt)}</p><CopyReference value={scope.orderNumber} label="Sao chép mã đơn" /></div><Space wrap><Button icon={<CopyOutlined />} onClick={async () => {
       try { await navigator.clipboard.writeText(new URL(`/survey-payments/${encodeURIComponent(orderId)}`, window.location.origin).href); void message.success('Đã sao chép liên kết lịch sử thanh toán cho Owner.') }
       catch { void message.error('Không thể sao chép. Hãy cho phép truy cập bộ nhớ tạm của trình duyệt.') }
     }}>Sao chép liên kết thanh toán</Button><Button icon={<ReloadOutlined />} loading={busy} onClick={() => { setAppointment(null); void refresh() }}>Tải lại</Button></Space></section>

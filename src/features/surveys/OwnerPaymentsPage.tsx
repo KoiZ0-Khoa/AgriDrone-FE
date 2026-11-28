@@ -105,7 +105,7 @@ function OwnerOrderDetail({ token, tenantId, orderId }: { token: string; tenantI
     })
   }
   return <>{back}
-    <section className="resource-page-heading"><div><span className="page-kicker">ĐƠN KHẢO SÁT & THANH TOÁN</span><h1>{order.farmName}</h1><p>{orderStatusLabels[order.status] ?? order.status}</p><CopyReference value={order.orderNumber} label="Sao chép mã đơn" /></div><Button icon={<ReloadOutlined />} disabled={writes > 0 || !!action} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">Đơn khảo sát & thanh toán</span><h1>{order.farmName}</h1><p>{orderStatusLabels[order.status] ?? order.status}</p><CopyReference value={order.orderNumber} label="Sao chép mã đơn" /></div><Button icon={<ReloadOutlined />} disabled={writes > 0 || !!action} loading={query.isFetching} onClick={() => { void refresh() }}>Tải lại</Button></section>
     {notice ? <Alert className="workflow-notice" showIcon type="success" title={notice} /> : null}
     <SurveyMutationError error={query.isError ? query.error : null} />
     {order.status === 'COMPLETED' ? <section className="resource-panel workflow-section">

@@ -19,7 +19,7 @@ export function RequestsPage() {
   const [filters, setFilters] = useState({ status: '', kind: '' })
   const query = useQuery({ queryKey: ['survey-requests', page, filters], queryFn: ({ signal }) => api.getRequests(token, page, filters, signal) })
   return <>
-    <section className="resource-page-heading"><div><span className="page-kicker">TIẾP NHẬN KHẢO SÁT</span><h1>Yêu cầu khảo sát</h1><p>Kiểm tra thông tin, phân công Manager và duyệt yêu cầu trước khi tạo đơn khảo sát.</p></div><Button icon={<ReloadOutlined />} onClick={() => { void query.refetch() }}>Tải lại</Button></section>
+    <section className="resource-page-heading"><div><span className="page-kicker">Tiếp nhận khảo sát</span><h1>Yêu cầu khảo sát</h1><p>Kiểm tra thông tin, phân công Manager và duyệt yêu cầu trước khi tạo đơn khảo sát.</p></div><Button icon={<ReloadOutlined />} onClick={() => { void query.refetch() }}>Tải lại</Button></section>
     <section className="resource-panel">
       <div className="workflow-toolbar">
         <Select aria-label="Trạng thái yêu cầu" value={filters.status} onChange={status => { setPage(1); setFilters(previous => ({ ...previous, status })) }} options={[{ value: '', label: 'Tất cả trạng thái' }, ...Object.entries(requestStatusLabels).map(([value, label]) => ({ value, label }))]} />

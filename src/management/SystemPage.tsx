@@ -30,7 +30,7 @@ export function SystemPage({ section }: { section: SystemSection }) {
   const token = session.accessToken
   const directoryQuery = section === 'tenants' ? tenants : section === 'users' ? users : null
   const copy = sectionCopy[section]
-  return <><section className="resource-page-heading"><div><span className="page-kicker">SYSTEM ADMIN</span><h1>{copy.title}</h1><p>{copy.description}</p></div>{section === 'tenants' ? <Button type="primary" onClick={() => setAction({ title: 'Tạo đơn vị', fields: [{ key: 'code', label: 'Mã đơn vị', max: 30 }, { key: 'name', label: 'Tên đơn vị', max: 150 }], run: v => api.createTenant(token, { tenantCode: text(v, 'code'), tenantName: text(v, 'name') }) })}>Tạo đơn vị</Button> : null}</section>
+  return <><section className="resource-page-heading"><div><span className="page-kicker">System Admin</span><h1>{copy.title}</h1><p>{copy.description}</p></div>{section === 'tenants' ? <Button type="primary" onClick={() => setAction({ title: 'Tạo đơn vị', fields: [{ key: 'code', label: 'Mã đơn vị', max: 30 }, { key: 'name', label: 'Tên đơn vị', max: 150 }], run: v => api.createTenant(token, { tenantCode: text(v, 'code'), tenantName: text(v, 'name') }) })}>Tạo đơn vị</Button> : null}</section>
     {directoryQuery?.isError ? <CommonState type="error" description={directoryQuery.error.message} retry={() => directoryQuery.refetch()} /> : null}
     {section === 'tenants' ? <Table<api.Tenant> rowKey="id" loading={tenants.isPending} dataSource={tenants.data?.items ?? []} pagination={false} scroll={{ x: 650 }} columns={[
       { title: 'Mã', dataIndex: 'code' }, { title: 'Đơn vị', dataIndex: 'name' }, { title: 'Trạng thái', render: (_, item) => isActive(item.status) ? 'Hoạt động' : 'Ngừng hoạt động' },

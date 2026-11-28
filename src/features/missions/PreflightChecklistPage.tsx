@@ -46,7 +46,7 @@ export function PreflightChecklistPage() {
 
   return <>
     <section className="resource-page-heading">
-      <div><span className="page-kicker">QUẢN TRỊ VẬN HÀNH</span><h1>Checklist Preflight</h1><p>Bộ điều kiện kiểm tra trước khi bay, dùng chung cho mọi nhiệm vụ. Mỗi thay đổi tạo phiên bản mới; các Mission đã preflight bằng phiên bản cũ được giữ nguyên.</p></div>
+      <div><span className="page-kicker">Quản trị vận hành</span><h1>Checklist Preflight</h1><p>Bộ điều kiện kiểm tra trước khi bay, dùng chung cho mọi nhiệm vụ. Mỗi thay đổi tạo phiên bản mới; các Mission đã preflight bằng phiên bản cũ được giữ nguyên.</p></div>
       <Space wrap>
         <Button icon={<ReloadOutlined />} onClick={() => { void query.refetch() }}>Tải lại</Button>
         <Button onClick={() => setHistoryOpen(true)} disabled={definitions.length === 0}>Lịch sử phiên bản</Button>

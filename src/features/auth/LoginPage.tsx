@@ -45,7 +45,7 @@ export function LoginPage() {
           {auth.tenantSelection ? (
             <>
               <div className="form-heading">
-                <span className="step-label">BƯỚC 2 / 2</span>
+                <span className="step-label">Bước 2 / 2</span>
                 <h1 id="login-title">Chọn đơn vị làm việc</h1>
                 <p>Chọn phạm vi bạn muốn sử dụng trong phiên đăng nhập này.</p>
               </div>
@@ -86,7 +86,6 @@ export function LoginPage() {
           ) : (
             <>
               <div className="form-heading">
-                <span className="step-label">CHÀO MỪNG TRỞ LẠI</span>
                 <h1 id="login-title">Đăng nhập</h1>
                 <p>Nhập thông tin tài khoản AgriDrone của bạn.</p>
               </div>

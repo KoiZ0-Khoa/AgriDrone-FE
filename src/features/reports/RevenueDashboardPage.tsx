@@ -76,7 +76,7 @@ export function RevenueDashboardPage() {
 
   return <div className="revenue-page">
     <section className="resource-page-heading">
-      <div><span className="page-kicker">BÁO CÁO TÀI CHÍNH</span><h1>Doanh thu</h1><p>Báo cáo doanh thu, dòng tiền và số dư theo tháng (giờ Việt Nam, UTC+7).</p></div>
+      <div><span className="page-kicker">Báo cáo tài chính</span><h1>Doanh thu</h1><p>Báo cáo doanh thu, dòng tiền và số dư theo tháng (giờ Việt Nam, UTC+7).</p></div>
       <Button icon={<ReloadOutlined />} loading={report.isFetching} onClick={() => { void report.refetch() }}>Tải lại</Button>
     </section>
 

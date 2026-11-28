@@ -91,7 +91,7 @@ export function ManagerPlantHealthMapPage() {
 
   return <>
     {back}
-    <section className="resource-page-heading"><div><span className="page-kicker">BẢN ĐỒ SỨC KHỎE CÂY</span><h1>{farm.name}</h1><p>Tổng hợp tình trạng cây trồng từ các chuyến bay quét bệnh.</p></div>
+    <section className="resource-page-heading"><div><span className="page-kicker">Bản đồ sức khỏe cây</span><h1>{farm.name}</h1><p>Tổng hợp tình trạng cây trồng từ các chuyến bay quét bệnh.</p></div>
       <Button icon={<ReloadOutlined />} loading={mapQuery.isFetching || flaggedQuery.isFetching} onClick={() => { void mapQuery.refetch(); if (mapQuery.data?.baseMap) void flaggedQuery.refetch() }}>Tải lại</Button>
     </section>
 

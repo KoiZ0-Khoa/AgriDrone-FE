@@ -33,7 +33,7 @@ export function ForgotPasswordPage() {
   return (
     <AuthPageShell>
       <div className="form-heading">
-        <span className="step-label">KHÔI PHỤC TÀI KHOẢN</span>
+        <span className="step-label">Khôi phục tài khoản</span>
         <h1>Quên mật khẩu</h1>
         <p>Nhập email của bạn để nhận liên kết đặt lại mật khẩu.</p>
       </div>
@@ -68,7 +68,7 @@ export function ResetPasswordPage() {
   return (
     <AuthPageShell>
       <div className="form-heading">
-        <span className="step-label">BẢO MẬT TÀI KHOẢN</span>
+        <span className="step-label">Bảo mật tài khoản</span>
         <h1>Đặt lại mật khẩu</h1>
         <p>Tạo mật khẩu mới có ít nhất 8 ký tự.</p>
       </div>

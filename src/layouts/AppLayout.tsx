@@ -70,13 +70,13 @@ export function AppLayout() {
         </div>
 
         <div className="workspace-context">
-          <span>PHẠM VI LÀM VIỆC</span>
+          <span>Phạm vi làm việc</span>
           <strong>{session.tenant?.name ?? 'Toàn hệ thống'}</strong>
           <small>{session.tenant?.code ?? 'SYSTEM'}</small>
         </div>
 
         <nav className="sidebar-navigation" aria-label="Điều hướng chính">
-          <span className="sidebar-group-label">VẬN HÀNH</span>
+          <span className="sidebar-group-label">Vận hành</span>
           <NavLink to="/dashboard" aria-label="Tổng quan" title="Tổng quan" onClick={() => setMenuOpen(false)}>
             <DashboardOutlined aria-hidden="true" />
             <span>Tổng quan</span>

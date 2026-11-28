@@ -47,7 +47,7 @@ export function ManagerResultReviewPage() {
   const combo = isCombo(review)
   return <>
     {back}
-    <section className="resource-page-heading"><div><span className="page-kicker">DUYỆT KẾT QUẢ KHẢO SÁT</span><h1>{combo ? 'COMBO · Bản đồ và sàng lọc bệnh' : 'MAP · Bản đồ và đếm trụ'}</h1><p>{orderStatusLabels[review.orderStatus] ?? review.orderStatus}</p></div>
+    <section className="resource-page-heading"><div><span className="page-kicker">Duyệt kết quả khảo sát</span><h1>{combo ? 'COMBO · Bản đồ và sàng lọc bệnh' : 'MAP · Bản đồ và đếm trụ'}</h1><p>{orderStatusLabels[review.orderStatus] ?? review.orderStatus}</p></div>
       <Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => { void reload() }}>Tải lại</Button>
     </section>
     <section className="resource-panel">
