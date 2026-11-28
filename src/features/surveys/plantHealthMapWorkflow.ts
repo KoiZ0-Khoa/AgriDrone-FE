@@ -55,9 +55,9 @@ export function plantHealthReviewError(error: unknown) {
   return plantHealthMapError(error)
 }
 
-// A3 — vết lệch tọa độ (observation PENDING: lệch > 2.5 m, chưa gắn trụ). Chỉ hiển thị; xử lý nằm ở trang kiểm duyệt đơn (B5 "Sửa").
+// A3 — vết lệch tọa độ từ danh sách observation PENDING của nông trại.
 export type FlaggedMarker = {
-  id: string; lat: number | null; lon: number | null; distance: number | null; confidence: number | null
+  id: string; missionId: string; lat: number | null; lon: number | null; distance: number | null; confidence: number | null
   className: string | null; cropImageUrl: string | null; imageName: string | null
   suggested: { id: string; plantCode: string; lat: number; lon: number } | null
 }
@@ -67,7 +67,7 @@ export function flaggedMarkers(items: FlaggedObservation[], plants: { id: string
     const params = parseMatchingParameters(item.matchingParametersJson)
     const plant = item.suggestedPlantId ? byId.get(item.suggestedPlantId.toLowerCase()) ?? null : null
     return {
-      id: item.observationId, lat: item.detectedLat, lon: item.detectedLon, distance: item.gpsDistanceMeters, confidence: item.detectionConfidence,
+      id: item.observationId, missionId: item.missionId, lat: item.detectedLat, lon: item.detectedLon, distance: item.gpsDistanceMeters, confidence: item.detectionConfidence,
       className: params?.className ?? null, cropImageUrl: item.cropImageUrl ?? null, imageName: params?.imageName ?? null,
       suggested: plant ? { id: plant.id, plantCode: plant.plantCode, lat: plant.lat, lon: plant.lon } : null,
     }

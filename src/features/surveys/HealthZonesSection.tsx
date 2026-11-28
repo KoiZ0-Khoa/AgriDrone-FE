@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Checkbox, Empty, Form, Input, Modal, Radio, Select, Space, Table, Tag } from 'antd'
-import { useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import {
@@ -9,11 +9,14 @@ import {
 import type { GuidanceDecision, HealthReviewItem, HealthReviewOutcome, ZoneDecision } from './healthReviewTypes'
 import {
   approveReadiness, blockingReasonLabels, buildGuidanceReview, buildZoneReview, guidanceDecisionLabels, guidanceIsCurrent, healthReviewError, isAccepted, isStaleReviewError,
-  readZoneOriginal, resolveOriginalMembers, zoneClass, zoneDecisionLabels, zoneMemberCandidates, zoneMemberCount, zoneRing,
+  readZoneOriginal, resolveOriginalMembers, zoneClass, zoneDecisionLabels, zoneMemberCandidates, zoneMemberCount, zoneReviewGeometry, zoneReviewedMemberIds,
 } from './healthReviewWorkflow'
 import { getPlantHealth, type PlantHealthLabel } from './plantHealthApi'
 import { getFarmPlantHealthMap } from './plantHealthMapApi'
 import { operationFor } from './workflow'
+import { zoneCoversPoint } from './zoneGeometry'
+
+const ZoneShapeEditor = lazy(() => import('./ZoneShapeEditor'))
 
 type Page = { batchId: string; resultVersion: number }
 type Dialog = { kind: 'zone' | 'guidance'; zone: HealthReviewItem; page: Page }
@@ -107,23 +110,28 @@ const modalLock = (pending: boolean) => ({ closable: !pending, mask: { closable:
 
 function ZoneReviewModal({ token, orderId, zone, page, findings, labels, plantCodes, close, done }: ModalProps & { findings: HealthReviewItem[]; labels: PlantHealthLabel[] | null; plantCodes: ReadonlyMap<string, string> }) {
   const original = readZoneOriginal(zone.original)
-  const ring = useMemo(() => zoneRing(zone), [zone])
+  const [geometry, setGeometry] = useState(() => zoneReviewGeometry(zone))
+  const [editingShape, setEditingShape] = useState(false)
   const readiness = approveReadiness(zone, findings)
-  const [decision, setDecision] = useState<ZoneDecision>(readiness.ready ? 'Approve' : 'Correct')
+  const [decision, setDecision] = useState<ZoneDecision>(zone.review?.decision === 'Correct' || !readiness.ready ? 'Correct' : 'Approve')
   const [classCode, setClassCode] = useState(zoneClass(zone) ?? '')
-  const candidates = useMemo(() => classCode ? zoneMemberCandidates(findings, classCode, ring) : [], [findings, classCode, ring])
+  const candidates = useMemo(() => classCode ? zoneMemberCandidates(findings, classCode, null).map(member => ({ ...member,
+    insideZone: geometry && member.lat !== null && member.lon !== null ? zoneCoversPoint(geometry, member.lon, member.lat) : null,
+  })) : [], [findings, classCode, geometry])
   // Mặc định chọn các phát hiện tự khớp với thành viên đề xuất (nếu cùng loại) và nằm trong vùng.
   const [selected, setSelected] = useState<string[]>(() => {
     const code = zoneClass(zone)
     if (!code) return []
-    const auto = resolveOriginalMembers(zone, findings, code).flatMap(entry => entry.matches.length === 1 ? [entry.matches[0].findingId] : [])
-    return auto.filter(id => zoneMemberCandidates(findings, code, ring).some(candidate => candidate.findingId === id && candidate.insideZone !== false))
+    const auto = zoneReviewedMemberIds(zone) ?? resolveOriginalMembers(zone, findings, code).flatMap(entry => entry.matches.length === 1 ? [entry.matches[0].findingId] : [])
+    return auto.filter(id => candidates.some(candidate => candidate.findingId === id && candidate.insideZone === true))
   })
   const [reason, setReason] = useState('')
   const members = candidates.filter(candidate => selected.includes(candidate.findingId))
   const duplicatePlant = new Set(members.map(member => member.plantId.toLowerCase())).size !== members.length
   const classChanged = classCode.trim().toUpperCase() !== (original.suspectedClassCode ?? '').toUpperCase()
-  const correctError = decision !== 'Correct' ? null : !classCode ? 'Chọn loại bệnh.' : members.length === 0 ? 'Chọn ít nhất 1 phát hiện làm thành viên vùng.' : duplicatePlant ? 'Hai thành viên trùng một trụ cây — bỏ chọn bớt.' : null
+  const correctError = decision !== 'Correct' ? null : !classCode ? 'Chọn loại bệnh.' : members.length === 0 ? 'Chọn ít nhất một phát hiện làm thành viên vùng.'
+    : members.some(member => member.insideZone !== true) ? 'Bỏ chọn thành viên nằm ngoài viền vùng hoặc thiếu tọa độ.'
+      : duplicatePlant ? 'Bỏ chọn phát hiện trùng trụ.' : null
   const classOptions = useMemo(() => {
     const options = (labels ?? []).map(label => ({ value: label.code, label: `${label.name} (${label.code})` }))
     const current = zoneClass(zone)
@@ -131,10 +139,10 @@ function ZoneReviewModal({ token, orderId, zone, page, findings, labels, plantCo
     return options
   }, [labels, zone])
 
-  const body = (key: string) => buildZoneReview(page, zone, decision, reason.trim(), key, decision === 'Correct' ? { classCode: classChanged ? classCode : undefined, members } : {})
-  const { mutation, stale, submit } = useReviewMutation(key => reviewHealthZone(token, orderId, zone.id, body(key)), { decision, reason: reason.trim(), classCode, selected, ...page, zone: zone.id }, done)
+  const body = (key: string) => buildZoneReview(page, zone, decision, reason.trim(), key, { classCode: classChanged ? classCode : undefined, geometry, members })
+  const { mutation, stale, submit } = useReviewMutation(key => reviewHealthZone(token, orderId, zone.id, body(key)), body(''), done)
   const canSubmit = reason.trim().length > 0 && (decision !== 'Approve' || readiness.ready) && correctError === null
-  return <Modal open width={680} title="Review vùng bệnh" okText="Lưu quyết định" cancelText={stale ? 'Đóng và tải lại' : 'Hủy'}
+  return <><Modal open width={680} title="Review vùng bệnh" okText="Lưu quyết định" cancelText={stale ? 'Đóng và tải lại' : 'Hủy'}
     okButtonProps={{ danger: decision !== 'Reject', disabled: !canSubmit || stale || mutation.isPending }} confirmLoading={mutation.isPending} {...modalLock(mutation.isPending)}
     onOk={() => submit(canSubmit)} onCancel={() => { if (!mutation.isPending) close(stale) }}>
     <dl className="detail-list">
@@ -146,7 +154,7 @@ function ZoneReviewModal({ token, orderId, zone, page, findings, labels, plantCo
         <Radio.Group value={decision} onChange={event => setDecision(event.target.value)}>
           <Space orientation="vertical">
             <Radio value="Approve" disabled={!readiness.ready}>Xác nhận vùng như AI đề xuất</Radio>
-            <Radio value="Correct">Sửa loại bệnh / thành viên</Radio>
+            <Radio value="Correct">Sửa loại bệnh, viền hoặc thành viên</Radio>
             <Radio value="Reject">Bác bỏ vùng (không phải ổ dịch)</Radio>
           </Space>
         </Radio.Group>
@@ -156,10 +164,11 @@ function ZoneReviewModal({ token, orderId, zone, page, findings, labels, plantCo
         <Form.Item label="Loại bệnh" required>
           <Select aria-label="Loại bệnh của vùng" showSearch optionFilterProp="label" value={classCode || undefined} options={classOptions} onChange={value => { setClassCode(value); setSelected([]) }} />
         </Form.Item>
-        <Form.Item label={`Thành viên vùng (${members.length} đã chọn)`} required extra="Chỉ liệt kê phát hiện đã Xác nhận/Sửa đúng loại bệnh này. Phát hiện nằm ngoài hình vùng sẽ bị BE từ chối nên không chọn được. Chưa hỗ trợ vẽ lại hình vùng.">
+        <Form.Item label="Viền vùng bệnh"><Button disabled={!geometry} onClick={() => setEditingShape(true)}>Chỉnh viền trên bản đồ</Button></Form.Item>
+        <Form.Item label={`Thành viên vùng (${members.length} đã chọn)`} required extra="Chọn các phát hiện đã duyệt cùng loại bệnh và nằm trong viền vùng.">
           {candidates.length === 0 ? <Empty description="Chưa có phát hiện nào được xác nhận với loại bệnh này." />
             : <Checkbox.Group value={selected} onChange={values => setSelected(values.map(String))} style={{ display: 'grid', gap: 6, maxHeight: 220, overflowY: 'auto' }}
-              options={candidates.map(candidate => ({ value: candidate.findingId, disabled: candidate.insideZone === false,
+              options={candidates.map(candidate => ({ value: candidate.findingId, disabled: candidate.insideZone !== true && !selected.includes(candidate.findingId),
                 label: <>{plantCodes.get(candidate.plantId.toLowerCase()) ?? 'Trụ ngoài bản đồ hiện tại'} · {candidate.lat?.toFixed(6) ?? '—'}, {candidate.lon?.toFixed(6) ?? '—'}{candidate.insideZone === false ? <Tag color="error" style={{ marginLeft: 6 }}>ngoài vùng</Tag> : null}</> }))} />}
         </Form.Item>
       </> : null}
@@ -168,7 +177,12 @@ function ZoneReviewModal({ token, orderId, zone, page, findings, labels, plantCo
     {correctError ? <Alert type="info" showIcon title={correctError} /> : null}
     {decision !== 'Reject' ? <p className="form-hint">Sau khi lưu, vùng vẫn còn chặn phê duyệt cho tới khi chọn hướng dẫn xử lý.</p> : null}
     {mutation.error ? <ErrorAlert error={mutation.error} /> : null}
-  </Modal>
+  </Modal>{editingShape ? <Suspense fallback={<p role="status">Đang tải trình chỉnh viền…</p>}>
+    <ZoneShapeEditor title="Chỉnh viền vùng bệnh" geometry={geometry} boundaryGeoJson={null} bounds={null} imageUrl={null}
+      memberPoints={members.flatMap(member => member.lat === null || member.lon === null ? [] : [{ id: member.findingId, lat: member.lat, lon: member.lon,
+        label: plantCodes.get(member.plantId.toLowerCase()) ?? classCode }])}
+      onClose={() => setEditingShape(false)} onSave={updated => { setGeometry(updated); setEditingShape(false) }} />
+  </Suspense> : null}</>
 }
 
 function GuidanceReviewModal({ token, orderId, zone, page, close, done }: ModalProps) {

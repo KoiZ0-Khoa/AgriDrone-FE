@@ -9,6 +9,8 @@
 .combo-review-map-placeholder { display: grid; min-height: 360px; place-items: center; border: 1px solid var(--mist); border-radius: 8px; background: var(--mint-soft); color: var(--muted); }
 .combo-review-inspector { display: grid; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--mist); border-radius: 8px; }
 .combo-review-fields { display: grid; gap: 8px; min-width: 0; }
+.zone-shape-map { height: min(50vh, 480px); min-height: 260px; overflow: hidden; border-radius: 8px; isolation: isolate; }
+.zone-shape-vertex { border: 2px solid #fff; border-radius: 50%; background: #ae620e; }
 .combo-review-fields .ant-image-img { display: block; max-height: 260px; object-fit: contain; background: #f3f5f2; border-radius: 6px; }
 .combo-review-list { margin-top: 16px; }
 .combo-review-list > summary { cursor: pointer; padding: 12px 0; color: var(--ink); font-weight: 600; }

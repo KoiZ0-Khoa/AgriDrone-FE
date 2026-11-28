@@ -14,6 +14,8 @@ import * as api from './plantHealthMapApi'
 import type { FarmHealthPlant } from './plantHealthMapTypes'
 import { diseaseZoneStatusLabels, flaggedMarkers, healthStatusColors, healthStatusLabels, plantHealthMapError, plantHealthReviewError, type FlaggedMarker } from './plantHealthMapWorkflow'
 import { getFlaggedObservations } from './plantHealthReviewApi'
+import { LegacyFlagReview, LegacyObservationReview } from './LegacyHealthReviewActions'
+import type { ObservationReviewDecision } from './plantHealthReviewTypes'
 import type { OrthophotoBounds } from '../missions/missionTypes'
 
 const zoneColor = '#b42318'
@@ -59,7 +61,9 @@ const imageLinkRefreshMs = 45 * 60_000
 export function ManagerPlantHealthMapPage() {
   const { farmId = '' } = useParams()
   const token = useAuth().session!.accessToken
-  const [selectedPlant, setSelectedPlant] = useState<FarmHealthPlant | null>(null)
+  const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null)
+  const [selectedFlag, setSelectedFlag] = useState<FlaggedMarker | null>(null)
+  const [reviewingObservation, setReviewingObservation] = useState<{ id: string; decision: ObservationReviewDecision } | null>(null)
   const imageOverlayRef = useRef<LeafletImageOverlay>(null)
 
   const farmQuery = useQuery({ queryKey: ['manager-farm-context', farmId], queryFn: ({ signal }) => getFarmContext(token, farmId, signal) })
@@ -68,9 +72,10 @@ export function ManagerPlantHealthMapPage() {
     queryFn: ({ signal }) => api.getFarmPlantHealthMap(token, farmId, farmQuery.data!.tenantId, signal),
     enabled: Boolean(farmQuery.data), refetchInterval: imageLinkRefreshMs,
   })
-  // A3 — chỉ xem. Lỗi ở đây không chặn bản đồ.
   const flaggedQuery = useQuery({ queryKey: ['farm-flagged-observations', farmId], queryFn: ({ signal }) => getFlaggedObservations(token, farmId, signal), enabled: Boolean(mapQuery.data?.baseMap), retry: false, refetchInterval: imageLinkRefreshMs })
   const flagged = useMemo(() => flaggedMarkers(flaggedQuery.data?.items ?? [], mapQuery.data?.plants ?? []), [flaggedQuery.data, mapQuery.data])
+  const selectedPlant: FarmHealthPlant | undefined = mapQuery.data?.plants.find(plant => plant.id === selectedPlantId)
+  const refreshHealthMap = async () => { await Promise.all([mapQuery.refetch(), flaggedQuery.refetch()]) }
   const mapRef = useRef<LeafletMap | null>(null)
   function focus(marker: FlaggedMarker) {
     if (marker.lat !== null && marker.lon !== null) mapRef.current?.flyTo([marker.lat, marker.lon], Math.max(mapRef.current.getZoom(), 20))
@@ -127,10 +132,11 @@ export function ManagerPlantHealthMapPage() {
               })}
               {mapQuery.data.plants.map(plant => <CircleMarker key={plant.id} center={[plant.lat, plant.lon]} radius={6}
                 pathOptions={{ color: healthStatusColors[plant.healthStatus], fillColor: healthStatusColors[plant.healthStatus], fillOpacity: 0.85 }}
-                eventHandlers={{ click: () => setSelectedPlant(plant) }} />)}
+                eventHandlers={{ click: () => setSelectedPlantId(plant.id) }} />)}
               {flagged.map(marker => marker.lat === null || marker.lon === null ? null : <Fragment key={marker.id}>
                 {marker.suggested ? <Polyline positions={[[marker.lat, marker.lon], [marker.suggested.lat, marker.suggested.lon]]} pathOptions={{ color: flaggedColor, weight: 1.5, dashArray: '4 4' }} /> : null}
-                <CircleMarker center={[marker.lat, marker.lon]} radius={8} pathOptions={{ color: flaggedColor, weight: 2, dashArray: '3 3', fillColor: flaggedColor, fillOpacity: 0.15 }}>
+                <CircleMarker center={[marker.lat, marker.lon]} radius={8} pathOptions={{ color: flaggedColor, weight: 2, dashArray: '3 3', fillColor: flaggedColor, fillOpacity: 0.15 }}
+                  eventHandlers={{ click: () => setSelectedFlag(marker) }}>
                   <Tooltip>{marker.className ?? 'Vết lệch'} · lệch {marker.distance?.toFixed(1) ?? '—'} m{marker.suggested ? ` · gần trụ ${marker.suggested.plantCode}` : ''}</Tooltip>
                 </CircleMarker>
               </Fragment>)}
@@ -148,7 +154,6 @@ export function ManagerPlantHealthMapPage() {
         {flaggedQuery.isError ? <Alert className="workflow-notice" type="warning" showIcon title="Không tải được danh sách vết lệch tọa độ" description={plantHealthReviewError(flaggedQuery.error)} />
           : flagged.length > 0 ? <section className="resource-panel workflow-section">
             <div className="resource-panel-heading"><div><strong>Vết lệch tọa độ ({flagged.length})</strong><span>AI phát hiện nhưng lệch quá 2,5 m so với trụ gần nhất nên chưa gắn được vào trụ nào.</span></div></div>
-            <p className="form-hint">Chỉ để xem. Xử lý trong trang Kiểm duyệt kết quả của đơn khảo sát: chọn phát hiện chưa gắn trụ → "Sửa" để gắn trụ, hoặc "Bác bỏ".</p>
             <Table<FlaggedMarker> rowKey="id" size="small" dataSource={flagged} pagination={flagged.length > 10 ? { pageSize: 10 } : false} scroll={{ x: 700 }}
               onRow={marker => ({ onClick: () => focus(marker), style: { cursor: marker.lat !== null ? 'pointer' : undefined } })}
               columns={[
@@ -158,6 +163,7 @@ export function ManagerPlantHealthMapPage() {
                 { title: 'Lệch', render: (_, marker) => marker.distance === null ? '—' : `${marker.distance.toFixed(1)} m` },
                 { title: 'Trụ gần nhất', render: (_, marker) => marker.suggested?.plantCode ?? '—' },
                 { title: 'Vị trí', render: (_, marker) => marker.lat === null || marker.lon === null ? <Tag>Không có tọa độ</Tag> : <span className="form-hint">{marker.lat.toFixed(6)}, {marker.lon.toFixed(6)}</span> },
+                { title: 'Thao tác', render: (_, marker) => <Button size="small" onClick={event => { event.stopPropagation(); setSelectedFlag(marker) }}>Xử lý</Button> },
               ]} />
           </section> : null}
 
@@ -172,7 +178,7 @@ export function ManagerPlantHealthMapPage() {
         </section>
       </>}
 
-    <Drawer open={selectedPlant !== null} title={selectedPlant ? `Trụ ${selectedPlant.plantCode} · Hàng ${selectedPlant.row} - Cột ${selectedPlant.col}` : ''} width={420} onClose={() => setSelectedPlant(null)}>
+    <Drawer open={!!selectedPlant} title={selectedPlant ? `Trụ ${selectedPlant.plantCode} · Hàng ${selectedPlant.row} - Cột ${selectedPlant.col}` : ''} width={420} onClose={() => setSelectedPlantId(null)}>
       {selectedPlant ? <>
         <Tag color={selectedPlant.healthStatus === 'DISEASE' ? 'error' : selectedPlant.healthStatus === 'HEALTHY_FRUIT' ? 'blue' : 'success'}>{healthStatusLabels[selectedPlant.healthStatus]}</Tag>
         <p className="form-hint" style={{ marginTop: 12 }}>{selectedPlant.lat.toFixed(6)}, {selectedPlant.lon.toFixed(6)}</p>
@@ -182,9 +188,17 @@ export function ManagerPlantHealthMapPage() {
               <strong>{observation.classNameVi || observation.className}</strong>
               <p className="form-hint">Độ tin cậy {(observation.confidence * 100).toFixed(0)}% · lệch {observation.gpsDistanceM.toFixed(1)} m</p>
               {observation.cropImageUrl ? <Image src={observation.cropImageUrl} width="100%" alt={observation.imageName} /> : null}
+              <Space wrap className="workflow-toolbar">
+                <Button size="small" onClick={() => setReviewingObservation({ id: observation.id, decision: 'CONFIRMED' })}>Xác nhận</Button>
+                <Button size="small" danger onClick={() => setReviewingObservation({ id: observation.id, decision: 'REJECTED' })}>Bác bỏ</Button>
+              </Space>
             </div>)}
           </Space>}
       </> : null}
     </Drawer>
+    {selectedFlag && mapQuery.data ? <LegacyFlagReview key={selectedFlag.id} token={token} farmId={farmId} marker={selectedFlag}
+      plants={mapQuery.data.plants} onSaved={refreshHealthMap} onClose={() => setSelectedFlag(null)} /> : null}
+    {reviewingObservation ? <LegacyObservationReview key={reviewingObservation.id} token={token} farmId={farmId}
+      observationId={reviewingObservation.id} decision={reviewingObservation.decision} onSaved={refreshHealthMap} onClose={() => setReviewingObservation(null)} /> : null}
   </>
 }

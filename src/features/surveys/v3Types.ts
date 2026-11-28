@@ -190,9 +190,16 @@ export type ComboPendingBatch = {
   findings: ComboPendingFinding[]; boundaryExceptions: ComboPendingBoundaryException[]; diseaseZones: ComboPendingZone[]
 }
 export type ComboFindingDecisionValue = 'Accept' | 'Exclude'
+export type ComboSnapTarget = {
+  plantProfileId: string; mappingCandidateId: string; sourceCandidateId: string
+  latitude: number; longitude: number; row: number | null; column: number | null
+}
 export type ComboZoneDecisionValue = 'Approve' | 'Reject' | 'Adjust'
 export type ComboBlockerResolutionValue = 'Resolved' | 'AcceptedWithJustification' | 'Excluded' | 'Corrected' | 'Unresolved'
-export type ComboFindingDecision = { findingId: string; decision: ComboFindingDecisionValue; reason: string | null; evidenceMediaIds: string[] }
+export type ComboFindingDecision = {
+  findingId: string; decision: ComboFindingDecisionValue; reason: string | null; evidenceMediaIds: string[]
+  reviewedPlantProfileId?: string | null
+}
 export type ComboZoneDecision = {
   sourceProposalId: string; decision: ComboZoneDecisionValue; reviewedGeometry: GeoJsonPolygonV3 | null; reviewedFindingIds: string[] | null
   selectedGuidanceId: string | null; selectedGuidanceVersionNumber: number | null; reason: string | null; evidenceMediaIds: string[]
@@ -217,6 +224,7 @@ export type ResultReview = {
   verifiedPoleCountSnapshotId: string; verifiedBillablePoleCount: number; countSnapshotFingerprint: string; countSnapshotRevision: number
   currentApprovedResultRevisionId: string | null; currentApprovedResultFingerprint: string | null
   comboPendingBatch: ComboPendingBatch | null; currentComboReview: ComboReviewSummary | null; expectedFreezeTokens: ExpectedFreezeTokens
+  comboSnapTargets?: ComboSnapTarget[] | null
 }
 export type ComboReviewOutcome = 'Approved' | 'Rejected'
 export type RecordComboReviewBody = {

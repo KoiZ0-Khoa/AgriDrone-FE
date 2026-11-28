@@ -1,5 +1,5 @@
 import { ApiError } from '../../api/client'
-import type { BoundaryDecision, BoundaryExceptionOriginal, FindingOriginal, GuidanceDecision, HealthReviewItem, HealthZoneMember, ZoneDecision, ZoneOriginal } from './healthReviewTypes'
+import type { BoundaryDecision, BoundaryExceptionOriginal, FindingOriginal, GuidanceDecision, HealthReviewItem, HealthReviewPolygon, HealthZoneMember, ZoneDecision, ZoneOriginal } from './healthReviewTypes'
 
 // Mã lỗi PlantHealthReview.* lấy từ PlantHealthReviewService*.cs (mốc BE fda57ec).
 const errorMessages: Record<string, string> = {
@@ -274,11 +274,18 @@ export function readZoneOriginal(original: unknown): ZoneOriginal {
   })) : []
   return { sourceProposalId: str(value.SourceProposalId), suspectedClassCode: str(value.SuspectedClassCode), ring, memberships }
 }
-// Vòng [lon, lat] của vùng hiện hành: hình trong review hiện tại (snapshot.Geometry) nếu có, nếu không thì hình đề xuất.
-export function zoneRing(item: HealthReviewItem): [number, number][] | null {
+export function zoneReviewGeometry(item: HealthReviewItem): HealthReviewPolygon | null {
   const snapshot = item.review && isRecord(item.review.snapshot) ? item.review.snapshot : null
-  const reviewed = snapshot && Array.isArray(snapshot.Geometry) ? ringOf(snapshot.Geometry[0]) : null
-  return reviewed ?? readZoneOriginal(item.original).ring
+  const original = isRecord(item.original) && isRecord(item.original.Geometry) ? item.original.Geometry : null
+  const value = snapshot?.Geometry ?? original?.Coordinates
+  if (!Array.isArray(value) || !value.length) return null
+  const coordinates = value.map(ringOf)
+  return coordinates.every(ring => ring !== null) ? { type: 'Polygon', coordinates } : null
+}
+export function zoneReviewedMemberIds(item: HealthReviewItem): string[] | null {
+  const snapshot = item.review && isRecord(item.review.snapshot) ? item.review.snapshot : null
+  if (!Array.isArray(snapshot?.Members)) return null
+  return snapshot.Members.filter(isRecord).flatMap(member => typeof member.FindingId === 'string' ? [member.FindingId] : [])
 }
 export const zoneClass = (item: HealthReviewItem) => (item.review ? readReviewSnapshot(item.review.snapshot).classCode : null) ?? readZoneOriginal(item.original).suspectedClassCode
 export function zoneMemberCount(item: HealthReviewItem) {
@@ -344,12 +351,13 @@ export function guidanceIsCurrent(zone: HealthReviewItem) {
 }
 
 export function buildZoneReview(page: { batchId: string; resultVersion: number }, zone: HealthReviewItem, decision: ZoneDecision, reason: string, operationId: string,
-  correction: { classCode?: string; members?: HealthZoneMember[] } = {}) {
+  correction: { classCode?: string; geometry?: HealthReviewPolygon | null; members?: HealthZoneMember[] } = {}) {
   return {
     operationId, batchId: page.batchId, expectedResultVersion: page.resultVersion,
     expectedZoneVersion: zone.sourceRowVersion, expectedReviewVersion: zone.review?.version ?? null,
     decision, reason, evidenceMediaIds: [] as string[],
     ...(decision === 'Correct' && correction.classCode ? { correctedClassCode: correction.classCode } : {}),
+    ...(decision === 'Correct' && correction.geometry ? { correctedGeometry: correction.geometry } : {}),
     ...(decision === 'Correct' && correction.members ? { members: correction.members.map(({ findingId, sourceVersion, findingReviewId }) => ({ findingId, sourceVersion, findingReviewId })) } : {}),
   }
 }

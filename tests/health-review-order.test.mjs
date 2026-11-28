@@ -258,12 +258,15 @@ test('zoneMemberCandidates keeps accepted findings of the class with an inside f
 
 test('buildZoneReview / buildGuidanceReview carry the right versions and pass API validation', async () => {
   const page = { batchId: 'b', resultVersion: 5 }
-  const zone = zoneItem({ review: { reviewId: 'zr-1', version: 2, decision: 'Correct', snapshot: {} }, guidanceReview: { reviewId: 'g', version: 4, decision: 'NeedsEvidence', snapshot: {} } })
-  const correct = workflow.buildZoneReview(page, zone, 'Correct', 'gộp lại', 'op-1', { classCode: 'ANTHRACNOSE', members: [{ findingId: 'f-a', sourceVersion: 1, findingReviewId: 'rv-f-a', plantId: 'plant-a' }] })
+  const geometry = { type: 'Polygon', coordinates: [square] }
+  const zone = zoneItem({ review: { reviewId: 'zr-1', version: 2, decision: 'Correct', snapshot: { Geometry: geometry.coordinates, Members: [{ FindingId: 'f-a' }] } }, guidanceReview: { reviewId: 'g', version: 4, decision: 'NeedsEvidence', snapshot: {} } })
+  assert.deepEqual(workflow.zoneReviewGeometry(zone), geometry)
+  assert.deepEqual(workflow.zoneReviewedMemberIds(zone), ['f-a'])
+  const correct = workflow.buildZoneReview(page, zone, 'Correct', 'gộp lại', 'op-1', { classCode: 'ANTHRACNOSE', geometry, members: [{ findingId: 'f-a', sourceVersion: 1, findingReviewId: 'rv-f-a', plantId: 'plant-a' }] })
   assert.deepEqual(correct, { operationId: 'op-1', batchId: 'b', expectedResultVersion: 5, expectedZoneVersion: 900, expectedReviewVersion: 2, decision: 'Correct', reason: 'gộp lại', evidenceMediaIds: [],
-    correctedClassCode: 'ANTHRACNOSE', members: [{ findingId: 'f-a', sourceVersion: 1, findingReviewId: 'rv-f-a' }] })
-  const approve = workflow.buildZoneReview(page, zoneItem(), 'Approve', 'ok', 'op-2', { classCode: 'X', members: [] })
-  assert.equal('members' in approve || 'correctedClassCode' in approve, false); assert.equal(approve.expectedReviewVersion, null)
+    correctedClassCode: 'ANTHRACNOSE', correctedGeometry: geometry, members: [{ findingId: 'f-a', sourceVersion: 1, findingReviewId: 'rv-f-a' }] })
+  const approve = workflow.buildZoneReview(page, zoneItem(), 'Approve', 'ok', 'op-2', { classCode: 'X', geometry, members: [] })
+  assert.equal('members' in approve || 'correctedClassCode' in approve || 'correctedGeometry' in approve, false); assert.equal(approve.expectedReviewVersion, null)
   const guidance = workflow.buildGuidanceReview(page, zone, 'Select', 'theo hướng dẫn', 'op-3', 'gd-1')
   assert.deepEqual(guidance, { operationId: 'op-3', batchId: 'b', expectedResultVersion: 5, expectedZoneVersion: 900, expectedReviewVersion: 4, zoneReviewId: 'zr-1', decision: 'Select', reason: 'theo hướng dẫn', evidenceMediaIds: [], guidanceId: 'gd-1' })
   assert.throws(() => workflow.buildGuidanceReview(page, zoneItem(), 'RejectAll', 'x', 'op'), /Xác nhận hoặc sửa vùng/)

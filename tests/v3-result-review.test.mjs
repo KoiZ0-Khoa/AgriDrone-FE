@@ -8,7 +8,8 @@ const compile = file => ts.transpileModule(readFileSync(new URL(file, import.met
 const urlFor = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
 const clientUrl = urlFor(compile('../src/api/client.ts').replace('import.meta.env.VITE_API_BASE_URL', "'http://test.local'"))
 const v3WorkflowUrl = urlFor(compile('../src/features/surveys/v3Workflow.ts'))
-const flow = await import(urlFor(compile('../src/features/surveys/resultReviewWorkflow.ts')))
+const geometryUrl = urlFor(compile('../src/features/surveys/zoneGeometry.ts'))
+const flow = await import(urlFor(compile('../src/features/surveys/resultReviewWorkflow.ts').replace("'./zoneGeometry'", JSON.stringify(geometryUrl))))
 const v3Api = await import(urlFor(compile('../src/features/surveys/v3Api.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
 const surveyWorkflow = await import(urlFor(compile('../src/features/surveys/workflow.ts').replace("'../../api/client'", JSON.stringify(clientUrl)).replace("'./v3Workflow'", JSON.stringify(v3WorkflowUrl))))
 const originalFetch = globalThis.fetch
@@ -55,6 +56,70 @@ test('grouped exclusion updates the finding and its blockers while retaining sep
     ['FINDING_UNCERTAINTY', 'f1', 'Excluded', 'Nằm ngoài vườn', ['img-f1']],
     ['FINDING_UNCERTAINTY', 'f2', 'Excluded', 'Nhận diện nhầm', ['img-f2']],
   ])
+})
+
+test('grouped acceptance requires linked near-boundary points and leaves outside or unlinked findings unresolved', () => {
+  const pending = { ...batch, findings: [
+    finding('f1', { mappingCandidateId: 'candidate-1' }), finding('f2', { mappingCandidateId: 'candidate-2' }), finding('f3'),
+  ], blockingReasons: [
+    'BOUNDARY_EXCEPTION:f1:NEEDS_REVIEW', 'FINDING_UNCERTAINTY:f1:REQUIRES_REVIEW',
+    'BOUNDARY_EXCEPTION:f2:OUT_OF_BOUNDARY', 'BOUNDARY_EXCEPTION:f3:NEEDS_REVIEW',
+  ] }
+  const draft = flow.initialComboReviewDraft({ ...comboReview, comboPendingBatch: pending })
+  const groups = flow.comboBlockerGroups(pending, flow.blockerItems(pending))
+  assert.deepEqual(groups.map(group => flow.canAcceptNearBoundaryGroup(draft, group)), [true, false, false])
+  const revised = flow.acceptNearBoundaryGroups(draft, groups, 'Đã đối chiếu ảnh và trụ')
+  assert.deepEqual(Object.values(revised.blockers).map(item => item.resolution),
+    ['AcceptedWithJustification', 'AcceptedWithJustification', 'Unresolved', 'Unresolved'])
+})
+
+test('SNAP saves the selected verified profile and the original finding evidence, and resolves the identity blocker', () => {
+  const target = { plantProfileId: 'target-profile', mappingCandidateId: 'target-candidate', sourceCandidateId: 'source-candidate', latitude: 10.4002, longitude: 106.1002, row: 1, column: 2 }
+  const review = { ...comboReview, comboSnapTargets: [target], comboPendingBatch: {
+    ...batch, findings: [finding('f1')], diseaseZones: [], boundaryExceptions: [],
+    blockingReasons: ['FINDING_IDENTITY:f1:UnresolvedIdentity'],
+  } }
+  const draft = { ...flow.initialComboReviewDraft(review), reviewReason: 'Đã kiểm tra' }
+  draft.findings.f1.reviewedPlantProfileId = target.plantProfileId
+  assert.throws(() => flow.comboReviewBody(review, draft), /lý do gắn lại trụ/)
+  draft.findings.f1.reason = 'Ảnh khớp với trụ đã chọn'
+  const body = flow.comboReviewBody(review, draft)
+  assert.deepEqual(body.findingDecisions, [{ findingId: 'f1', decision: 'Accept', reviewedPlantProfileId: target.plantProfileId,
+    reason: draft.findings.f1.reason, evidenceMediaIds: ['img-f1'] }])
+  assert.deepEqual(body.blockerResolutions, [{ sourceType: 'FINDING_IDENTITY', sourceId: 'f1', reasonCode: 'UnresolvedIdentity',
+    resolution: 'Corrected', reason: draft.findings.f1.reason, evidenceMediaIds: ['img-f1'] }])
+  const refreshed = flow.initialComboReviewDraft({ ...review, currentComboReview: { ...body } })
+  assert.equal(refreshed.findings.f1.reviewedPlantProfileId, target.plantProfileId)
+  assert.deepEqual(flow.comboFindingPosition(review.comboPendingBatch.findings[0], refreshed, [target]), target)
+  const plant = { plantId: 'p2', mappingCandidateId: target.sourceCandidateId, plantCode: 'P-2', row: 1, col: 2, lat: target.latitude, lon: target.longitude, lifecycleStatus: 'ACTIVE' }
+  assert.equal(flow.comboReviewPlantLinks(review.comboPendingBatch, [plant], refreshed.findings, [target]).findingsByPlant.get('p2')[0].findingId, 'f1')
+  assert.throws(() => flow.comboReviewBody({ ...review, comboSnapTargets: [] }, draft), /phải thuộc bản đồ/)
+  const outside = { ...review, comboPendingBatch: { ...review.comboPendingBatch, blockingReasons: ['FINDING_SPATIAL:f1:OUT_OF_BOUNDARY'] } }
+  assert.throws(() => flow.comboReviewBody(outside, draft), /GPS trong ranh giới/)
+})
+
+test('zone adjustment sends the edited polygon, kept members, reason, guidance and evidence', async () => {
+  const geometry = await import(geometryUrl)
+  const points = [[[106.09, 10.39], [106.11, 10.39], [106.11, 10.41], [106.09, 10.41]]]
+  const polygon = geometry.zonePolygon(points)
+  assert.deepEqual(polygon.coordinates[0].at(-1), points[0][0])
+  assert.equal(geometry.zonePolygon([points[0].slice(0, 2)]), null)
+  assert.equal(geometry.zoneCoversPoint(polygon, 106.1, 10.4), true)
+  assert.equal(geometry.zoneCoversPoint(polygon, 106.12, 10.4), false)
+  const draft = ready(flow.initialComboReviewDraft(comboReview))
+  draft.findings.f1 = { decision: 'Exclude', reason: 'Nhận diện sai' }
+  draft.zones['zone-1'] = { decision: 'Adjust', guidanceId: 'g1', geometry: polygon, findingIds: ['f2'], reason: 'Bỏ phát hiện sai khỏi vùng' }
+  const body = flow.comboReviewBody(comboReview, draft)
+  assert.deepEqual(body.zoneDecisions[0], {
+    sourceProposalId: 'zone-1', decision: 'Adjust', reviewedGeometry: polygon, reviewedFindingIds: ['f2'],
+    selectedGuidanceId: 'g1', selectedGuidanceVersionNumber: 3, reason: 'Bỏ phát hiện sai khỏi vùng', evidenceMediaIds: ['img-zone'],
+  })
+  const saved = flow.initialComboReviewDraft({ ...comboReview, currentComboReview: {
+    findingDecisions: body.findingDecisions, zoneDecisions: body.zoneDecisions, blockerResolutions: body.blockerResolutions,
+  } })
+  assert.deepEqual(saved.zones['zone-1'], draft.zones['zone-1'])
+  draft.zones['zone-1'].findingIds = ['f1']
+  assert.throws(() => flow.comboReviewBody(comboReview, draft), /đã bị loại/)
 })
 
 test('COMBO shows detections on trụ only for exact mapping candidate links without spatial exceptions', () => {
