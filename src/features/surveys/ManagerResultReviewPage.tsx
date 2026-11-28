@@ -7,12 +7,13 @@ import { ApiError } from '../../api/client'
 import { CommonState } from '../../components/CommonState'
 import { useAuth } from '../auth/AuthContext'
 import { PlantHealthProcessingPanel } from '../missions/PlantHealthProcessingPanel'
+import { ComboReviewVisuals, selectionForComboBlocker, type ComboReviewSelection } from './ComboReviewVisuals'
 import { ManagerInvoicePanel } from './ManagerInvoicePanel'
 import { getAssignedOrder } from './orderApi'
 import { ownerGuid } from './ownerOrderWorkflow'
 import { orderStatusLabels } from './orderWorkflow'
 import {
-  blockerItems, blockerResolutionLabels, comboReviewBody, comboReviewProblems, defaultFreezeDecision, findingDecisionLabels, freezeBlocker,
+  blockerItems, blockerResolutionLabels, comboBlockerLabel, comboFindingLabel, comboReviewBody, comboReviewProblems, defaultFreezeDecision, findingDecisionLabels, freezeBlocker,
   freezeDecisionLabels, freezeResultBody, initialComboReviewDraft, isCombo, isFrozen, isStaleReviewError, outcomeLabels, zoneDecisionLabels,
   type ComboReviewDraft,
 } from './resultReviewWorkflow'
@@ -67,14 +68,14 @@ export function ManagerResultReviewPage() {
   const combo = isCombo(review)
   return <>
     {back}
-    <section className="resource-page-heading"><div><span className="page-kicker">DUYỆT KẾT QUẢ KHẢO SÁT</span><h1>{combo ? 'COMBO · Bản đồ và sàng lọc bệnh' : 'MAP · Bản đồ và đếm trụ'}</h1><p>{orderStatusLabels[review.orderStatus] ?? review.orderStatus}</p></div>
+    <section className="resource-page-heading"><div><span className="page-kicker">DUYỆT KẾT QUẢ KHẢO SÁT</span><h1>{combo ? 'COMBO · Bản đồ và sàng lọc bệnh' : 'MAP · Bản đồ và đếm trụ'}</h1><p>{orderStatusLabels[review.orderStatus.toUpperCase()] ?? review.orderStatus}</p></div>
       <Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => { void reload() }}>Tải lại</Button>
     </section>
     <section className="resource-panel">
       <dl className="detail-list">
         <div><dt>Số trụ đã xác minh</dt><dd><strong>{review.verifiedBillablePoleCount.toLocaleString('vi-VN')} trụ</strong> (phiên bản {review.countSnapshotRevision})</dd></div>
         <div><dt>Lần bay</dt><dd>{captureAttemptStatusLabels[review.captureAttemptStatus.toUpperCase() as keyof typeof captureAttemptStatusLabels] ?? review.captureAttemptStatus}</dd></div>
-        <div><dt>Loại bản đồ</dt><dd>{review.mappingKind}</dd></div>
+        <div><dt>Loại bản đồ</dt><dd>{review.mappingKind === 'FirstBaseline' ? 'Bản đồ nền lần đầu' : review.mappingKind === 'FollowUp' ? 'Bản đồ khảo sát lại' : review.mappingKind}</dd></div>
         <div><dt>Kết quả nội bộ</dt><dd>{isFrozen(review) ? <Tag color="success">Đã chốt</Tag> : <Tag>Chưa chốt</Tag>}</dd></div>
       </dl>
       {isFrozen(review) || frozen ? <Alert className="workflow-notice" showIcon type="success" title="Đã chốt kết quả nội bộ"
@@ -128,6 +129,10 @@ function PendingComboAnalysis({ token, orderId, reload, checkHandoff }: { token:
 function ComboReviewSection({ token, review, reload, checkHandoff }: { token: string; review: ResultReview; reload: () => Promise<void>; checkHandoff: () => Promise<void> }) {
   const batch = review.comboPendingBatch
   const [draft, setDraft] = useState<ComboReviewDraft | null>(() => batch ? initialComboReviewDraft(review) : null)
+  const [selection, setSelection] = useState<ComboReviewSelection>(() => ({
+    kind: 'finding', id: batch?.findings.find(item => item.evidenceMediaIds.length)?.findingId ?? batch?.findings[0]?.findingId ?? null,
+  }))
+  const mapAnchor = useRef<HTMLDivElement>(null)
   const operation = useRef<V3Operation | null>(null)
   useEffect(() => { operation.current = null }, [review.orderVersion])
   const mutation = useMutation({ retry: false, mutationFn: async () => {
@@ -153,38 +158,59 @@ function ComboReviewSection({ token, review, reload, checkHandoff }: { token: st
   const setBlocker = (key: string, change: Partial<ComboReviewDraft['blockers'][string]>) => setDraft(value => value && ({ ...value, blockers: { ...value.blockers, [key]: { ...value.blockers[key], ...change } } }))
   const current = review.currentComboReview
   const disabled = !editable || mutation.isPending
+  const blockers = blockerItems(batch)
+  const locate = (next: ComboReviewSelection) => {
+    setSelection(next)
+    mapAnchor.current?.scrollIntoView({ block: 'start' })
+  }
   return <section className="resource-panel workflow-section" aria-label="Duyệt COMBO">
-    <div className="resource-panel-heading"><div><strong>Duyệt phát hiện, vùng bệnh và mục chặn</strong><span>Lần phân tích {batch.sourceRevision} · {batch.resultNature}</span></div></div>
+    <div className="resource-panel-heading"><div><strong>Duyệt phát hiện, vùng bệnh và mục chặn</strong><span>Lần phân tích {batch.sourceRevision} · Kết quả sàng lọc sơ bộ</span></div></div>
     {batch.limitationNotice ? <Alert className="workflow-notice" showIcon type="info" title="Giới hạn của kết quả" description={batch.limitationNotice} /> : null}
     {current ? <Alert className="workflow-notice" showIcon type={current.outcome === 'Approved' && current.unresolvedBlockersCount === 0 ? 'success' : 'warning'}
       title={`Lần duyệt ${current.revisionNumber}: ${outcomeLabels[current.outcome as keyof typeof outcomeLabels] ?? current.outcome}`}
       description={`${dateTime(current.reviewedAt)} · Chấp nhận ${current.acceptedFindingsCount}/${current.findingsCount} phát hiện · Duyệt ${current.approvedZonesCount}/${current.zonesCount} vùng · Còn ${current.unresolvedBlockersCount} mục chặn chưa xử lý.`} /> : null}
 
-    <h3>Phát hiện ({batch.findings.length})</h3>
-    <Table<ComboPendingFinding> rowKey="findingId" size="small" dataSource={batch.findings} pagination={batch.findings.length > 20 ? { pageSize: 20 } : false} scroll={{ x: 760 }} locale={{ emptyText: 'Không có phát hiện nghi bệnh.' }} columns={[
-      { title: 'Nghi bệnh', render: (_, item) => <><strong>{item.suspectedClassCode}</strong><div className="form-hint">{item.classificationNature} · {item.uncertainty}</div></> },
+    <div ref={mapAnchor} className="combo-review-map-anchor">
+      <ComboReviewVisuals token={token} review={review} batch={batch} draft={draft} blockers={blockers} disabled={disabled}
+        selection={selection} onSelect={setSelection} onFindingChange={setFinding} onZoneChange={setZone} onBlockerChange={setBlocker} />
+    </div>
+
+    <details className="combo-review-list">
+    <summary>Danh sách phát hiện ({batch.findings.length})</summary>
+    <Table<ComboPendingFinding> rowKey="findingId" size="small" dataSource={batch.findings} pagination={batch.findings.length > 20 ? { pageSize: 20 } : false} scroll={{ x: 900 }} locale={{ emptyText: 'Không có phát hiện nghi bệnh.' }} columns={[
+      { title: 'Nhãn AI', render: (_, item) => <><strong>{comboFindingLabel(item.suspectedClassCode)}</strong>{item.uncertainty === 'REQUIRES_REVIEW' ? <div className="form-hint">Cần xem lại</div> : null}</> },
       { title: 'Độ tin cậy', render: (_, item) => `${Math.round(item.confidence * 100)}%` },
       { title: 'Vị trí', render: (_, item) => `${item.latitude.toFixed(6)}, ${item.longitude.toFixed(6)}` },
+      { title: 'Bản đồ', render: (_, item) => <Button size="small" onClick={() => locate({ kind: 'finding', id: item.findingId })}>Mở trên bản đồ</Button> },
       { title: 'Quyết định', render: (_, item) => <Select aria-label={`Quyết định phát hiện ${item.findingId}`} disabled={disabled} value={draft.findings[item.findingId]?.decision} onChange={(decision: ComboFindingDecisionValue) => setFinding(item.findingId, { decision })} options={Object.entries(findingDecisionLabels).map(([value, label]) => ({ value, label }))} style={{ minWidth: 120 }} /> },
       { title: 'Lý do (bắt buộc khi loại)', render: (_, item) => <Input disabled={disabled} maxLength={500} value={draft.findings[item.findingId]?.reason} onChange={event => setFinding(item.findingId, { reason: event.target.value })} /> },
     ]} />
+    </details>
 
-    <h3>Vùng bệnh ({batch.diseaseZones.length})</h3>
-    <Table<ComboPendingZone> rowKey="sourceProposalId" size="small" dataSource={batch.diseaseZones} pagination={false} scroll={{ x: 760 }} locale={{ emptyText: 'Không có vùng bệnh đề xuất.' }} columns={[
-      { title: 'Vùng', render: (_, zone) => <><strong>{zone.suspectedClassCode}</strong><div className="form-hint">{zone.memberships.length} phát hiện trong vùng</div></> },
+    <details className="combo-review-list">
+    <summary>Danh sách vùng nghi bệnh ({batch.diseaseZones.length})</summary>
+    <Table<ComboPendingZone> rowKey="sourceProposalId" size="small" dataSource={batch.diseaseZones} pagination={false} scroll={{ x: 900 }} locale={{ emptyText: 'Không có vùng bệnh đề xuất.' }} columns={[
+      { title: 'Vùng', render: (_, zone) => <><strong>{comboFindingLabel(zone.suspectedClassCode)}</strong><div className="form-hint">{zone.memberships.length} phát hiện trong vùng</div></> },
+      { title: 'Bản đồ', render: (_, zone) => <Button size="small" onClick={() => locate({ kind: 'zone', id: zone.sourceProposalId })}>Mở trên bản đồ</Button> },
       { title: 'Quyết định', render: (_, zone) => <Select aria-label={`Quyết định vùng ${zone.sourceProposalId}`} disabled={disabled} value={draft.zones[zone.sourceProposalId]?.decision} onChange={(decision: 'Approve' | 'Reject') => setZone(zone.sourceProposalId, { decision })} options={Object.entries(zoneDecisionLabels).map(([value, label]) => ({ value, label }))} style={{ minWidth: 130 }} /> },
       { title: 'Hướng dẫn xử lý', render: (_, zone) => zone.guidanceCandidates.length === 0 ? <span className="form-hint">Không có</span>
         : <Select aria-label={`Hướng dẫn vùng ${zone.sourceProposalId}`} disabled={disabled || draft.zones[zone.sourceProposalId]?.decision !== 'Approve'} value={draft.zones[zone.sourceProposalId]?.guidanceId ?? undefined} placeholder="Chọn hướng dẫn" onChange={(guidanceId: string) => setZone(zone.sourceProposalId, { guidanceId })} options={zone.guidanceCandidates.map(candidate => ({ value: candidate.guidanceId, label: `${candidate.code} · v${candidate.versionNumber}` }))} style={{ minWidth: 160 }} /> },
       { title: 'Lý do (bắt buộc khi từ chối)', render: (_, zone) => <Input disabled={disabled} maxLength={500} value={draft.zones[zone.sourceProposalId]?.reason} onChange={event => setZone(zone.sourceProposalId, { reason: event.target.value })} /> },
     ]} />
-    <p className="form-hint">Chỉnh hình dạng vùng (Adjust) chưa hỗ trợ trên web; nếu vùng không đúng, hãy từ chối kèm lý do.</p>
+    </details>
 
-    <h3>Mục chặn ({blockerItems(batch).length})</h3>
-    <Table rowKey="key" size="small" dataSource={blockerItems(batch)} pagination={false} scroll={{ x: 760 }} locale={{ emptyText: 'Không có mục chặn.' }} columns={[
-      { title: 'Mục', render: (_, item) => <><strong>{item.reasonCode}</strong><div className="form-hint">{item.sourceType} · {item.sourceId}</div></> },
+    <details className="combo-review-list">
+    <summary>Mục cần xử lý ({blockers.filter(item => draft.blockers[item.key]?.resolution === 'Unresolved').length}/{blockers.length})</summary>
+    <Table rowKey="key" size="small" dataSource={blockers} pagination={blockers.length > 10 ? { pageSize: 10 } : false} scroll={{ x: 760 }} locale={{ emptyText: 'Không có mục chặn.' }} columns={[
+      { title: 'Mục', render: (_, item) => <strong>{comboBlockerLabel(item.reasonCode)}</strong> },
+      { title: 'Bản đồ', render: (_, item) => {
+        const target = selectionForComboBlocker(batch, item)
+        return target ? <Button size="small" onClick={() => locate(target)}>Mở trên bản đồ</Button> : null
+      } },
       { title: 'Xử lý', render: (_, item) => <Select aria-label={`Xử lý mục chặn ${item.key}`} disabled={disabled} value={draft.blockers[item.key]?.resolution} onChange={(resolution: ComboBlockerResolutionValue) => setBlocker(item.key, { resolution })} options={Object.entries(blockerResolutionLabels).map(([value, label]) => ({ value, label }))} style={{ minWidth: 180 }} /> },
       { title: 'Giải trình (bắt buộc khi đã xử lý)', render: (_, item) => <Input disabled={disabled} maxLength={500} value={draft.blockers[item.key]?.reason} onChange={event => setBlocker(item.key, { reason: event.target.value })} /> },
     ]} />
+    </details>
 
     {editable ? <Form layout="vertical" className="workflow-section">
       <Form.Item label="Kết luận lần duyệt"><Radio.Group disabled={disabled} value={draft.outcome} onChange={event => setDraft(value => value && ({ ...value, outcome: event.target.value }))} options={Object.entries(outcomeLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>

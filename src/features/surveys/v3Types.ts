@@ -184,6 +184,7 @@ export type ComboPendingZone = {
 }
 export type ComboPendingBatch = {
   batchId: string; jobId: string; sourceRevision: number; canonicalFingerprint: string; producedAt: string; importedAt: string
+  farmBaseMapVersionId?: string
   // blockingReasons: mỗi mục dạng "SourceType:SourceId:ReasonCode" (SurveyComboPendingReadPort).
   blockingCount: number; blockingReasons: string[]; status: string; resultNature: string; limitationNotice: string
   findings: ComboPendingFinding[]; boundaryExceptions: ComboPendingBoundaryException[]; diseaseZones: ComboPendingZone[]

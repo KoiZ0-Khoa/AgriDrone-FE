@@ -16,6 +16,15 @@ export const blockerResolutionLabels: Record<ComboBlockerResolutionValue, string
   Unresolved: 'Chưa xử lý',
 }
 export const outcomeLabels: Record<ComboReviewOutcome, string> = { Approved: 'Duyệt kết quả', Rejected: 'Từ chối kết quả' }
+export const comboFindingLabel = (code: string) => ({
+  DISEASE_SOFT_ROT: 'Thối mềm', DISEASE_SUN_BURN: 'Cháy nắng', SUNBURN: 'Cháy nắng',
+  DISEASE_BROWN_SPOT: 'Đốm nâu', ANTHRACNOSE: 'Thán thư',
+  HEALTHY_FRUIT_GREEN: 'Trái xanh khỏe', HEALTHY_FRUIT_RED: 'Trái đỏ khỏe', UNHEALTHY_FRUIT: 'Trái có dấu hiệu bất thường',
+}[code.toUpperCase()] ?? code)
+export const comboBlockerLabel = (code: string) => ({
+  NEEDS_REVIEW: 'Gần ranh giới, cần kiểm tra', OUT_OF_BOUNDARY: 'Ngoài ranh giới', OUTSIDE_BOUNDARY: 'Ngoài ranh giới',
+  REQUIRES_REVIEW: 'Phát hiện cần xem lại', CANDIDATEONLYUNRESOLVED: 'Chưa xác định được trụ', UNRESOLVEDIDENTITY: 'Chưa liên kết với trụ',
+}[code.toUpperCase()] ?? code)
 export const freezeDecisionLabels: Record<FreezeResultReviewDecision, string> = { Approved: 'Duyệt', ApprovedWithObservations: 'Duyệt, có ghi nhận nghi bệnh' }
 const resolvedStatuses: readonly ComboBlockerResolutionValue[] = ['Resolved', 'AcceptedWithJustification', 'Excluded', 'Corrected']
 

@@ -1,0 +1,19 @@
+.combo-review-map-anchor { scroll-margin-top: 92px; }
+.combo-review-visuals { display: grid; gap: 16px; }
+.combo-review-visual-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.combo-review-visual-heading h3 { margin: 0; }
+.combo-review-visual-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 16px; align-items: start; }
+.combo-review-map { display: grid; gap: 12px; min-width: 0; }
+.combo-review-map-canvas { isolation: isolate; }
+.combo-review-map-placeholder { display: grid; min-height: 360px; place-items: center; border: 1px solid var(--mist); border-radius: 8px; background: var(--mint-soft); color: var(--muted); }
+.combo-review-inspector { display: grid; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--mist); border-radius: 8px; }
+.combo-review-fields { display: grid; gap: 8px; min-width: 0; }
+.combo-review-fields .ant-image-img { display: block; max-height: 260px; object-fit: contain; background: #f3f5f2; border-radius: 6px; }
+.combo-review-list { margin-top: 16px; }
+.combo-review-list > summary { cursor: pointer; padding: 12px 0; color: var(--ink); font-weight: 600; }
+.combo-review-list[open] > summary { margin-bottom: 8px; }
+
+@media (max-width: 900px) {
+  .combo-review-visual-grid { grid-template-columns: minmax(0, 1fr); }
+  .base-map-canvas.combo-review-map-canvas, .combo-review-map-placeholder { height: clamp(300px, 52vh, 440px); min-height: 0; }
+}
