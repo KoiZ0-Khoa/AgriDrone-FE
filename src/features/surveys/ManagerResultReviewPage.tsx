@@ -47,7 +47,7 @@ export function ManagerResultReviewPage() {
   async function reload() {
     await Promise.all([client.invalidateQueries({ queryKey: ['result-review', orderId] }), client.invalidateQueries({ queryKey: ['manager-order-context', orderId] }), client.invalidateQueries({ queryKey: ['capture-attempts', orderId] })])
   }
-  async function checkComboHandoff() {
+  async function checkComboHandoff(afterSourceRevision = 0) {
     if (checkingHandoff.current) return
     checkingHandoff.current = true
     try {
@@ -55,7 +55,7 @@ export function ManagerResultReviewPage() {
         if (delay) await new Promise(resolve => setTimeout(resolve, delay))
         if (!mounted.current) return
         const result = await query.refetch()
-        if (result.isError || (result.data && result.data.comboPendingBatch)) return
+        if (result.isError || (result.data?.comboPendingBatch?.sourceRevision ?? 0) > afterSourceRevision) return
       }
     } finally {
       checkingHandoff.current = false
@@ -126,7 +126,7 @@ function PendingComboAnalysis({ token, orderId, reload, checkHandoff }: { token:
     surveyOrderId={orderId} disabled={false} onComboHandoff={checkHandoff} />
 }
 
-function ComboReviewSection({ token, review, reload, checkHandoff }: { token: string; review: ResultReview; reload: () => Promise<void>; checkHandoff: () => Promise<void> }) {
+function ComboReviewSection({ token, review, reload, checkHandoff }: { token: string; review: ResultReview; reload: () => Promise<void>; checkHandoff: (afterSourceRevision?: number) => Promise<void> }) {
   const batch = review.comboPendingBatch
   const [draft, setDraft] = useState<ComboReviewDraft | null>(() => batch ? initialComboReviewDraft(review) : null)
   const [selection, setSelection] = useState<ComboReviewSelection>({ kind: 'finding', id: null })
@@ -167,6 +167,13 @@ function ComboReviewSection({ token, review, reload, checkHandoff }: { token: st
     {current ? <Alert className="workflow-notice" showIcon type={current.outcome === 'Approved' && current.unresolvedBlockersCount === 0 ? 'success' : 'warning'}
       title={`Lần duyệt ${current.revisionNumber}: ${outcomeLabels[current.outcome as keyof typeof outcomeLabels] ?? current.outcome}`}
       description={`${dateTime(current.reviewedAt)} · Chấp nhận ${current.acceptedFindingsCount}/${current.findingsCount} phát hiện · Duyệt ${current.approvedZonesCount}/${current.zonesCount} vùng · Còn ${current.unresolvedBlockersCount} mục chặn chưa xử lý.`} /> : null}
+
+    {editable && review.captureAttemptStatus.toUpperCase() === 'PROCESSING' ? <details className="combo-review-list">
+      <summary>Phân tích lại ảnh chuyến bay bệnh</summary>
+      <p className="form-hint">Dùng lại bộ ảnh đã duyệt. Sau khi gửi và máy chủ nhập lần phân tích mới, hãy duyệt kết quả mới.</p>
+      <PlantHealthProcessingPanel key={review.missionId} token={token} farmId={review.farmId} missionId={review.missionId}
+        surveyOrderId={review.orderId} disabled={mutation.isPending} importedSourceRevision={batch.sourceRevision} onComboHandoff={() => checkHandoff(batch.sourceRevision)} />
+    </details> : null}
 
     <div ref={mapAnchor} className="combo-review-map-anchor">
       <ComboReviewVisuals token={token} review={review} batch={batch} draft={draft} blockers={blockers} disabled={disabled}

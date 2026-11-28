@@ -8,7 +8,10 @@ import type { GeoJsonPolygon } from '../farms/types'
 import { surveyOrderIdFromMissionCode } from './missionWorkflow'
 import { detectMissionDiseases, getMissionDiseaseJob, isDiseaseJobActive, publishMissionPlantHealth, publishMissionComboAnalysis, type DiseaseDetectOptions, type DiseaseDetectResult, type HealthHandoffResult, type MissionDiseaseJob } from './plantHealthProcessingApi'
 
-export function PlantHealthProcessingPanel({ token, farmId, missionId, missionCode, surveyOrderId, boundary, disabled, onComboHandoff }: { token: string; farmId: string; missionId: string; missionCode?: string; surveyOrderId?: string | null; boundary?: GeoJsonPolygon | null; disabled: boolean; onComboHandoff?: () => Promise<void> }) {
+export function PlantHealthProcessingPanel({ token, farmId, missionId, missionCode, surveyOrderId, boundary, disabled, onComboHandoff, importedSourceRevision }: {
+  token: string; farmId: string; missionId: string; missionCode?: string; surveyOrderId?: string | null; boundary?: GeoJsonPolygon | null
+  disabled: boolean; onComboHandoff?: () => Promise<void>; importedSourceRevision?: number
+}) {
   const client = useQueryClient()
   const [form] = Form.useForm<Omit<DiseaseDetectOptions, 'polygonGeoJson'>>()
   const [handoff, setHandoff] = useState<HealthHandoffResult | null>(null)
@@ -29,9 +32,12 @@ export function PlantHealthProcessingPanel({ token, farmId, missionId, missionCo
   })
   const job = jobQuery.data
   const result = job?.status === 'COMPLETED' ? job.result : null
-  const comboJobReady = Boolean(result?.jobId && Number.isInteger(result.sourceRevision) && result.sourceRevision! > 0)
+  const sourceRevision = result?.sourceRevision ?? 0
+  const comboJobReady = Boolean(result?.jobId && Number.isInteger(sourceRevision) && sourceRevision > 0)
+  const alreadyImported = comboJobReady && importedSourceRevision !== undefined && sourceRevision <= importedSourceRevision
   const publish = useMutation({ retry: false, mutationFn: async () => {
     if (!result || !job) throw new Error('Chạy nhận diện trước khi gửi kết quả sơ bộ.')
+    if (alreadyImported) throw new Error('Chỉ gửi lần nhận diện mới hơn kết quả đang duyệt.')
     if (operation.current?.jobId !== job.jobId) {
       operation.current = { jobId: job.jobId, key: crypto.randomUUID() }
     }
@@ -82,10 +88,10 @@ export function PlantHealthProcessingPanel({ token, farmId, missionId, missionCo
           <Form.Item name="zoneRadiusMeters" label="Bán kính nhóm điểm bệnh (m)" rules={[{ required: true }, { type: 'number', min: 0.1 }]}><InputNumber min={0.1} step={0.5} /></Form.Item>
           <Form.Item name="minDiseasedTrees" label="Số cây tối thiểu trong nhóm" rules={[{ required: true }, { type: 'number', min: 1 }]}><InputNumber min={1} precision={0} /></Form.Item>
         </div> : null}
-        <Button type="primary" htmlType="submit" loading={detect.isPending} disabled={busy}>{result || job?.status === 'FAILED' ? 'Nhận diện lại' : 'Chạy nhận diện bệnh'}</Button>
+        <Button type="primary" htmlType="submit" loading={detect.isPending} disabled={busy}>{result || job?.status === 'FAILED' || importedSourceRevision !== undefined ? 'Nhận diện lại' : 'Chạy nhận diện bệnh'}</Button>
       </Form>
       <SurveyMutationError error={detect.error} />
-      {result ? <>
+      {result && !alreadyImported ? <>
         <Space wrap className="workflow-toolbar"><Tag>Đã quét: {result.totalImagesScanned} ảnh</Tag><Tag color="orange">Phát hiện nghi ngờ: {result.totalDetections}</Tag>{Object.entries(result.diseaseSummary).map(([label, count]) => <Tag key={label}>{label}: {count}</Tag>)}</Space>
         <Table<DiseaseDetectResult['detections'][number]> rowKey={item => `${item.imageName}:${item.id}`} dataSource={result.detections} pagination={{ pageSize: 10, showSizeChanger: false }} scroll={{ x: 600 }} locale={{ emptyText: 'Không có phát hiện nghi ngờ trong kết quả nhận diện.' }} columns={[
           { title: 'Nhãn nghi ngờ', dataIndex: 'className' },

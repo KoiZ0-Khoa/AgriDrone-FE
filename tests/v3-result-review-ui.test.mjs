@@ -25,7 +25,7 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
   try {
     const { AuthProvider } = await server.ssrLoadModule('/src/features/auth/AuthContext.tsx')
     const { ManagerResultReviewPage } = await server.ssrLoadModule('/src/features/surveys/ManagerResultReviewPage.tsx')
-    const render = (review, invoice, context, attempts) => {
+    const render = (review, invoice, context, attempts, diseaseJob) => {
       Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => JSON.stringify({ role: 'SYSTEM_MANAGER', fullName: 'M', email: 'm@example.test', phone: null, accessToken: 'test-token', expiresAt: '2099-01-01T00:00:00Z', tenant: null }) } })
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false, gcTime: Infinity, staleTime: Infinity } } })
       clients.push(client)
@@ -33,6 +33,7 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
       if (invoice) client.setQueryData(['manager-survey-invoice', 'order'], invoice)
       if (context) client.setQueryData(['manager-order-context', 'order'], context)
       if (attempts) client.setQueryData(['capture-attempts', 'order'], attempts)
+      if (diseaseJob) client.setQueryData(['mission-disease-job', review.farmId, review.missionId], diseaseJob)
       return renderToStaticMarkup(h(QueryClientProvider, { client }, h(MemoryRouter, { initialEntries: ['/manager/orders/order/result-review'] }, h(AuthProvider, null, h(Routes, null, h(Route, { path: '/manager/orders/:orderId/result-review', element: h(ManagerResultReviewPage) }))))))
     }
     const map = render(mapReview)
@@ -74,7 +75,11 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
       assert.doesNotMatch(unavailable, /Chạy nhận diện bệnh/)
     }
 
-    const combo = render({ ...mapReview, serviceCode: 'COMBO', screensDisease: true, comboPendingBatch: batch })
+    const pendingReview = { ...mapReview, serviceCode: 'COMBO', screensDisease: true, comboPendingBatch: batch }
+    const completedJob = sourceRevision => ({ jobId: `job-${sourceRevision}`, missionId: 'm', status: 'COMPLETED', result: {
+      jobId: `job-${sourceRevision}`, missionId: 'm', sourceRevision, totalImagesScanned: 216, totalDetections: 1, diseaseSummary: {}, detections: [],
+    } })
+    const combo = render(pendingReview, undefined, undefined, undefined, completedJob(batch.sourceRevision))
     assert.match(combo, /Duyệt phát hiện, vùng bệnh và mục chặn/)
     assert.match(combo, /Bản đồ và ảnh minh chứng/)
     assert.match(combo, /Trụ khảo sát \(1234\)/)
@@ -89,8 +94,15 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
     assert.ok(combo.indexOf('Bản đồ và ảnh minh chứng') < combo.indexOf('Danh sách phát hiện'))
     assert.match(combo, /Còn mục chặn chưa xử lý/)
     assert.match(combo, /Kết quả sơ bộ, không thay thế chẩn đoán/)
+    assert.match(combo, /Phân tích lại ảnh chuyến bay bệnh/)
+    assert.match(combo, /<span>Nhận diện lại<\/span>/)
+    assert.doesNotMatch(combo, /Gửi kết quả sơ bộ sang đơn khảo sát/)
     assert.match(combo, /Cần duyệt phát hiện, vùng bệnh và mục chặn trước khi chốt/)
     assert.match(combo, /<button[^>]*disabled[^>]*><span>Gửi kết quả duyệt<\/span><\/button>/)
+    const newer = render(pendingReview, undefined, undefined, undefined, completedJob(batch.sourceRevision + 1))
+    assert.match(newer, /<button(?:(?!disabled)[^>])*><span>Gửi kết quả sơ bộ sang đơn khảo sát<\/span><\/button>/)
+    const closed = render({ ...pendingReview, captureAttemptStatus: 'ACCEPTED' })
+    assert.doesNotMatch(closed, /Phân tích lại ảnh chuyến bay bệnh/)
 
     const frozen = render({ ...mapReview, orderStatus: 'AWAITING_SETTLEMENT', captureAttemptStatus: 'ACCEPTED', currentApprovedResultRevisionId: 'r1', currentApprovedResultFingerprint: fp('d') }, {
       orderId: 'order', invoiceRevisionNumber: 1, verifiedBillablePoleCount: 1234, pricePerPole: 100,
