@@ -35,17 +35,25 @@ test('blocking reasons parse back into the BE key, even when the source ID conta
 
 test('COMBO shows detections on trụ only for exact mapping candidate links without spatial exceptions', () => {
   const plant = { plantId: 'c1', plantCode: 'P-1', row: 1, col: 1, lat: 10.4001, lon: 106.1001, lifecycleStatus: 'CANDIDATE' }
+  const activePlant = { ...plant, plantId: 'p2', mappingCandidateId: 'c2', row: 2, lifecycleStatus: 'ACTIVE' }
+  const historicalPlant = { ...plant, plantId: 'c3', row: 3, lifecycleStatus: 'HISTORICAL' }
   const links = flow.comboReviewPlantLinks({
     ...batch,
     findings: [finding('linked', { mappingCandidateId: 'C1' }), finding('second', { mappingCandidateId: 'c1' }),
+      finding('linked-active', { mappingCandidateId: 'C2' }), finding('linked-historical', { mappingCandidateId: 'c3' }),
       finding('profile-only', { plantProfileId: 'c1' }), finding('wrong-id-type', { mappingCandidateId: 'p2' }),
-      finding('near', { mappingCandidateId: 'c1' }), finding('outside', { mappingCandidateId: 'c1' })],
+      finding('removed', { mappingCandidateId: 'c4' }), finding('ambiguous', { mappingCandidateId: 'c5' }),
+      finding('near', { mappingCandidateId: 'c2' }), finding('outside', { mappingCandidateId: 'c2' })],
     boundaryExceptions: [{ ...batch.boundaryExceptions[0], sourceReferenceId: 'outside' }],
     blockingReasons: ['FINDING_SPATIAL:near:NEEDS_REVIEW'],
-  }, [plant, { ...plant, plantId: 'p2', lifecycleStatus: 'ACTIVE' }])
-  assert.deepEqual([...links.plantByFinding.keys()], ['linked', 'second'])
+  }, [plant, activePlant, historicalPlant,
+    { ...activePlant, plantId: 'p4', mappingCandidateId: 'c4', lifecycleStatus: 'REMOVED' },
+    { ...activePlant, plantId: 'p5', mappingCandidateId: 'c5' },
+    { ...activePlant, plantId: 'p6', mappingCandidateId: 'c5' }])
+  assert.deepEqual([...links.plantByFinding.keys()], ['linked', 'second', 'linked-active', 'linked-historical'])
+  assert.equal(links.plantByFinding.get('linked-active'), activePlant)
   assert.deepEqual(links.findingsByPlant.get('c1').map(item => item.findingId), ['linked', 'second'])
-  assert.deepEqual(links.gpsFindings.map(item => item.findingId), ['profile-only', 'wrong-id-type', 'near'])
+  assert.deepEqual(links.gpsFindings.map(item => item.findingId), ['profile-only', 'wrong-id-type', 'removed', 'ambiguous', 'near'])
 })
 
 test('the default COMBO draft accepts every finding, approves zones and leaves blockers unresolved', () => {

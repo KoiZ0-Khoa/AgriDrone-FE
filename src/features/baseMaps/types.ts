@@ -8,7 +8,10 @@ export type MapVersion = {
   previewUrl: string | null; publishedAt: string | null; publishedBy: string | null; createdAt: string
   manualChangesCount: number
 }
-export type MapPlant = { plantId: string; plantCode: string; row: number; col: number; lat: number; lon: number; lifecycleStatus: string }
+export type MapPlant = {
+  plantId: string; plantCode: string; row: number; col: number; lat: number; lon: number; lifecycleStatus: string
+  mappingCandidateId?: string | null
+}
 export type ManualMapChange = {
   eventId: string; plantId: string | null; changeType: string; source: string
   oldRow: number | null; newRow: number | null; oldCol: number | null; newCol: number | null

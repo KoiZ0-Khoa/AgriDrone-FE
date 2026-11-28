@@ -48,9 +48,16 @@ export function comboReviewPlantLinks(batch: ComboPendingBatch, plants: MapPlant
   const flaggedIds = new Set(blockerItems(batch)
     .filter(item => ['BOUNDARY_EXCEPTION', 'FINDING_SPATIAL'].includes(item.sourceType.toUpperCase()))
     .map(item => item.sourceId.toLowerCase()))
-  // Map detail uses candidate IDs for candidate and historical rows, and plant entity IDs for live rows.
-  const candidates = new Map(plants.filter(plant => ['CANDIDATE', 'HISTORICAL'].includes(plant.lifecycleStatus.toUpperCase()))
-    .map(plant => [plant.plantId.toLowerCase(), plant]))
+  const candidates = new Map<string, MapPlant | null>()
+  for (const plant of plants) {
+    const status = plant.lifecycleStatus.toUpperCase()
+    const candidateRow = status === 'CANDIDATE' || status === 'HISTORICAL'
+    if (status !== 'ACTIVE' && !candidateRow) continue
+
+    // Older candidate rows used plantId for the candidate ID. Active rows always use a separate field.
+    const candidateId = (plant.mappingCandidateId ?? (candidateRow ? plant.plantId : null))?.toLowerCase()
+    if (candidateId) candidates.set(candidateId, candidates.has(candidateId) ? null : plant)
+  }
   const plantByFinding = new Map<string, MapPlant>()
   const findingsByPlant = new Map<string, ComboPendingFinding[]>()
   const gpsFindings: ComboPendingFinding[] = []
