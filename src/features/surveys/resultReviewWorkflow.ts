@@ -1,7 +1,7 @@
 import type { MapPlant } from '../baseMaps/types'
 import { zoneCoversPoint } from './zoneGeometry'
 import type {
-  ComboBlockerResolution, ComboBlockerResolutionValue, ComboFindingDecisionValue, ComboPendingBatch, ComboPendingFinding, ComboReviewOutcome,
+  ComboBlockerResolution, ComboBlockerResolutionValue, ComboFindingDecisionValue, ComboPendingBatch, ComboPendingFinding, ComboPendingZone, ComboReviewOutcome,
   ComboSnapTarget, ComboZoneDecisionValue, FreezeResultBody, FreezeResultReviewDecision, GeoJsonPolygonV3, RecordComboReviewBody, ResultReview,
 } from './v3Types'
 
@@ -116,6 +116,27 @@ export function canSnapComboFinding(batch: ComboPendingBatch, finding: ComboPend
 export function comboFindingPosition(finding: ComboPendingFinding, draft: ComboReviewDraft, targets: ComboSnapTarget[] = []) {
   const target = targets.find(item => item.plantProfileId === draft.findings[finding.findingId]?.reviewedPlantProfileId)
   return target ?? finding
+}
+
+// Quy tắc thành viên vùng giống BE (SurveyResultReviewTransaction.ValidateComboZoneMembers): phát hiện đã Chấp nhận,
+// cùng loại bệnh với vùng, mỗi trụ chỉ một phát hiện, và viền phủ vị trí GPS gốc (BE không dùng vị trí trụ SNAP).
+export type ComboZoneMemberIssue = 'NotAccepted' | 'ClassMismatch' | 'DuplicatePole' | 'Outside'
+const sameCode = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase()
+const poleKeys = (finding: ComboPendingFinding) => [
+  finding.plantProfileId ? `profile:${finding.plantProfileId.toLowerCase()}` : null,
+  finding.mappingCandidateId ? `candidate:${finding.mappingCandidateId.toLowerCase()}` : null,
+].filter((key): key is string => !!key)
+export function comboZoneMemberIssue(zone: Pick<ComboPendingZone, 'suspectedClassCode'>, finding: ComboPendingFinding, otherMembers: ComboPendingFinding[],
+  draft: ComboReviewDraft, geometry: Parameters<typeof zoneCoversPoint>[0] | null | undefined): ComboZoneMemberIssue | null {
+  if (draft.findings[finding.findingId]?.decision !== 'Accept') return 'NotAccepted'
+  if (!sameCode(finding.suspectedClassCode, zone.suspectedClassCode)) return 'ClassMismatch'
+  const taken = new Set(otherMembers.filter(item => item.findingId !== finding.findingId).flatMap(poleKeys))
+  if (poleKeys(finding).some(key => taken.has(key))) return 'DuplicatePole'
+  if (!geometry || !zoneCoversPoint(geometry, finding.longitude, finding.latitude)) return 'Outside'
+  return null
+}
+export const comboZoneMemberIssueLabels: Record<ComboZoneMemberIssue, string> = {
+  NotAccepted: 'phát hiện chưa được chấp nhận', ClassMismatch: 'khác loại bệnh với vùng', DuplicatePole: 'trùng trụ với thành viên khác', Outside: 'nằm ngoài viền',
 }
 
 export function comboBlockerDecision(draft: ComboReviewDraft, blocker: BlockerItem): BlockerDraft | undefined {
@@ -234,15 +255,16 @@ export function comboReviewProblems(review: ResultReview, draft: ComboReviewDraf
       if (zone.guidanceCandidates.length > 0 && !zone.guidanceCandidates.some(candidate => candidate.guidanceId === item.guidanceId)) problems.push(`Chọn hướng dẫn xử lý cho vùng ${zone.suspectedClassCode}.`)
       const members = (item.decision === 'Adjust' ? item.findingIds : null) ?? zone.memberships.map(member => member.findingId)
       if (members.length === 0 || new Set(members).size !== members.length) problems.push(`Chọn ít nhất một phát hiện riêng biệt cho vùng ${zone.suspectedClassCode}.`)
-      else if (members.some(id => draft.findings[id]?.decision !== 'Accept')) problems.push(`Vùng ${zone.suspectedClassCode} có phát hiện đã bị loại. Chỉnh thành viên vùng hoặc xem lại quyết định của phát hiện.`)
-      else if (item.decision === 'Adjust' || members.some(id => draft.findings[id]?.reviewedPlantProfileId)) {
+      else {
         const geometry = (item.decision === 'Adjust' ? item.geometry : null) ?? zone.geometry
-        if (members.some(id => {
-          const finding = batch.findings.find(entry => entry.findingId === id)
-          if (!finding) return true
-          const point = comboFindingPosition(finding, draft, review.comboSnapTargets ?? [])
-          return !zoneCoversPoint(geometry, point.longitude, point.latitude)
-        })) problems.push(`Vùng ${zone.suspectedClassCode} có thành viên nằm ngoài viền. Chỉnh viền hoặc bỏ thành viên đó.`)
+        const memberFindings = members.map(id => batch.findings.find(entry => entry.findingId === id))
+        const issues = memberFindings.map((finding, index) => finding
+          ? comboZoneMemberIssue(zone, finding, memberFindings.slice(0, index).filter((entry): entry is ComboPendingFinding => !!entry), draft, geometry) : 'NotAccepted')
+        if (issues.includes('NotAccepted')) problems.push(`Vùng ${zone.suspectedClassCode} có phát hiện đã bị loại. Chỉnh thành viên vùng hoặc xem lại quyết định của phát hiện.`)
+        else if (issues.includes('ClassMismatch')) problems.push(`Vùng ${zone.suspectedClassCode} có phát hiện khác loại bệnh. Bỏ phát hiện đó khỏi vùng.`)
+        else if (issues.includes('DuplicatePole')) problems.push(`Vùng ${zone.suspectedClassCode} có hai phát hiện trên cùng một trụ. Chỉ giữ một phát hiện cho mỗi trụ.`)
+        // Vùng giữ nguyên viền và thành viên do BE đề xuất thì đã phủ GPS gốc của mọi thành viên.
+        else if (item.decision === 'Adjust' && issues.includes('Outside')) problems.push(`Vùng ${zone.suspectedClassCode} có thành viên nằm ngoài viền. Chỉnh viền hoặc bỏ thành viên đó.`)
       }
     }
     if (tooLong(item.reason)) problems.push('Lý do của mỗi vùng tối đa 500 ký tự.')

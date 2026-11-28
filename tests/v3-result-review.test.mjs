@@ -243,3 +243,15 @@ test('result-review API routes, and a 409 stale-token error is recognised and tr
   await assert.rejects(v3Api.freezeResultReview('manager', 'o', { operationId: 'op' }), error => flow.isStaleReviewError(error) && /Tải lại dữ liệu duyệt/.test(surveyWorkflow.workflowError(error)))
   assert.equal(flow.isStaleReviewError(new Error('x')), false)
 })
+
+test('COMBO zone members follow BE rules: accepted, same disease, one finding per pole, original GPS inside', () => {
+  const zone = { suspectedClassCode: 'anthracnose ' }
+  const box = { type: 'Polygon', coordinates: [[[106, 10.3], [106.2, 10.3], [106.2, 10.5], [106, 10.5], [106, 10.3]]] }
+  const draft = { findings: { a: { decision: 'Accept' }, b: { decision: 'Accept' }, c: { decision: 'Accept' }, x: { decision: 'Exclude' }, far: { decision: 'Accept' } } }
+  const a = finding('a', { plantProfileId: 'P1' }), b = finding('b', { plantProfileId: 'p1' }), c = finding('c', { suspectedClassCode: 'SOFT_ROT' })
+  assert.equal(flow.comboZoneMemberIssue(zone, a, [], draft, box), null)
+  assert.equal(flow.comboZoneMemberIssue(zone, finding('x'), [], draft, box), 'NotAccepted')
+  assert.equal(flow.comboZoneMemberIssue(zone, c, [], draft, box), 'ClassMismatch')
+  assert.equal(flow.comboZoneMemberIssue(zone, b, [a], draft, box), 'DuplicatePole')
+  assert.equal(flow.comboZoneMemberIssue(zone, finding('far', { longitude: 107 }), [], draft, box), 'Outside')
+})

@@ -20,3 +20,6 @@
   .combo-review-visual-grid { grid-template-columns: minmax(0, 1fr); }
   .combo-review-map .base-map-canvas, .combo-review-map-placeholder { height: clamp(300px, 52vh, 440px); min-height: 0; }
 }
+.combo-review-map .combo-review-focus-halo { animation: combo-review-focus-pulse 1.4s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes combo-review-focus-pulse { 0% { opacity: 1; } 70% { opacity: .25; } 100% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .combo-review-map .combo-review-focus-halo { animation: none; } }

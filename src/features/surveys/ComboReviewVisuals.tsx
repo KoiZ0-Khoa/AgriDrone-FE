@@ -3,12 +3,12 @@ import { Alert, Button, Image, Input, Select, Space, Tag } from 'antd'
 import { lazy, Suspense, useState } from 'react'
 import { getMapVersion } from '../baseMaps/api'
 import { useBaseMapOrthophoto } from '../baseMaps/useBaseMapOrthophoto'
-import { previewUrl } from '../baseMaps/workflow'
+import { mapBoundary, previewUrl } from '../baseMaps/workflow'
 import { getMissionMediaDownloadUrl } from '../missions/missionApi'
 import { plantsByDistance } from './healthReviewWorkflow'
-import { zoneCoversPoint } from './zoneGeometry'
+import { shrinkZoneToPoints, type ZoneVertex } from './zoneGeometry'
 import {
-  blockerResolutionLabels, canSnapComboFinding, comboBlockerDecision, comboBlockerLabel, comboFindingLabel, comboFindingPosition, comboReviewPlantLinks, findingDecisionLabels, zoneDecisionLabels,
+  blockerResolutionLabels, canSnapComboFinding, comboBlockerDecision, comboBlockerLabel, comboFindingLabel, comboFindingPosition, comboReviewPlantLinks, comboZoneMemberIssue, comboZoneMemberIssueLabels, findingDecisionLabels, zoneDecisionLabels,
   type BlockerDraft, type BlockerItem, type ComboReviewDraft, type FindingDraft, type ZoneDraft,
 } from './resultReviewWorkflow'
 import type { ComboPendingBatch, ResultReview } from './v3Types'
@@ -37,6 +37,7 @@ type Props = {
 
 export function ComboReviewVisuals({ token, review, batch, draft, blockers, disabled, selection: requestedSelection, onSelect, onFindingChange, onZoneChange, onBlockerChange }: Props) {
   const [editingZone, setEditingZone] = useState<string | null>(null)
+  const [shrinkError, setShrinkError] = useState<{ zoneId: string; message: string } | null>(null)
   const mapVersionId = batch.farmBaseMapVersionId ?? review.farmBaseMapVersionId
   const mapQuery = useQuery({
     queryKey: ['combo-review-map-version', review.tenantId, review.farmId, mapVersionId],
@@ -69,12 +70,54 @@ export function ComboReviewVisuals({ token, review, batch, draft, blockers, disa
   )[0] : undefined
   const zoneDraft = zone ? draft.zones[zone.sourceProposalId] : undefined
   const zoneGeometry = zoneDraft?.geometry ?? zone?.geometry
-  const zoneMembers = zoneDraft?.findingIds ?? zone?.memberships.map(member => member.findingId) ?? []
-  const canKeepMember = (item: ComboPendingBatch['findings'][number]) => {
-    const point = comboFindingPosition(item, draft, snapTargets)
-    return !!zoneGeometry && draft.findings[item.findingId]?.decision === 'Accept' && zoneCoversPoint(zoneGeometry, point.longitude, point.latitude)
+  const zoneMembers = (zoneDraft?.decision === 'Adjust' ? zoneDraft.findingIds : null) ?? zone?.memberships.map(member => member.findingId) ?? []
+  const memberFindings = zoneMembers.flatMap(id => batch.findings.filter(item => item.findingId === id))
+  // Thành viên chỉ so trùng trụ với các thành viên đứng trước, để khi bỏ trùng vẫn giữ lại một phát hiện cho trụ đó.
+  const memberIssue = (item: ComboPendingBatch['findings'][number]) => {
+    if (!zone) return 'NotAccepted' as const
+    const index = memberFindings.findIndex(entry => entry.findingId === item.findingId)
+    return comboZoneMemberIssue(zone, item, index >= 0 ? memberFindings.slice(0, index) : memberFindings, draft, zoneGeometry)
   }
+  const canKeepMember = (item: ComboPendingBatch['findings'][number]) => memberIssue(item) === null
+  const validMembers = () => memberFindings.reduce<ComboPendingBatch['findings']>((kept, item) =>
+    zone && comboZoneMemberIssue(zone, item, kept, draft, zoneGeometry) === null ? [...kept, item] : kept, []).map(item => item.findingId)
   const findingLabel = (item: ComboPendingBatch['findings'][number]) => `${comboFindingLabel(item.suspectedClassCode)} · ${Math.round(item.confidence * 100)}%`
+  const mapPlants = (shownMap?.plants ?? []).filter(item => ['ACTIVE', 'CANDIDATE', 'HISTORICAL'].includes(item.lifecycleStatus.toUpperCase()) && Number.isFinite(item.lat) && Number.isFinite(item.lon))
+  // Vị trí trụ của một phát hiện: trụ đã liên kết, trụ đã gắn lại (SNAP), hoặc trụ gần GPS nhất để người duyệt biết là cây nào.
+  const findingPlantLabel = (item: ComboPendingBatch['findings'][number]) => {
+    const linked = links.plantByFinding.get(item.findingId)
+    if (linked) return `Trụ hàng ${linked.row}, cột ${linked.col}`
+    const snapped = snapTargets.find(target => target.plantProfileId === draft.findings[item.findingId]?.reviewedPlantProfileId)
+    if (snapped) return `Trụ hàng ${snapped.row ?? '—'}, cột ${snapped.column ?? '—'}`
+    const near = plantsByDistance(mapPlants, item.latitude, item.longitude)[0]
+    return near?.distance != null ? `Gần trụ hàng ${near.plant.row}, cột ${near.plant.col}` : 'Vị trí GPS'
+  }
+  const zoneMemberLabel = (item: ComboPendingBatch['findings'][number]) => `${findingPlantLabel(item)} · ${findingLabel(item)}`
+  const zoneEditable = !!zone && !!zoneDraft && !disabled && zoneDraft.decision !== 'Reject'
+  const zoneMemberPoints = zone ? batch.findings.flatMap(item => {
+    const member = zoneMembers.includes(item.findingId)
+    if (!member && !canKeepMember(item)) return []
+    const point = comboFindingPosition(item, draft, snapTargets)
+    return Number.isFinite(point.latitude) && Number.isFinite(point.longitude)
+      ? [{ id: item.findingId, lat: point.latitude, lon: point.longitude, label: zoneMemberLabel(item), member }] : []
+  }) : []
+  // BE kiểm tra viền theo GPS gốc của phát hiện, nên viền thu gọn phủ cả GPS gốc lẫn trụ đã gắn lại (SNAP).
+  const shrinkZone = () => {
+    if (!zone || !zoneEditable) return
+    const points = batch.findings.filter(item => zoneMembers.includes(item.findingId)).flatMap(item => {
+      const snapped = comboFindingPosition(item, draft, snapTargets)
+      return [[item.longitude, item.latitude], [snapped.longitude, snapped.latitude]] as ZoneVertex[]
+    })
+    const geometry = points.length ? shrinkZoneToPoints(points, mapBoundary(shownMap?.boundaryGeoJson ?? null)) : null
+    if (!geometry) { setShrinkError({ zoneId: zone.sourceProposalId, message: points.length ? 'Không thu gọn được viền nằm trong ranh vườn. Hãy chỉnh viền bằng tay.' : 'Vùng chưa còn cây nào để thu gọn.' }); return }
+    setShrinkError(null)
+    onZoneChange(zone.sourceProposalId, { decision: 'Adjust', geometry, findingIds: zoneMembers })
+  }
+  const toggleZoneMember = (findingId: string) => {
+    if (!zone || !zoneEditable) return
+    const findingIds = zoneMembers.includes(findingId) ? zoneMembers.filter(id => id !== findingId) : [...zoneMembers, findingId]
+    onZoneChange(zone.sourceProposalId, { decision: 'Adjust', findingIds })
+  }
   const options = selection.kind === 'finding'
     ? (plant ? links.findingsByPlant.get(plant.plantId) ?? [] : batch.findings.filter(item => links.plantByFinding.has(item.findingId)))
       .map(item => ({ value: item.findingId, label: findingLabel(item) }))
@@ -97,13 +140,15 @@ export function ComboReviewVisuals({ token, review, batch, draft, blockers, disa
           : shownMap ? <Suspense fallback={<div className="combo-review-map-placeholder" role="status">Đang tải bản đồ khảo sát…</div>}>
             <ComboReviewMap map={shownMap} batch={batch} draft={draft} links={links} selection={selection}
               nearestPlant={snappedTarget ? { lat: snappedTarget.latitude, lon: snappedTarget.longitude } : nearest?.distance != null ? nearest.plant : undefined}
-              onSelect={onSelect} />
+              onSelect={onSelect} zoneMembers={zoneMemberPoints} onToggleZoneMember={zoneEditable ? toggleZoneMember : undefined} />
           </Suspense> : <Alert type="warning" showIcon title="Chưa tải được bản đồ trụ"
             action={mapVersionId ? <Button size="small" onClick={() => void mapQuery.refetch()}>Tải lại bản đồ</Button> : undefined} />}
         {shownMap && image.isError && !shownMap.previewUrl ? <Button size="small" onClick={() => void image.refetch()}>Tải lại ảnh nền</Button> : null}
         {shownMap && selection.kind === 'finding' ? <p className="form-hint">{links.plantByFinding.size
           ? 'Màu đỏ đánh dấu trụ có phát hiện nghi bệnh. Bấm vào trụ để xem từng phát hiện.'
           : 'Chưa có liên kết trụ đối chiếu được với phiên bản bản đồ này. Xem GPS và ngoại lệ trong Điểm cần đối chiếu.'}</p> : null}
+        {shownMap && zone ? <p className="form-hint">Chấm đỏ đặc là cây thuộc vùng, chấm viền đứt là cây trong viền nhưng đã bỏ khỏi vùng.
+          {zoneEditable ? ' Bấm vào chấm để bỏ hoặc thêm lại cây; vùng sẽ chuyển sang Chỉnh vùng và cần nhập lý do.' : ''}</p> : null}
       </div>
       <aside className="combo-review-inspector" aria-label="Chi tiết mục đang chọn">
         <Select aria-label="Chọn mục trên bản đồ" placeholder="Chọn một mục" showSearch={{ optionFilterProp: 'label' }} value={selection.id ?? undefined}
@@ -145,16 +190,20 @@ export function ComboReviewVisuals({ token, review, batch, draft, blockers, disa
               value={zoneDraft.guidanceId ?? undefined} onChange={guidanceId => onZoneChange(zone.sourceProposalId, { guidanceId })}
               options={zone.guidanceCandidates.map(item => ({ value: item.guidanceId, label: `${item.code} · v${item.versionNumber}` }))} /> : null}
             {zoneDraft.decision === 'Adjust' ? <>
-              <Button disabled={disabled || !shownMap} onClick={() => setEditingZone(zone.sourceProposalId)}>Chỉnh viền trên bản đồ</Button>
-              <Select mode="multiple" aria-label="Thành viên vùng bệnh" placeholder="Chọn phát hiện trong viền" disabled={disabled} maxTagCount={3}
+              <Space wrap>
+                <Button disabled={disabled || !shownMap} onClick={() => setEditingZone(zone.sourceProposalId)}>Chỉnh viền trên bản đồ</Button>
+                <Button disabled={!zoneEditable || !zoneMembers.length} onClick={shrinkZone}>Thu gọn viền theo cây còn lại</Button>
+              </Space>
+              {shrinkError?.zoneId === zone.sourceProposalId ? <Alert type="warning" showIcon title={shrinkError.message} /> : <p className="form-hint">Thu gọn vẽ lại viền bao sát các cây còn trong vùng, cách mỗi cây khoảng 1,5 m.</p>}
+              <Select mode="multiple" aria-label="Thành viên vùng bệnh" placeholder="Chọn phát hiện trong viền" showSearch={{ optionFilterProp: 'label' }} disabled={disabled} maxTagCount={3}
                 value={zoneMembers} onChange={findingIds => onZoneChange(zone.sourceProposalId, { findingIds })}
                 options={batch.findings.flatMap((item, index) => {
-                  const available = canKeepMember(item)
-                  return available || zoneMembers.includes(item.findingId) ? [{ value: item.findingId, label: `${index + 1}. ${findingLabel(item)}${available ? '' : ' · Cần bỏ khỏi vùng'}` }] : []
+                  const issue = memberIssue(item)
+                  return !issue || zoneMembers.includes(item.findingId) ? [{ value: item.findingId, label: `${index + 1}. ${zoneMemberLabel(item)}${issue ? ` · Cần bỏ: ${comboZoneMemberIssueLabels[issue]}` : ''}` }] : []
                 })} />
-              {zoneMembers.some(id => !batch.findings.some(item => item.findingId === id && canKeepMember(item))) ? <Button disabled={disabled}
-                onClick={() => onZoneChange(zone.sourceProposalId, { findingIds: zoneMembers.filter(id => batch.findings.some(item => item.findingId === id && canKeepMember(item))) })}>
-                Bỏ thành viên bị loại hoặc ngoài viền
+              {zoneMembers.some(id => !memberFindings.some(item => item.findingId === id && canKeepMember(item))) ? <Button disabled={disabled}
+                onClick={() => onZoneChange(zone.sourceProposalId, { findingIds: validMembers() })}>
+                Bỏ thành viên không hợp lệ
               </Button> : null}
             </> : null}
           </div> : null}
@@ -174,10 +223,7 @@ export function ComboReviewVisuals({ token, review, batch, draft, blockers, disa
     {zone && shownMap && editingZone === zone.sourceProposalId ? <Suspense fallback={null}>
       <ZoneShapeEditor key={zone.sourceProposalId} title="Chỉnh viền vùng nghi bệnh" geometry={zoneGeometry ?? null}
         boundaryGeoJson={shownMap.boundaryGeoJson} bounds={shownMap.bounds} imageUrl={shownMap.previewUrl}
-        memberPoints={batch.findings.filter(item => zoneMembers.includes(item.findingId)).map(item => {
-          const point = comboFindingPosition(item, draft, snapTargets)
-          return { id: item.findingId, lon: point.longitude, lat: point.latitude, label: findingLabel(item) }
-        })}
+        memberPoints={memberFindings.map(item => ({ id: item.findingId, lon: item.longitude, lat: item.latitude, label: zoneMemberLabel(item) }))}
         onClose={() => setEditingZone(null)} onSave={geometry => { onZoneChange(zone.sourceProposalId, { geometry }); setEditingZone(null) }} />
     </Suspense> : null}
   </section>
