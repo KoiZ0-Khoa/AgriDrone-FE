@@ -1,5 +1,3 @@
-import type { GeoJsonPolygon } from '../farms/types'
-
 // Contract lấy từ BE: PlantHealthReviewController.cs + Contracts/Farms/PlantHealthReviewContracts.cs
 // + Features/PlantHealth/PlantHealthReviewCommands.cs (mốc BE fda57ec). Xem task A1 trong
 // docs/plant-health-review-phase2-2026-11-13.md.
@@ -37,12 +35,6 @@ export type ResolveFlagResult = {
   resolvedPlantId: string | null; newPlantId: string | null; newPlantCode: string | null
 }
 
-// UC-30 — chỉ áp dụng cho vùng PROPOSED; boundary/memberships thành công thì vùng chuyển REVIEWED và khóa.
-export type MergeDiseaseZonesBody = { zoneIds: string[]; mergedGeometry: GeoJsonPolygon }
-export type MergeDiseaseZonesResult = { mergedZoneId: string; totalTrees: number; mergedZoneCount: number }
-export type UpdateZoneBoundaryResult = { zoneId: string; geometryGeoJson: string; totalEnclosedTrees: number }
-export type UpdateZoneMembershipsBody = { addPlantIds: string[]; removePlantIds: string[] }
-export type UpdateZoneMembershipsResult = { zoneId: string; totalEnclosedTrees: number; addedCount: number; removedCount: number }
 
 // Các khóa snake_case thật trong cột matching_parameters (jsonb) — BE GetFarmPlantHealthMapQueryHandler đọc cùng các khóa này.
 // Cố ý KHÔNG đọc crop_image_url / annotated_image_url: đó là link ký sẵn 7 ngày, hết hạn là chết.

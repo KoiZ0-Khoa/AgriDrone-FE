@@ -21,8 +21,6 @@ function capture(response, status = 200) {
   }
   return calls
 }
-const square = { type: 'Polygon', coordinates: [[[106.1, 10.1], [106.2, 10.1], [106.2, 10.2]]] }
-const closedSquare = [[[106.1, 10.1], [106.2, 10.1], [106.2, 10.2], [106.1, 10.1]]]
 
 test('reviewPlantObservation PUTs CONFIRMED with trimmed reason and corrected condition code', async () => {
   const calls = capture({ observationId: 'OBS-1', newStatus: 'CONFIRMED', resolvedPlantId: 'plant-1', reason: 'r' })
@@ -77,39 +75,8 @@ test('resolveFlaggedObservation accepts the 201 Created response of CREATE_NEW_P
   assert.equal(result.newPlantCode, 'P-NEW-1')
 })
 
-test('mergeDiseaseZones closes the polygon and requires two distinct zones before calling BE', async () => {
-  const calls = capture({ mergedZoneId: 'z3', totalTrees: 8, mergedZoneCount: 2 })
-  const result = await api.mergeDiseaseZones('tok', 'farm-1', ['z1', 'z2'], square)
-  assert.equal(calls[0].url, `${base}/disease-zones/merge`)
-  assert.deepEqual(calls[0].body, { zoneIds: ['z1', 'z2'], mergedGeometry: { type: 'Polygon', coordinates: closedSquare } })
-  assert.equal(result.mergedZoneCount, 2)
-  await assert.rejects(api.mergeDiseaseZones('tok', 'farm-1', ['z1', 'Z1'], square), /ít nhất 2/)
-  assert.equal(calls.length, 1)
-})
-
-test('updateDiseaseZoneBoundary PUTs a closed polygon and keeps an already-closed ring unchanged', async () => {
-  const calls = capture({ zoneId: 'z1', geometryGeoJson: '{}', totalEnclosedTrees: 29 })
-  await api.updateDiseaseZoneBoundary('tok', 'farm-1', 'z1', { type: 'Polygon', coordinates: closedSquare })
-  assert.equal(calls[0].url, `${base}/disease-zones/z1/boundary`)
-  assert.equal(calls[0].method, 'PUT')
-  assert.deepEqual(calls[0].body, { newGeometry: { type: 'Polygon', coordinates: closedSquare } })
-  await assert.rejects(api.updateDiseaseZoneBoundary('tok', 'farm-1', 'z1', { type: 'Polygon', coordinates: [[[1, 1], [2, 2]]] }), /ít nhất 3 điểm/)
-  assert.equal(calls.length, 1)
-})
-
-test('updateDiseaseZoneMemberships PATCHes both arrays and blocks an empty change', async () => {
-  const calls = capture({ zoneId: 'z1', totalEnclosedTrees: 5, addedCount: 1, removedCount: 0 })
-  await api.updateDiseaseZoneMemberships('tok', 'farm-1', 'z1', { addPlantIds: ['p1'], removePlantIds: [] })
-  assert.equal(calls[0].url, `${base}/disease-zones/z1/memberships`)
-  assert.equal(calls[0].method, 'PATCH')
-  assert.deepEqual(calls[0].body, { addPlantIds: ['p1'], removePlantIds: [] })
-  await assert.rejects(api.updateDiseaseZoneMemberships('tok', 'farm-1', 'z1', { addPlantIds: [], removePlantIds: [] }), /Chưa chọn cây/)
-  assert.equal(calls.length, 1)
-})
-
 test('plantHealthReviewError translates BE codes and falls back for access errors', () => {
   assert.match(workflow.plantHealthReviewError(new ApiError(400, 'x', 'ResolveFlagged.OutsideBoundary')), /ngoài ranh giới/)
-  assert.match(workflow.plantHealthReviewError(new ApiError(409, 'x', 'UpdateZoneBoundary.InvalidStatus')), /không thể chỉnh viền/)
   assert.match(workflow.plantHealthReviewError(new ApiError(403, 'x', 'MergeZones.FarmAccessDenied')), /không được phân công/)
   assert.equal(workflow.plantHealthReviewError(new ApiError(500, 'Lỗi lạ', 'Other.Code')), 'Lỗi lạ')
 })

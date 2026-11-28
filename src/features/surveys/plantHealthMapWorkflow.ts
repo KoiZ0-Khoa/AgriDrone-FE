@@ -36,15 +36,6 @@ const reviewErrorMessages: Record<string, string> = {
   'ResolveFlagged.NoDetectedLocation': 'Vết lệch không có tọa độ phát hiện nên không thể tạo trụ mới tại đó.',
   'ResolveFlagged.OutsideBoundary': 'Vị trí phát hiện nằm ngoài ranh giới nông trại đã duyệt, không thể tạo trụ mới.',
   'ResolveFlagged.PlantCodeExists': 'Mã trụ này đã tồn tại. Nhập mã khác hoặc để trống cho hệ thống tự sinh.',
-  'MergeZones.MinimumZones': 'Cần chọn ít nhất 2 vùng bệnh để gộp.',
-  'MergeZones.ZoneNotFound': 'Có vùng bệnh không còn tồn tại — hãy tải lại bản đồ.',
-  'MergeZones.InvalidStatus': 'Chỉ gộp được các vùng đang ở trạng thái Đề xuất, chưa duyệt.',
-  'MergeZones.EmptyMembership': 'Các vùng đã chọn không có cây thành viên nào để gộp.',
-  'UpdateZoneBoundary.ZoneNotFound': 'Không tìm thấy vùng bệnh — hãy tải lại bản đồ.',
-  'UpdateZoneBoundary.InvalidStatus': 'Vùng bệnh đã duyệt hoặc đã gộp nên không thể chỉnh viền nữa.',
-  'UpdateZoneMemberships.ZoneNotFound': 'Không tìm thấy vùng bệnh — hãy tải lại bản đồ.',
-  'UpdateZoneMemberships.InvalidStatus': 'Vùng bệnh đã duyệt hoặc đã gộp nên không thể sửa thành viên nữa.',
-  'UpdateZoneMemberships.PlantNotFound': 'Có trụ cây không còn hoạt động trong nông trại này.',
 }
 export function plantHealthReviewError(error: unknown) {
   if (error instanceof ApiError) {
