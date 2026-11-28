@@ -59,26 +59,56 @@ test('manual edits preserve the real candidate reference and reject positions ou
   assert.throws(() => workflow.manualReviewBody(values, candidate, null), /ranh giới/)
 })
 
-test('disease detection calls .NET and an empty successful result can be handed off with one idempotency key', async () => {
+test('disease detection follows the queued job over refresh and hands off the completed COMBO revision', async () => {
   const missionId = versionId, key = nextVersionId, calls = []
+  const jobId = '50000000-0000-4000-8000-000000000005'
+  const processingJobId = '60000000-0000-4000-8000-000000000006'
+  const queued = { missionId, jobId, status: 'QUEUED', result: null }
   const body = { confidenceThreshold: 0.25, matchingToleranceMeters: 2.5, zoneRadiusMeters: 5, minDiseasedTrees: 3 }
   globalThis.fetch = async (url, options) => {
     calls.push(new URL(url).pathname)
     assert.equal(new URL(url).origin, 'http://test.local')
-    assert.equal(options.method, 'POST')
     assert.equal(options.headers.Authorization, 'Bearer manager-token')
     if (url.endsWith('/disease-detect')) {
+      assert.equal(options.method, 'POST')
       assert.deepEqual(JSON.parse(options.body), body)
-      return Response.json({ missionId, totalDetections: 0, totalImagesScanned: 3, detections: [], diseaseSummary: {} })
+      return Response.json(queued, { status: 202 })
     }
-    assert.equal(options.body, undefined)
+    if (url.includes('/disease-detect/jobs/')) {
+      assert.equal(options.method ?? 'GET', 'GET')
+      assert.equal(options.cache, 'no-store')
+      if (url.endsWith('/latest')) return Response.json({ ...queued, status: 'RUNNING' })
+      return Response.json({ ...queued, status: 'COMPLETED', result: { missionId, jobId: processingJobId, sourceRevision: 2, totalDetections: 0, totalImagesScanned: 3, detections: [], diseaseSummary: {} } })
+    }
+    assert.equal(options.method, 'POST')
     assert.equal(options.headers['Idempotency-Key'], key)
+    assert.deepEqual(JSON.parse(options.body), { jobId: processingJobId, sourceRevision: 2 })
     return Response.json({ missionId, messageId: key, status: 'QUEUED' })
   }
-  const result = await healthApi.detectMissionDiseases('manager-token', farmId, missionId, body)
-  assert.equal(result.totalDetections, 0)
-  assert.equal((await healthApi.publishMissionPlantHealth('manager-token', farmId, missionId, key)).status, 'QUEUED')
-  assert.deepEqual(calls, [`/api/missions/${missionId}/farms/${farmId}/disease-detect`, `/api/system-manager/farms/${farmId}/missions/${missionId}/plant-health/publish`])
+  const started = await healthApi.detectMissionDiseases('manager-token', farmId, missionId, body)
+  assert.equal(started.result, null)
+  assert.equal(healthApi.isDiseaseJobActive(started), true)
+  const resumed = await healthApi.getMissionDiseaseJob('manager-token', farmId, missionId, undefined)
+  assert.equal(resumed.jobId, started.jobId)
+  assert.equal(healthApi.isDiseaseJobActive(resumed), true)
+  const completed = await healthApi.getMissionDiseaseJob('manager-token', farmId, missionId, resumed.jobId)
+  assert.equal(healthApi.isDiseaseJobActive(completed), false)
+  assert.equal(completed.result.totalDetections, 0)
+  const { jobId: resultJobId, sourceRevision } = completed.result
+  assert.equal((await healthApi.publishMissionComboAnalysis('manager-token', farmId, missionId, key, { jobId: resultJobId, sourceRevision })).status, 'QUEUED')
+  const path = `/api/missions/${missionId}/farms/${farmId}/disease-detect`
+  assert.deepEqual(calls, [path, `${path}/jobs/latest`, `${path}/jobs/${jobId}`, `/api/v3/farms/${farmId}/missions/${missionId}/combo-analysis/handoffs`])
+})
+
+test('disease job reads distinguish no job, a failed job, and a malformed completed result', async () => {
+  globalThis.fetch = async () => Response.json({ errorCode: 'Disease.JobNotFound' }, { status: 404 })
+  assert.equal(await healthApi.getMissionDiseaseJob('token', farmId, versionId, undefined), null)
+  await assert.rejects(() => healthApi.getMissionDiseaseJob('token', farmId, versionId, nextVersionId), { code: 'Disease.JobNotFound' })
+  const failed = { missionId: versionId, jobId: nextVersionId, status: 'FAILED', result: null, error: 'Inference failed.' }
+  globalThis.fetch = async () => Response.json(failed)
+  assert.equal(healthApi.isDiseaseJobActive(await healthApi.getMissionDiseaseJob('token', farmId, versionId, nextVersionId)), false)
+  globalThis.fetch = async () => Response.json({ ...failed, status: 'COMPLETED', result: { missionId: versionId, detections: [] } })
+  await assert.rejects(() => healthApi.getMissionDiseaseJob('token', farmId, versionId, nextVersionId), /kết quả hợp lệ/)
 })
 
 test('health handoff rejects mismatched operation or mission and keeps server failure codes', async () => {
