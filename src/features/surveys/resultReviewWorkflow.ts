@@ -1,4 +1,5 @@
 import type { MapPlant } from '../baseMaps/types'
+import { distanceMeters } from './healthReviewWorkflow'
 import { zoneCoversPoint } from './zoneGeometry'
 import type {
   ComboBlockerResolution, ComboBlockerResolutionValue, ComboFindingDecisionValue, ComboPendingBatch, ComboPendingFinding, ComboReviewOutcome,
@@ -95,7 +96,7 @@ export function blockerEvidence(batch: ComboPendingBatch, blocker: BlockerItem) 
   return linked?.length ? linked : allBatchEvidence(batch)
 }
 
-export type FindingDraft = { decision: ComboFindingDecisionValue; reason: string; reviewedPlantProfileId?: string | null }
+export type FindingDraft = { decision: ComboFindingDecisionValue; reason: string; reviewedPlantProfileId?: string | null; autoSnapped?: boolean }
 export type ZoneDraft = {
   decision: ComboZoneDecisionValue; guidanceId: string | null; reason: string
   geometry?: GeoJsonPolygonV3 | null; findingIds?: string[] | null
@@ -111,6 +112,36 @@ export function canSnapComboFinding(batch: ComboPendingBatch, finding: ComboPend
   return finding.evidenceMediaIds.length > 0 &&
     !batch.boundaryExceptions.some(item => item.sourceReferenceId === finding.findingId && outside(item.boundaryClassification)) &&
     !blockerItems(batch).some(item => item.sourceId === finding.findingId && outside(item.reasonCode))
+}
+
+// Match the standard COMBO GPS tolerance. Old analyzed batches may have no pole identity yet.
+const comboAutoSnapToleranceM = 2.5
+
+function autoSnapFinding(batch: ComboPendingBatch, finding: ComboPendingFinding, targets: ComboSnapTarget[]): Partial<FindingDraft> {
+  if (!targets.length || !canSnapComboFinding(batch, finding)) return {}
+  const profileId = finding.plantProfileId?.toLowerCase()
+  const candidateId = finding.mappingCandidateId?.toLowerCase()
+  let nearest: ComboSnapTarget | undefined
+  let distance = Infinity, secondDistance = Infinity
+  for (const target of targets) {
+    if (profileId && target.plantProfileId.toLowerCase() !== profileId) continue
+    if (candidateId && target.mappingCandidateId.toLowerCase() !== candidateId && target.sourceCandidateId.toLowerCase() !== candidateId) continue
+    const meters = distanceMeters(finding.latitude, finding.longitude, target.latitude, target.longitude)
+    if (meters < distance) {
+      secondDistance = distance
+      distance = meters
+      nearest = target
+    } else if (meters < secondDistance) secondDistance = meters
+  }
+  if (!nearest || distance > comboAutoSnapToleranceM || distance.toFixed(2) === secondDistance.toFixed(2)) return {}
+  const target = nearest
+  if (batch.diseaseZones.some(zone => zone.memberships.some(member => member.findingId === finding.findingId) &&
+    !zoneCoversPoint(zone.geometry, target.longitude, target.latitude))) return {}
+  return {
+    reviewedPlantProfileId: target.plantProfileId,
+    reason: `Tự đối chiếu GPS với trụ đã xác minh, cách ${distance.toFixed(2)} m.`,
+    autoSnapped: true,
+  }
 }
 
 export function comboFindingPosition(finding: ComboPendingFinding, draft: ComboReviewDraft, targets: ComboSnapTarget[] = []) {
@@ -177,10 +208,20 @@ export function initialComboReviewDraft(review: ResultReview): ComboReviewDraft 
   const batch = review.comboPendingBatch!
   const previous = review.currentComboReview
   const findings: Record<string, FindingDraft> = {}, zones: Record<string, ZoneDraft> = {}, blockers: Record<string, BlockerDraft> = {}
+  const items = blockerItems(batch)
+  const nearBoundaryIds = new Set([
+    ...batch.boundaryExceptions.filter(item => item.boundaryClassification === 'NEEDS_REVIEW').map(item => item.sourceReferenceId),
+    ...items.filter(item => item.sourceType === 'FINDING_SPATIAL' && item.reasonCode === 'NEEDS_REVIEW').map(item => item.sourceId),
+  ])
+  const targets = !isFrozen(review) && review.orderStatus.toUpperCase() === 'PROCESSING' && review.captureAttemptStatus.toUpperCase() === 'PROCESSING'
+    ? review.comboSnapTargets ?? [] : []
   for (const finding of batch.findings) {
     const old = previous?.findingDecisions.find(item => item.findingId === finding.findingId)
     findings[finding.findingId] = { decision: old?.decision === 'Exclude' ? 'Exclude' : 'Accept', reason: old?.reason ?? '' }
     if (old?.reviewedPlantProfileId) findings[finding.findingId].reviewedPlantProfileId = old.reviewedPlantProfileId
+    if (!old && (!finding.plantProfileId || !finding.mappingCandidateId || nearBoundaryIds.has(finding.findingId))) {
+      Object.assign(findings[finding.findingId], autoSnapFinding(batch, finding, targets))
+    }
   }
   for (const zone of batch.diseaseZones) {
     const old = previous?.zoneDecisions.find(item => item.sourceProposalId === zone.sourceProposalId)
@@ -192,7 +233,7 @@ export function initialComboReviewDraft(review: ResultReview): ComboReviewDraft 
       reason: old?.reason ?? '',
     }
   }
-  for (const blocker of blockerItems(batch)) {
+  for (const blocker of items) {
     const old = previous?.blockerResolutions.find(item => item.sourceType === blocker.sourceType && item.sourceId === blocker.sourceId && item.reasonCode === blocker.reasonCode)
     const snappedIdentity = blocker.sourceType === 'FINDING_IDENTITY' && findings[blocker.sourceId]?.reviewedPlantProfileId
     blockers[blocker.key] = snappedIdentity ? { resolution: 'Unresolved', reason: '' }

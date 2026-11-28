@@ -115,7 +115,10 @@ export function ComboReviewVisuals({ token, review, batch, draft, blockers, disa
             {boundary ? <Tag color="orange">{comboBlockerLabel(boundary.boundaryClassification)} · {boundary.measuredBoundaryDistanceM.toFixed(2)} m tới mép</Tag> : null}
             {zone ? <Tag color="orange">{comboFindingLabel(zone.suspectedClassCode)} · {zoneDraft?.decision === 'Adjust' ? zoneMembers.length : zone.memberships.length} phát hiện</Tag> : null}
           </Space>
-          {nearest?.distance != null ? <p className="form-hint">Trụ gần GPS nhất trên bản đồ là hàng {nearest.plant.row}, cột {nearest.plant.col}, cách {nearest.distance.toFixed(2)} m. Vị trí này dùng để đối chiếu.</p> : null}
+          {snappedTarget ? <p className="form-hint">{findingDraft?.autoSnapped ? 'Đã tự gắn trong bản nháp vào' : 'Trụ đã chọn ở'} hàng {snappedTarget.row ?? '—'}, cột {snappedTarget.column ?? '—'}.</p>
+            : nearest?.distance != null ? <p className="form-hint">Trụ gần GPS nhất trên bản đồ là hàng {nearest.plant.row}, cột {nearest.plant.col}, cách {nearest.distance.toFixed(2)} m.</p> : null}
+          {!disabled && selection.kind === 'boundary' && finding && canSnapComboFinding(batch, finding) && review.comboSnapTargets == null
+            ? <p className="form-hint">Máy chủ chưa trả danh sách trụ đã xác minh để gắn điểm này.</p> : null}
           <ComboEvidenceImage key={`${selection.kind}:${selection.id}`} token={token} farmId={review.farmId} missionId={review.missionId} mediaIds={mediaIds} />
           {finding ? <div className="combo-review-fields">
             <strong>Quyết định phát hiện</strong>

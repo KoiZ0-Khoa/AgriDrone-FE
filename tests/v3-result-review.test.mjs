@@ -9,7 +9,9 @@ const urlFor = source => `data:text/javascript;base64,${Buffer.from(source).toSt
 const clientUrl = urlFor(compile('../src/api/client.ts').replace('import.meta.env.VITE_API_BASE_URL', "'http://test.local'"))
 const v3WorkflowUrl = urlFor(compile('../src/features/surveys/v3Workflow.ts'))
 const geometryUrl = urlFor(compile('../src/features/surveys/zoneGeometry.ts'))
-const flow = await import(urlFor(compile('../src/features/surveys/resultReviewWorkflow.ts').replace("'./zoneGeometry'", JSON.stringify(geometryUrl))))
+const healthWorkflowUrl = urlFor(compile('../src/features/surveys/healthReviewWorkflow.ts').replace("'../../api/client'", JSON.stringify(clientUrl)))
+const flow = await import(urlFor(compile('../src/features/surveys/resultReviewWorkflow.ts')
+  .replace("'./zoneGeometry'", JSON.stringify(geometryUrl)).replace("'./healthReviewWorkflow'", JSON.stringify(healthWorkflowUrl))))
 const v3Api = await import(urlFor(compile('../src/features/surveys/v3Api.ts').replace("'../../api/client'", JSON.stringify(clientUrl))))
 const surveyWorkflow = await import(urlFor(compile('../src/features/surveys/workflow.ts').replace("'../../api/client'", JSON.stringify(clientUrl)).replace("'./v3Workflow'", JSON.stringify(v3WorkflowUrl))))
 const originalFetch = globalThis.fetch
@@ -96,6 +98,42 @@ test('SNAP saves the selected verified profile and the original finding evidence
   assert.throws(() => flow.comboReviewBody({ ...review, comboSnapTargets: [] }, draft), /phải thuộc bản đồ/)
   const outside = { ...review, comboPendingBatch: { ...review.comboPendingBatch, blockingReasons: ['FINDING_SPATIAL:f1:OUT_OF_BOUNDARY'] } }
   assert.throws(() => flow.comboReviewBody(outside, draft), /GPS trong ranh giới/)
+})
+
+test('COMBO preselects a verified pole for nearby points and leaves boundary and certainty decisions pending', () => {
+  const verified = { plantProfileId: 'p1', mappingCandidateId: 'c1', sourceCandidateId: 's1', latitude: 10.4, longitude: 106.10001, row: 5, column: 3 }
+  const review = { ...comboReview, comboSnapTargets: [verified], comboPendingBatch: {
+    ...batch, diseaseZones: [],
+    findings: [
+      finding('near', { plantProfileId: 'p1', mappingCandidateId: 's1' }),
+      finding('unlinked'),
+      finding('already-linked', { plantProfileId: 'p1', mappingCandidateId: 's1' }),
+      finding('outside'),
+      finding('far', { longitude: 106.101 }),
+      finding('no-photo', { evidenceMediaIds: [] }),
+      finding('conflicting', { plantProfileId: 'p-other', mappingCandidateId: 's1' }),
+    ],
+    boundaryExceptions: [{ ...batch.boundaryExceptions[0], sourceReferenceId: 'near', boundaryClassification: 'NEEDS_REVIEW' }],
+    blockingReasons: [
+      'BOUNDARY_EXCEPTION:near:NEEDS_REVIEW', 'FINDING_UNCERTAINTY:near:REQUIRES_REVIEW',
+      'FINDING_SPATIAL:outside:OUT_OF_BOUNDARY', 'FINDING_IDENTITY:unlinked:UnresolvedIdentity',
+    ],
+  } }
+  const draft = flow.initialComboReviewDraft(review)
+  assert.equal(draft.findings.near.reviewedPlantProfileId, 'p1')
+  assert.equal(draft.findings.unlinked.autoSnapped, true)
+  assert.match(draft.findings.near.reason, /GPS.*1\.09 m/)
+  for (const id of ['already-linked', 'outside', 'far', 'no-photo', 'conflicting']) {
+    assert.equal(draft.findings[id].reviewedPlantProfileId, undefined, id)
+  }
+  const resolutions = flow.blockerItems(review.comboPendingBatch).map(item => flow.comboBlockerDecision(draft, item)?.resolution)
+  assert.deepEqual(resolutions, ['Unresolved', 'Unresolved', 'Unresolved', 'Corrected'])
+  const ambiguous = flow.initialComboReviewDraft({ ...review, comboSnapTargets: [verified, { ...verified, plantProfileId: 'p2', mappingCandidateId: 'c2', sourceCandidateId: 's2' }] })
+  assert.equal(ambiguous.findings.unlinked.reviewedPlantProfileId, undefined)
+  assert.equal(ambiguous.findings.near.reviewedPlantProfileId, 'p1')
+  const previous = { findingDecisions: [{ findingId: 'near', decision: 'Exclude', reason: 'Đã kiểm tra' }], zoneDecisions: [], blockerResolutions: [] }
+  assert.deepEqual(flow.initialComboReviewDraft({ ...review, currentComboReview: previous }).findings.near, { decision: 'Exclude', reason: 'Đã kiểm tra' })
+  assert.equal(flow.initialComboReviewDraft({ ...review, comboSnapTargets: undefined }).findings.near.reviewedPlantProfileId, undefined)
 })
 
 test('zone adjustment sends the edited polygon, kept members, reason, guidance and evidence', async () => {
