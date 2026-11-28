@@ -152,7 +152,15 @@ export function comboFindingPosition(finding: ComboPendingFinding, draft: ComboR
 // Quy tắc thành viên vùng giống BE (SurveyResultReviewTransaction.ValidateComboZoneMembers): phát hiện đã Chấp nhận,
 // cùng loại bệnh với vùng, mỗi trụ chỉ một phát hiện, và viền phủ vị trí GPS gốc (BE không dùng vị trí trụ SNAP).
 export type ComboZoneMemberIssue = 'NotAccepted' | 'ClassMismatch' | 'DuplicatePole' | 'Outside'
-const sameCode = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase()
+// Giống BE ComboAnalysisV1Values.NormalizeSuspectedClassCode: vùng có thể mang DISEASE_BROWN_SPOT còn phát hiện mang BROWN_SPOT.
+export function normalizeComboClassCode(label: string | null | undefined) {
+  const normalized = (label ?? '').trim().replaceAll(' ', '_').toUpperCase()
+  if (['SUNBURN', 'SUN_BURN', 'DISEASE_SUN_BURN'].includes(normalized)) return 'SUNBURN'
+  if (['BROWN_SPOT', 'DISEASE_BROWN_SPOT'].includes(normalized)) return 'BROWN_SPOT'
+  if (['ANTHRACNOSE', 'DISEASE_ANTHRACNOSE'].includes(normalized)) return 'ANTHRACNOSE'
+  return normalized.startsWith('DISEASE_') ? normalized.slice('DISEASE_'.length) : normalized
+}
+const sameCode = (a: string, b: string) => normalizeComboClassCode(a) === normalizeComboClassCode(b)
 const poleKeys = (finding: ComboPendingFinding) => [
   finding.plantProfileId ? `profile:${finding.plantProfileId.toLowerCase()}` : null,
   finding.mappingCandidateId ? `candidate:${finding.mappingCandidateId.toLowerCase()}` : null,

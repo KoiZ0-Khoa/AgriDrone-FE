@@ -293,3 +293,12 @@ test('COMBO zone members follow BE rules: accepted, same disease, one finding pe
   assert.equal(flow.comboZoneMemberIssue(zone, b, [a], draft, box), 'DuplicatePole')
   assert.equal(flow.comboZoneMemberIssue(zone, finding('far', { longitude: 107 }), [], draft, box), 'Outside')
 })
+
+test('COMBO zone class check normalizes codes like BE (DISEASE_BROWN_SPOT = BROWN_SPOT)', () => {
+  const box = { type: 'Polygon', coordinates: [[[106, 10.3], [106.2, 10.3], [106.2, 10.5], [106, 10.5], [106, 10.3]]] }
+  const draft = { findings: { a: { decision: 'Accept' } } }
+  assert.equal(flow.comboZoneMemberIssue({ suspectedClassCode: 'DISEASE_BROWN_SPOT' }, finding('a', { suspectedClassCode: 'BROWN_SPOT' }), [], draft, box), null)
+  assert.equal(flow.comboZoneMemberIssue({ suspectedClassCode: 'DISEASE_SUN_BURN' }, finding('a', { suspectedClassCode: 'SUNBURN' }), [], draft, box), null)
+  assert.equal(flow.comboZoneMemberIssue({ suspectedClassCode: 'DISEASE_SOFT_ROT' }, finding('a', { suspectedClassCode: 'Disease Soft Rot' }), [], draft, box), null)
+  assert.equal(flow.comboZoneMemberIssue({ suspectedClassCode: 'DISEASE_SOFT_ROT' }, finding('a', { suspectedClassCode: 'BROWN_SPOT' }), [], draft, box), 'ClassMismatch')
+})
