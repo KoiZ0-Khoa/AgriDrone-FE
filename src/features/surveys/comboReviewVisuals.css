@@ -3,8 +3,9 @@
 .combo-review-visual-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .combo-review-visual-heading h3 { margin: 0; }
 .combo-review-visual-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 16px; align-items: start; }
-.combo-review-map { display: grid; gap: 12px; min-width: 0; }
-.combo-review-map-canvas { isolation: isolate; }
+.combo-review-map-stack { display: grid; gap: 12px; min-width: 0; }
+.combo-review-map { min-width: 0; }
+.combo-review-map .base-map-canvas { isolation: isolate; }
 .combo-review-map-placeholder { display: grid; min-height: 360px; place-items: center; border: 1px solid var(--mist); border-radius: 8px; background: var(--mint-soft); color: var(--muted); }
 .combo-review-inspector { display: grid; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--mist); border-radius: 8px; }
 .combo-review-fields { display: grid; gap: 8px; min-width: 0; }
@@ -15,5 +16,5 @@
 
 @media (max-width: 900px) {
   .combo-review-visual-grid { grid-template-columns: minmax(0, 1fr); }
-  .base-map-canvas.combo-review-map-canvas, .combo-review-map-placeholder { height: clamp(300px, 52vh, 440px); min-height: 0; }
+  .combo-review-map .base-map-canvas, .combo-review-map-placeholder { height: clamp(300px, 52vh, 440px); min-height: 0; }
 }

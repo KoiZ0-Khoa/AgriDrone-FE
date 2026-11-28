@@ -129,9 +129,7 @@ function PendingComboAnalysis({ token, orderId, reload, checkHandoff }: { token:
 function ComboReviewSection({ token, review, reload, checkHandoff }: { token: string; review: ResultReview; reload: () => Promise<void>; checkHandoff: () => Promise<void> }) {
   const batch = review.comboPendingBatch
   const [draft, setDraft] = useState<ComboReviewDraft | null>(() => batch ? initialComboReviewDraft(review) : null)
-  const [selection, setSelection] = useState<ComboReviewSelection>(() => ({
-    kind: 'finding', id: batch?.findings.find(item => item.evidenceMediaIds.length)?.findingId ?? batch?.findings[0]?.findingId ?? null,
-  }))
+  const [selection, setSelection] = useState<ComboReviewSelection>({ kind: 'finding', id: null })
   const mapAnchor = useRef<HTMLDivElement>(null)
   const operation = useRef<V3Operation | null>(null)
   useEffect(() => { operation.current = null }, [review.orderVersion])

@@ -5,13 +5,13 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { readableCode } from '../../components/RecordReference'
-import { getOrthophotoStatus } from '../missions/missionApi'
 import { dateTime } from '../surveys/workflow'
 import { getMapVersion } from './api'
 import { EditableBaseMapViewer } from './EditableBaseMapViewer'
 import { MapReadError } from './MapReadError'
 import { PlantLifecycleDialog } from './PlantLifecycleDialog'
 import type { ManualMapChange, MapPlant, MapVersionDetail } from './types'
+import { useBaseMapOrthophoto } from './useBaseMapOrthophoto'
 import { changeLabel, formatGridMeters, isReleasedMap, lifecycleLabel, mapState, mapStatusLabel } from './workflow'
 
 export function MapVersionPanel({ token, scopeKey, farmId, farmName, versionId, path, manager }: { token: string; scopeKey: string; farmId: string; farmName: string; versionId: string; path: string; manager: boolean }) {
@@ -26,12 +26,11 @@ export function MapVersionPanel({ token, scopeKey, farmId, farmName, versionId, 
 function MapDetail({ token, scopeKey, map, farmName, manager, refresh, refreshing }: { token: string; scopeKey: string; map: MapVersionDetail; farmName: string; manager: boolean; refresh: () => void; refreshing: boolean }) {
   const [plant, setPlant] = useState<MapPlant | null>(null)
   // This read endpoint signs existing media. It does not start map reconstruction.
-  const image = useQuery({ queryKey: ['base-map-orthophoto', scopeKey, map.farmId, map.sourceMissionId], queryFn: ({ signal }) => getOrthophotoStatus(token, map.farmId, map.sourceMissionId!, signal), enabled: manager && !!map.sourceMissionId, retry: false })
-  const shownMap = image.data?.status === 'COMPLETED' && image.data.previewUrl ? { ...map, previewUrl: image.data.previewUrl, bounds: image.data.bounds ?? map.bounds } : map
+  const { shownMap, image } = useBaseMapOrthophoto(token, scopeKey, map, manager)
   return <>
     <section className="resource-page-heading"><div><span className="page-kicker">{farmName}</span><h1>Bản đồ phiên bản {map.versionNumber}</h1><p>{mapStatusLabel(map.status)}{map.publishedAt ? ` · ${dateTime(map.publishedAt)}` : ''}</p></div><Space wrap>{manager && mapState(map.status) === 'DRAFT' ? <Link className="workflow-detail-link" to={`/manager/farms/${encodeURIComponent(map.farmId)}/base-map-drafts/${encodeURIComponent(map.versionId)}`}>Duyệt bản đồ nháp →</Link> : null}<Button icon={<ReloadOutlined />} loading={refreshing || image.isFetching} onClick={() => { refresh(); if (manager && map.sourceMissionId) void image.refetch() }}>Tải lại</Button></Space></section>
     <div className="mapping-summary"><div><span>Số trụ</span><strong>{map.totalPoles}</strong></div><div><span>Khoảng cách hàng</span><strong>{formatGridMeters(map.rowSpacingM)}</strong></div><div><span>Khoảng cách trụ</span><strong>{formatGridMeters(map.plantSpacingM)}</strong></div><div><span>Chỉnh sửa thực địa</span><strong>{map.manualChanges?.length ?? 0}</strong></div></div>
-    <section className="resource-panel"><EditableBaseMapViewer token={token} scopeKey={scopeKey} map={shownMap} canEdit={manager && ['PUBLISHED', 'DRAFT'].includes(mapState(map.status))} disabled={refreshing} selectPlant={setPlant} /></section>
+    <section className="resource-panel"><EditableBaseMapViewer token={token} scopeKey={scopeKey} map={shownMap ?? map} canEdit={manager && ['PUBLISHED', 'DRAFT'].includes(mapState(map.status))} disabled={refreshing} selectPlant={setPlant} /></section>
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Trụ trên bản đồ</strong><span>Bấm vào trụ để xem lịch sử vòng đời.</span></div></div><Table<MapPlant> rowKey="plantId" dataSource={map.plants} pagination={{ pageSize: 20, showSizeChanger: false }} scroll={{ x: 700 }} locale={{ emptyText: 'Phiên bản này chưa có trụ.' }} columns={[
       { title: 'Trụ', render: (_, item) => readableCode(item.plantCode) ?? `Hàng ${item.row} · Cột ${item.col}` },
       { title: 'Hàng · Cột', render: (_, item) => `${item.row} · ${item.col}` },

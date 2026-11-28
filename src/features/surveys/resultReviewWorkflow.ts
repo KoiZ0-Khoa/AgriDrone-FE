@@ -1,5 +1,6 @@
+import type { MapPlant } from '../baseMaps/types'
 import type {
-  ComboBlockerResolution, ComboBlockerResolutionValue, ComboFindingDecisionValue, ComboPendingBatch, ComboReviewOutcome,
+  ComboBlockerResolution, ComboBlockerResolutionValue, ComboFindingDecisionValue, ComboPendingBatch, ComboPendingFinding, ComboReviewOutcome,
   FreezeResultBody, FreezeResultReviewDecision, RecordComboReviewBody, ResultReview,
 } from './v3Types'
 
@@ -41,6 +42,33 @@ export function parseBlockingReason(value: string): BlockerItem | null {
   return { key: value, sourceType, sourceId, reasonCode }
 }
 export const blockerItems = (batch: ComboPendingBatch) => batch.blockingReasons.map(parseBlockingReason).filter((item): item is BlockerItem => item !== null)
+
+export function comboReviewPlantLinks(batch: ComboPendingBatch, plants: MapPlant[]) {
+  const boundaryIds = new Set(batch.boundaryExceptions.map(item => item.sourceReferenceId.toLowerCase()))
+  const flaggedIds = new Set(blockerItems(batch)
+    .filter(item => ['BOUNDARY_EXCEPTION', 'FINDING_SPATIAL'].includes(item.sourceType.toUpperCase()))
+    .map(item => item.sourceId.toLowerCase()))
+  // Map detail uses candidate IDs for candidate and historical rows, and plant entity IDs for live rows.
+  const candidates = new Map(plants.filter(plant => ['CANDIDATE', 'HISTORICAL'].includes(plant.lifecycleStatus.toUpperCase()))
+    .map(plant => [plant.plantId.toLowerCase(), plant]))
+  const plantByFinding = new Map<string, MapPlant>()
+  const findingsByPlant = new Map<string, ComboPendingFinding[]>()
+  const gpsFindings: ComboPendingFinding[] = []
+  for (const finding of batch.findings) {
+    const id = finding.findingId.toLowerCase()
+    if (boundaryIds.has(id)) continue // The same detection already has its own boundary marker.
+    const plant = !flaggedIds.has(id) && finding.mappingCandidateId ? candidates.get(finding.mappingCandidateId.toLowerCase()) : undefined
+    if (!plant || !Number.isFinite(plant.lat) || !Number.isFinite(plant.lon) || Math.abs(plant.lat) > 90 || Math.abs(plant.lon) > 180) {
+      gpsFindings.push(finding)
+      continue
+    }
+    plantByFinding.set(finding.findingId, plant)
+    const linked = findingsByPlant.get(plant.plantId) ?? []
+    linked.push(finding)
+    findingsByPlant.set(plant.plantId, linked)
+  }
+  return { plantByFinding, findingsByPlant, gpsFindings }
+}
 
 // Bằng chứng gửi kèm: ảnh của chính mục đang quyết định; mục chặn tìm theo SourceId (phát hiện / ngoại lệ ranh giới / vùng),
 // không tìm được thì dùng toàn bộ ảnh của lô. BE chỉ nhận ảnh thuộc lô này.

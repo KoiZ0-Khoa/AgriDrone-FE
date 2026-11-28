@@ -33,6 +33,21 @@ test('blocking reasons parse back into the BE key, even when the source ID conta
   for (const invalid of ['', 'only', 'two:parts', ':id:code', 'type::code']) assert.equal(flow.parseBlockingReason(invalid), null, invalid)
 })
 
+test('COMBO shows detections on trụ only for exact mapping candidate links without spatial exceptions', () => {
+  const plant = { plantId: 'c1', plantCode: 'P-1', row: 1, col: 1, lat: 10.4001, lon: 106.1001, lifecycleStatus: 'CANDIDATE' }
+  const links = flow.comboReviewPlantLinks({
+    ...batch,
+    findings: [finding('linked', { mappingCandidateId: 'C1' }), finding('second', { mappingCandidateId: 'c1' }),
+      finding('profile-only', { plantProfileId: 'c1' }), finding('wrong-id-type', { mappingCandidateId: 'p2' }),
+      finding('near', { mappingCandidateId: 'c1' }), finding('outside', { mappingCandidateId: 'c1' })],
+    boundaryExceptions: [{ ...batch.boundaryExceptions[0], sourceReferenceId: 'outside' }],
+    blockingReasons: ['FINDING_SPATIAL:near:NEEDS_REVIEW'],
+  }, [plant, { ...plant, plantId: 'p2', lifecycleStatus: 'ACTIVE' }])
+  assert.deepEqual([...links.plantByFinding.keys()], ['linked', 'second'])
+  assert.deepEqual(links.findingsByPlant.get('c1').map(item => item.findingId), ['linked', 'second'])
+  assert.deepEqual(links.gpsFindings.map(item => item.findingId), ['profile-only', 'wrong-id-type', 'near'])
+})
+
 test('the default COMBO draft accepts every finding, approves zones and leaves blockers unresolved', () => {
   const draft = flow.initialComboReviewDraft(comboReview)
   assert.deepEqual(Object.values(draft.findings).map(item => item.decision), ['Accept', 'Accept'])
