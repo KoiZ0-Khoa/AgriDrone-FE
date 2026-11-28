@@ -8,11 +8,15 @@ export type PublishedSurveySummary = {
 export type SurveyPole = {
   plantProfileId: string; plantCode: string; longitude: number; latitude: number; row: number | null; column: number | null
 }
+export type PublishedSurveyFinding = {
+  findingId: string; plantProfileId: string; position: { type: 'Point'; coordinates: number[] }
+  observedAt: string; suspectedClassCode: string; confidence: number; uncertainty: string; limitations: string[]
+  evidenceMediaIds?: string[]
+}
 export type PublishedSurveyResult = {
   summary: PublishedSurveySummary; verifiedPoleCount: number; boundaryGeoJson: string | null; poles: SurveyPole[]
   healthAssessmentStatus: string; limitationNotice: string | null; imageIds: string[]
-  findings: { findingId: string; plantProfileId: string; position: { type: 'Point'; coordinates: number[] }
-    observedAt: string; suspectedClassCode: string; confidence: number; uncertainty: string; limitations: string[] }[]
+  findings: PublishedSurveyFinding[]
   zones: { sourceProposalId: string; suspectedClassCode: string; geometry: GeoJsonPolygonV3; findingIds: string[]
     guidanceId: string | null; guidanceVersion: number | null }[]
 }

@@ -82,3 +82,14 @@ test('V3 claim sends the publication ID with the released pole code', async () =
   }
   assert.equal((await claims.reportRefund('owner', 'order', body)).status, 'SUBMITTED')
 })
+
+test('Owner loads a finding image through the authenticated published result endpoint', async () => {
+  globalThis.fetch = async (url, options) => {
+    assert.equal(new URL(url).pathname, '/api/v3/tenant-owner/survey-orders/order/published-result/images/finding-crop')
+    assert.equal(options.headers.Authorization, 'Bearer owner')
+    return new Response(new Uint8Array([255, 216, 255]), { headers: { 'Content-Type': 'image/jpeg' } })
+  }
+  const blob = await results.getPublishedSurveyImage('owner', 'order', 'finding-crop')
+  assert.equal(blob.type, 'image/jpeg')
+  assert.equal(blob.size, 3)
+})

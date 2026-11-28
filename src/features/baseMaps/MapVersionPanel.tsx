@@ -7,7 +7,7 @@ import { CommonState } from '../../components/CommonState'
 import { readableCode } from '../../components/RecordReference'
 import { useAuth } from '../auth/AuthContext'
 import { getPublishedSurveyHistory, getPublishedSurveyResult } from '../surveys/ownerSurveyResultApi'
-import { PublishedPlantFindings, publishedFindingsByProfile } from '../surveys/PublishedPlantFindings'
+import { PublishedFindingEvidenceDialog, PublishedPlantFindings, publishedFindingsByProfile } from '../surveys/PublishedPlantFindings'
 import { dateTime } from '../surveys/workflow'
 import { getMapVersion } from './api'
 import { BaseMapViewer } from './BaseMapViewer'
@@ -30,6 +30,7 @@ export function MapVersionPanel({ token, scopeKey, farmId, farmName, versionId, 
 function MapDetail({ token, scopeKey, map, farmName, manager, refresh, refreshing }: { token: string; scopeKey: string; map: MapVersionDetail; farmName: string; manager: boolean; refresh: () => void; refreshing: boolean }) {
   const { session } = useAuth()
   const [plant, setPlant] = useState<MapPlant | null>(null)
+  const [evidenceId, setEvidenceId] = useState<string>()
   // This read endpoint signs existing media. It does not start map reconstruction.
   const { shownMap, image } = useBaseMapOrthophoto(token, scopeKey, map, manager)
   const tenantId = session?.role === 'OWNER' ? session.tenant?.id : undefined
@@ -50,6 +51,7 @@ function MapDetail({ token, scopeKey, map, farmName, manager, refresh, refreshin
   })
   const result = publication.isError ? null : publication.data
   const matchesMap = result?.summary.mapVersionId === map.versionId && result.summary.farmId === map.farmId
+  const evidenceFinding = matchesMap ? result?.findings.find(finding => finding.findingId === evidenceId) : undefined
   const findingsByProfile = publishedFindingsByProfile(matchesMap ? result : null)
   const hasHighlightedPlants = map.plants.some(item => item.plantProfileId && findingsByProfile.has(item.plantProfileId.toLowerCase()))
   const displayedMap = shownMap ?? map
@@ -70,7 +72,7 @@ function MapDetail({ token, scopeKey, map, farmName, manager, refresh, refreshin
       {manager ? <EditableBaseMapViewer token={token} scopeKey={scopeKey} map={displayedMap} canEdit={['PUBLISHED', 'DRAFT'].includes(mapState(map.status))} disabled={refreshing} selectPlant={setPlant} />
         : <BaseMapViewer key={`${map.versionId}:${map.previewUrl}`} map={map} selectPlant={setPlant} plantAnnotation={item => {
           const findings = item.plantProfileId ? findingsByProfile.get(item.plantProfileId.toLowerCase()) : undefined
-          return findings ? <PublishedPlantFindings findings={findings} /> : null
+          return findings ? <PublishedPlantFindings findings={findings} onViewEvidence={setEvidenceId} /> : null
         }} />}
     </section>
     <section className="resource-panel workflow-section"><div className="resource-panel-heading"><div><strong>Trụ trên bản đồ</strong><span>Bấm vào trụ để xem lịch sử vòng đời.</span></div></div><Table<MapPlant> rowKey="plantId" dataSource={map.plants} pagination={{ pageSize: 20, showSizeChanger: false }} scroll={{ x: 700 }} locale={{ emptyText: 'Phiên bản này chưa có trụ.' }} columns={[
@@ -87,5 +89,7 @@ function MapDetail({ token, scopeKey, map, farmName, manager, refresh, refreshin
       { title: 'Thời điểm', render: (_, item) => dateTime(item.createdAt) },
     ]} /></section>
     {plant ? <PlantLifecycleDialog key={plant.plantId} token={token} scopeKey={scopeKey} farmId={map.farmId} plantId={plant.plantId} owner={!manager} close={() => setPlant(null)} /> : null}
+    {tenantId && result && evidenceFinding ? <PublishedFindingEvidenceDialog token={token} tenantId={tenantId}
+      summary={result.summary} finding={evidenceFinding} close={() => setEvidenceId(undefined)} /> : null}
   </>
 }

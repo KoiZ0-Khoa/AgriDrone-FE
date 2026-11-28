@@ -20,9 +20,10 @@ const poles = [
   { plantProfileId: healthyProfileId, plantCode: 'P02', latitude: 10.401, longitude: 106.4, row: 1, column: 2 },
 ]
 const finding = { findingId: 'finding-1', plantProfileId: profileId.toUpperCase(), suspectedClassCode: 'DISEASE_SOFT_ROT',
-  confidence: 0.82, observedAt: summary.publishedAt, limitations: [] }
+  confidence: 0.82, observedAt: summary.publishedAt, limitations: [], evidenceMediaIds: ['finding-crop', 'finding-source'] }
 const healthy = { ...finding, findingId: 'finding-2', plantProfileId: healthyProfileId, suspectedClassCode: 'HEALTHY_FRUIT_GREEN' }
-const result = { summary, verifiedPoleCount: 2, boundaryGeoJson: null, poles, findings: [finding, healthy], zones: [], imageIds: [] }
+const result = { summary, verifiedPoleCount: 2, boundaryGeoJson: null, poles, findings: [finding, healthy], zones: [],
+  imageIds: ['other-survey-image', ...finding.evidenceMediaIds] }
 const map = { farmId, versionId, versionNumber: 1, sourceSurveyOrderId: orderId, status: 'PUBLISHED', totalPoles: 2,
   bounds: null, boundaryGeoJson: null, previewUrl: null,
   plants: poles.map(pole => ({ plantId: `plant-${pole.plantCode}`, plantCode: pole.plantCode, plantProfileId: pole.plantProfileId,
@@ -84,8 +85,13 @@ test('Owner maps highlight only released findings attached to the matching plant
       assert.match(html, /data-marker="#b42318"><strong>P01<\/strong>/)
       assert.doesNotMatch(html, /data-marker="#b42318"><strong>P02<\/strong>/)
       assert.match(html, /Thối mềm · 82\.0%/)
+      assert.match(html, /Xem ảnh minh chứng/)
     }
 
+    client.setQueryData(resultKey, { ...result, findings: [{ ...finding, evidenceMediaIds: undefined }] })
+    const olderResponse = render(farmMap)
+    assert.match(olderResponse, /Chưa có ảnh minh chứng được phát hành cho trụ này/)
+    assert.doesNotMatch(olderResponse, /Xem ảnh minh chứng/)
     client.setQueryData(resultKey, { ...result, findings: [healthy] })
     assert.doesNotMatch(render(farmMap), /Trụ màu đỏ/)
     client.setQueryData(resultKey, { ...result, summary: { ...summary, mapVersionId: 'different-map' } })

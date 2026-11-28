@@ -1,20 +1,21 @@
 import 'leaflet/dist/leaflet.css'
 import { useQuery } from '@tanstack/react-query'
 import { Alert, Button, Select, Space, Table, Tag } from 'antd'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { CircleMarker, MapContainer, Polygon, Popup } from 'react-leaflet'
 import { Link, useParams } from 'react-router-dom'
 import { CommonState } from '../../components/CommonState'
 import { MapBaseLayers } from '../../components/MapBaseLayers'
 import { useAuth } from '../auth/AuthContext'
 import {
-  comparePublishedSurveys, getPublishedSurveyHistory, getPublishedSurveyImage, getPublishedSurveyResult,
+  comparePublishedSurveys, getPublishedSurveyHistory, getPublishedSurveyResult,
   type PublishedSurveyResult, type PublishedSurveySummary, type SurveyPole,
 } from './ownerSurveyResultApi'
 import { getOwnerOrder } from './ownerOrderApi'
 import { OwnerQualityRefundPanel } from './OwnerQualityRefundPanel'
 import { ownerGuid } from './ownerOrderWorkflow'
-import { PublishedPlantFindings, publishedFindingsByProfile } from './PublishedPlantFindings'
+import { PublishedFindingEvidenceDialog, PublishedPlantFindings, publishedFindingsByProfile } from './PublishedPlantFindings'
+import { PublishedSurveyImagePicker } from './PublishedSurveyImagePicker'
 import { comboFindingLabel } from './resultReviewWorkflow'
 import { SurveyMutationError } from './SurveyMutationError'
 
@@ -32,6 +33,7 @@ export function OwnerSurveyResultPage() {
 }
 
 function PublishedResult({ token, tenantId, orderId }: { token: string; tenantId: string; orderId: string }) {
+  const [evidenceId, setEvidenceId] = useState<string>()
   const query = useQuery({ queryKey: ['owner-published-result', tenantId, orderId], queryFn: ({ signal }) => getPublishedSurveyResult(token, orderId, signal), retry: false })
   const order = useQuery({ queryKey: ['owner-survey-order', tenantId, orderId], queryFn: ({ signal }) => getOwnerOrder(token, orderId, signal), retry: false })
   const back = <Link className="back-link" to={`/survey-payments/${encodeURIComponent(orderId)}`}>← Đơn khảo sát</Link>
@@ -45,6 +47,7 @@ function PublishedResult({ token, tenantId, orderId }: { token: string; tenantId
     publishedResult={result} reloadPublication={() => { void query.refetch() }} />
   if (!result) return <>{back}<CommonState type="empty" title="Kết quả khảo sát chưa hiển thị"
     description="Kiểm tra trạng thái phát hành trên đơn khảo sát." actionLabel="Tải lại" action={() => { void query.refetch() }} />{claims}</>
+  const evidenceFinding = result.findings.find(finding => finding.findingId === evidenceId)
   return <>{back}
     <section className="resource-page-heading">
       <div><span className="page-kicker">{result.summary.serviceCode} · {order.data?.farmName ?? 'Nông trại'}</span>
@@ -53,7 +56,7 @@ function PublishedResult({ token, tenantId, orderId }: { token: string; tenantId
     </section>
     <section className="resource-panel">
       <div className="resource-panel-heading"><div><strong>Bản đồ và vị trí trụ</strong><span>{result.verifiedPoleCount.toLocaleString('vi-VN')} trụ đã xác minh</span></div></div>
-      <PublishedSurveyMap key={result.summary.publicationId} result={result} />
+      <PublishedSurveyMap key={result.summary.publicationId} result={result} onViewEvidence={setEvidenceId} />
     </section>
     {result.summary.serviceCode === 'COMBO' ? <section className="resource-panel workflow-section">
       <div className="resource-panel-heading"><div><strong>Sàng lọc sức khỏe</strong><span>{result.zones.length} vùng · {result.findings.length} phát hiện</span></div></div>
@@ -65,15 +68,23 @@ function PublishedResult({ token, tenantId, orderId }: { token: string; tenantId
           { title: 'Độ tin cậy', render: (_, finding) => `${(finding.confidence * 100).toFixed(1)}%` },
           { title: 'Ghi nhận lúc', render: (_, finding) => dateInVietnam(finding.observedAt) },
           { title: 'Giới hạn', render: (_, finding) => finding.limitations.join(', ') || '—' },
+          { title: 'Ảnh minh chứng', render: (_, finding) => finding.evidenceMediaIds?.length
+            ? <Button type="link" onClick={() => setEvidenceId(finding.findingId)}>Xem ảnh minh chứng</Button> : '—' },
         ]} />
     </section> : null}
-    {result.imageIds.length ? <PublishedSurveyImages key={result.summary.publicationId} token={token} tenantId={tenantId} result={result} /> : null}
+    {result.imageIds.length ? <section className="resource-panel workflow-section">
+      <div className="resource-panel-heading"><strong>Ảnh khảo sát</strong></div>
+      <PublishedSurveyImagePicker key={result.summary.publicationId} token={token} tenantId={tenantId} summary={result.summary}
+        imageIds={result.imageIds} label="Ảnh khảo sát" />
+    </section> : null}
+    {evidenceFinding ? <PublishedFindingEvidenceDialog token={token} tenantId={tenantId} summary={result.summary}
+      finding={evidenceFinding} close={() => setEvidenceId(undefined)} /> : null}
     <PublishedSurveyHistory key={result.summary.publicationId} token={token} tenantId={tenantId} current={result.summary} polesByProfile={polesByProfile} />
     {claims}
   </>
 }
 
-function PublishedSurveyMap({ result }: { result: PublishedSurveyResult }) {
+function PublishedSurveyMap({ result, onViewEvidence }: { result: PublishedSurveyResult; onViewEvidence: (findingId: string) => void }) {
   let boundary: [number, number][][] = []
   try {
     const polygon = result.boundaryGeoJson ? JSON.parse(result.boundaryGeoJson) : null
@@ -97,37 +108,12 @@ function PublishedSurveyMap({ result }: { result: PublishedSurveyResult }) {
         return <CircleMarker key={pole.plantProfileId} center={polePosition(pole)} radius={findings ? 6 : 4}
           pathOptions={{ color: findings ? '#b42318' : '#147658', fillOpacity: 0.75 }}>
           <Popup><strong>{pole.plantCode}</strong> · Hàng / cột {poleGrid(pole)}
-            {findings ? <PublishedPlantFindings findings={findings} /> : null}
+            {findings ? <PublishedPlantFindings findings={findings} onViewEvidence={onViewEvidence} /> : null}
           </Popup>
         </CircleMarker>
       })}
     </MapContainer>
   </>
-}
-
-function PublishedSurveyImages({ token, tenantId, result }: { token: string; tenantId: string; result: PublishedSurveyResult }) {
-  const [imageId, selectImage] = useState<string | undefined>()
-  const [src, setSrc] = useState<{ imageId: string; url: string } | null>(null)
-  const orderId = result.summary.orderId
-  const image = useQuery({
-    queryKey: ['owner-published-image', tenantId, orderId, result.summary.publicationId, imageId],
-    queryFn: ({ signal }) => getPublishedSurveyImage(token, orderId, imageId!, signal),
-    enabled: !!imageId, gcTime: 0, retry: false, refetchOnWindowFocus: false,
-  })
-  useEffect(() => {
-    if (!imageId || !image.data) return
-    const url = URL.createObjectURL(image.data)
-    setSrc({ imageId, url })
-    return () => URL.revokeObjectURL(url)
-  }, [image.data, imageId])
-  return <section className="resource-panel workflow-section">
-    <div className="resource-panel-heading"><strong>Ảnh khảo sát</strong></div>
-    <Select aria-label="Chọn ảnh khảo sát" placeholder="Chọn ảnh để xem" value={imageId} onChange={selectImage}
-      options={result.imageIds.map((id, index) => ({ value: id, label: `Ảnh ${index + 1}` }))} style={{ minWidth: 190 }} />
-    {imageId && image.isPending ? <p>Đang tải ảnh…</p> : null}
-    <SurveyMutationError error={image.error} />
-    {imageId && src?.imageId === imageId && image.isSuccess ? <img className="workflow-notice" src={src.url} alt="Ảnh từ đợt khảo sát đã chọn" style={{ display: 'block', maxWidth: '100%', maxHeight: 620 }} /> : null}
-  </section>
 }
 
 function PublishedSurveyHistory({ token, tenantId, current, polesByProfile }: {
