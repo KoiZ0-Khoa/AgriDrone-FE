@@ -156,9 +156,17 @@ function ComboReviewSection({ token, review, reload, checkHandoff }: { token: st
   const editable = !isFrozen(review) && review.orderStatus.toUpperCase() === 'PROCESSING'
   const problems = comboReviewProblems(review, draft)
   const accepted = batch.findings.filter(finding => draft.findings[finding.findingId]?.decision === 'Accept').length
-  const setFinding = (id: string, change: Partial<ComboReviewDraft['findings'][string]>) => setDraft(value => value && ({ ...value, findings: {
-    ...value.findings, [id]: { ...value.findings[id], ...change, ...(change.decision === 'Exclude' ? { reviewedPlantProfileId: null } : {}) },
-  } }))
+  const setFinding = (id: string, change: Partial<ComboReviewDraft['findings'][string]>) => setDraft(value => {
+    if (!value) return value
+    const previous = value.findings[id]
+    const next = { ...previous, ...change }
+    if (next.decision === 'Exclude') next.reviewedPlantProfileId = null
+    if (previous.autoSnapped && next.reviewedPlantProfileId !== previous.reviewedPlantProfileId) {
+      next.autoSnapped = false
+      if (change.reason === undefined) next.reason = ''
+    }
+    return { ...value, findings: { ...value.findings, [id]: next } }
+  })
   const setZone = (id: string, change: Partial<ComboReviewDraft['zones'][string]>) => setDraft(value => value && ({ ...value, zones: { ...value.zones, [id]: { ...value.zones[id], ...change } } }))
   const setBlockers = (keys: string[], change: Partial<ComboReviewDraft['blockers'][string]>) => setDraft(value => {
     if (!value) return value
