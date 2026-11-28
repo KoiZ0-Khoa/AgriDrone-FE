@@ -620,6 +620,19 @@ a { color: inherit; }
 .workflow-detail-link { display: inline-flex; gap: 8px; align-items: center; color: var(--mint); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; }
 .workflow-notice { margin: 20px 0; }
 .workflow-section { margin-top: 24px; }
+
+.page-container > :where(.resource-panel, .detail-layout) + :is(.resource-panel, .ant-btn) { margin-block-start: 24px; }
+
+/* Space consecutive content rows while keeping controls within the same row aligned. */
+.resource-panel > :where(.ant-alert, .ant-form, .ant-table-wrapper, p.form-hint):where(:not(.workflow-notice, .workflow-toolbar))
+  + :is(.ant-alert, .ant-form, .ant-btn, .ant-space, .ant-flex, .ant-table-wrapper, .ant-upload-wrapper, .workflow-detail-link, p.form-hint):where(:not(.workflow-notice, .workflow-section, .workflow-toolbar)),
+.resource-panel > :where(.ant-btn, .ant-space, .ant-flex, .ant-select, .ant-upload-wrapper):where(:not(.workflow-toolbar))
+  + :is(.ant-alert, .ant-form, .ant-table-wrapper, img, p.form-hint):where(:not(.workflow-notice, .workflow-section, .workflow-toolbar)) {
+  margin-block-start: 16px;
+}
+.resource-panel :where(.ant-form-inline) { row-gap: 12px; }
+.resource-panel :where(input[type="file"]) { max-width: 100%; }
+
 .workflow-prewrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .workflow-review { padding: 18px 0; border-bottom: 1px solid var(--mist); }
 .workflow-review small { margin-left: 16px; color: var(--muted); }

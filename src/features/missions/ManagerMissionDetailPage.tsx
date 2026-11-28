@@ -739,8 +739,10 @@ export function ManagerMissionDetailPage() {
     </StepSection> : null}
     {telemetryEligible || orthophotoEligible ? <StepSection title="Decode & Import Telemetry" status={telemetryEligible ? 'active' : 'done'} summary={importResult ? `${importResult.pointCount} điểm đã import.` : undefined}>
       <p className="form-hint">Giải mã file log bay Blackbox (TXT/BBL), chọn (các) segment hợp lệ rồi import. Import thay toàn bộ dữ liệu telemetry hiện có của nhiệm vụ, không cộng dồn.</p>
-      <input type="file" accept=".txt,.bbl,.csv" disabled={normalizeMutation.isPending} onChange={event => setLogFile(event.target.files?.[0] ?? null)} />
-      <div><Button disabled={!logFile} loading={normalizeMutation.isPending} onClick={() => normalizeMutation.mutate()}>Giải mã (Decode)</Button></div>
+      <Flex wrap align="center" gap="middle">
+        <input type="file" accept=".txt,.bbl,.csv" disabled={normalizeMutation.isPending} onChange={event => setLogFile(event.target.files?.[0] ?? null)} />
+        <Button disabled={!logFile} loading={normalizeMutation.isPending} onClick={() => normalizeMutation.mutate()}>Giải mã (Decode)</Button>
+      </Flex>
       {normalizeMutation.error ? <Alert type="error" showIcon message={missionError(normalizeMutation.error)} /> : null}
       {normalized ? <>
         {normalized.warnings.length > 0 ? <Alert type="warning" showIcon message="Cảnh báo khi giải mã" description={normalized.warnings.join('; ')} /> : null}

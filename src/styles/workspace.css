@@ -41,6 +41,7 @@
 .app-shell .step-section-collapsed .resource-panel-heading strong { font-size: 16px; }
 .app-shell .workflow-toolbar { margin-top: 0; }
 .app-shell .workflow-toolbar.survey-receipt-actions { margin-top: 24px; }
+.app-shell .resource-panel > :where(.ant-alert:not(.workflow-notice), .ant-form:not(.workflow-toolbar), p.form-hint) + .workflow-toolbar { margin-block-start: 16px; }
 .app-shell .workflow-toolbar .ant-select { max-width: 100%; }
 .app-shell .ant-table-cell { overflow-wrap: anywhere; }
 .app-shell .ant-tag { white-space: normal; line-height: 1.5; padding: 4px 8px; }

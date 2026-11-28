@@ -131,7 +131,7 @@ export function YoloDetectionPanel({
         : pickingAnchor ? <span className="form-hint">🎯 Nhấp vào 1 cây góc trên bản đồ bên dưới</span>
         : <Space>Cây neo: 🟢 Tự động<Button size="small" disabled={!result || busy} onClick={() => { setPickingAnchor(true); setManualAddMode(false) }}>📍 Chọn Cây Neo (H1-C1)</Button></Space>}
     </div>
-    <Space style={{ marginBottom: 8 }}>
+    <Space wrap style={{ marginBottom: 12 }}>
       <Button size="small" type={manualAddMode ? 'primary' : 'default'} disabled={!result || busy} onClick={() => { setManualAddMode(value => !value); setPickingAnchor(false) }}>
         {manualAddMode ? '🎯 Đang chấm trụ (click bản đồ để thêm)' : '➕ Chấm thêm trụ bằng tay'}
       </Button>
@@ -174,14 +174,14 @@ export function YoloDetectionPanel({
     {job?.tilingJobId === tilingJobId && job.status === 'COMPLETED' && !result ? <Alert type="warning" showIcon message="Lượt YOLO đã kết thúc nhưng thiếu dữ liệu nhận diện. Hãy kiểm tra lại hoặc chạy lại YOLO." /> : null}
     {startError ? <Alert type="error" showIcon message={missionError(startError)} /> : null}
     {statusError ? <Alert type="error" showIcon message="Chưa đọc được trạng thái YOLO" description={missionError(statusError)} /> : null}
-    {recalculateMutation.error ? <Alert type="error" showIcon style={{ marginBottom: 8 }} message={missionError(recalculateMutation.error)} /> : null}
-    <Space wrap style={{ marginTop: 8 }}>
+    {recalculateMutation.error ? <Alert type="error" showIcon message={missionError(recalculateMutation.error)} /> : null}
+    <Space wrap>
       <Button type="primary" loading={starting} disabled={busy || loading} onClick={runDetection}>Chạy YOLO</Button>
       {active || !!statusError || !!startError ? <Button loading={checking} disabled={starting} onClick={onRefresh}>Kiểm tra lại YOLO</Button> : null}
     </Space>
     {result ? <>
-      <Alert style={{ marginTop: 12 }} type="success" showIcon message={`Quét ${result.totalTilesScanned} tile · ${result.totalUniqueTrees} cây phát hiện · ${result.totalMissingTrees} cây thiếu (nội suy).`} description={`Model: ${result.modelName}`} />
-      <Space wrap style={{ marginTop: 8 }}>
+      <Alert type="success" showIcon message={`Quét ${result.totalTilesScanned} tile · ${result.totalUniqueTrees} cây phát hiện · ${result.totalMissingTrees} cây thiếu (nội suy).`} description={`Model: ${result.modelName}`} />
+      <Space wrap>
         <Tag color="success">🟢 Trụ nhận diện: {result.activeTrees.length}</Tag>
         <Tag color="default">🔴 Nghi ngờ khuyết: {result.missingTrees.length}</Tag>
         <Tag>📐 Kích thước lưới: {gridRows} hàng × {gridCols} cột</Tag>
