@@ -232,7 +232,7 @@ a { color: inherit; }
   border: 1px solid var(--mist);
   border-radius: 4px;
 }
-.workspace-context span { color: #8a8d91; font-size: 9px; font-weight: 600; letter-spacing: .3px; }
+.workspace-context span { color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: .3px; }
 .workspace-context strong { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-context small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-navigation { display: grid; gap: 4px; padding: 0 16px; }
@@ -273,7 +273,7 @@ a { color: inherit; }
 .account-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.25; }
 .account-copy strong { overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .account-copy small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.account-button > svg { color: #8a8d91; font-size: 10px; }
+.account-button > svg { color: var(--muted); font-size: 10px; }
 .app-main-column { min-height: 100vh; margin-left: 264px; }
 .app-topbar {
   position: sticky;
@@ -449,7 +449,7 @@ a { color: inherit; }
 .resource-card p { min-height: 36px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .resource-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
 .resource-meta div { display: grid; gap: 4px; }
-.resource-meta dt { color: #8a8d91; font-size: 10px; }
+.resource-meta dt { color: var(--muted); font-size: 10px; }
 .resource-meta dd { margin: 0; color: var(--ink); font-size: 12px; font-weight: 500; }
 .resource-card-link { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 12px; color: var(--ink); border-top: 1px solid var(--mist); font-size: 12px; font-weight: 500; text-decoration: none; }
 .resource-panel .ant-pagination { margin-top: 24px; text-align: right; }

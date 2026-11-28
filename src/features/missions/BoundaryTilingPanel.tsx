@@ -1,5 +1,5 @@
 import 'leaflet/dist/leaflet.css'
-import { Alert, App, Button, Flex, Slider, Space } from 'antd'
+import { Alert, App, Button, Flex, Popconfirm, Slider, Space } from 'antd'
 import { useState } from 'react'
 import { CircleMarker, ImageOverlay, MapContainer, Polygon, Polyline, useMapEvents } from 'react-leaflet'
 import { MapBaseLayers } from '../../components/MapBaseLayers'
@@ -44,8 +44,10 @@ export function BoundaryTilingPanel({
 
   return <>
     <Space wrap>
-      <Button disabled={!canEdit || points.length === 0} onClick={() => setPoints(previous => previous.slice(0, -1))}>↩ Xóa điểm cuối</Button>
-      <Button disabled={!canEdit || points.length === 0} onClick={() => setPoints([])}>🗑️ Xóa hết</Button>
+      <Button disabled={!canEdit || points.length === 0} onClick={() => setPoints(previous => previous.slice(0, -1))}>Xóa điểm cuối</Button>
+      <Popconfirm title="Xóa hết điểm đã vẽ?" onConfirm={() => setPoints([])} okText="Xóa" cancelText="Hủy" disabled={!canEdit || points.length === 0}>
+        <Button disabled={!canEdit || points.length === 0}>Xóa hết</Button>
+      </Popconfirm>
       <span className="form-hint">{locked ? 'Đã khóa ranh giới.' : 'Bấm lên ảnh để thêm điểm. Vẽ xong, khóa ranh giới bên dưới để cắt tiles.'}</span>
       {approvedBoundary ? <span className="form-hint">Nét đứt là ranh giới đã duyệt của nông trại.</span> : null}
     </Space>

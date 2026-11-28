@@ -151,7 +151,9 @@ export function YoloDetectionPanel({
             <strong>Nghi ngờ khuyết: Hàng {tree.row} - Cột {tree.col}</strong>
             <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
               <Button size="small" type="primary" onClick={() => confirmMissingTree(tree)}>Xác nhận có cây</Button>
-              <Button size="small" danger onClick={() => dismissMissingTree(tree)}>Xóa điểm khuyết</Button>
+              <Popconfirm title="Xóa điểm khuyết này?" onConfirm={() => dismissMissingTree(tree)} okText="Xóa" cancelText="Hủy">
+                <Button size="small" danger>Xóa điểm khuyết</Button>
+              </Popconfirm>
             </div>
           </div></Popup>
         </CircleMarker>)}

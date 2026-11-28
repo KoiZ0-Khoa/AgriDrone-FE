@@ -15,12 +15,11 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
-import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
 import { WorkspaceTheme } from '../components/WorkspaceTheme'
-import { SidebarToggle, useSidebarCollapsed } from './SidebarToggle'
+import { SidebarToggle, useMobileDrawer, useSidebarCollapsed } from './SidebarToggle'
 
 const navigation = [
   { to: '/system', end: true, label: 'Tổng quan hệ thống', icon: <DashboardOutlined aria-hidden="true" /> },
@@ -57,7 +56,7 @@ function pageTitle(pathname: string) {
 }
 
 export function SystemAdminLayout() {
-  const [menuOpen, setMenuOpen] = useState(false)
+  const { menuOpen, openMenu, closeMenu, asideRef } = useMobileDrawer()
   const { collapsed, toggleSidebar } = useSidebarCollapsed()
   const { session, logout } = useAuth()
   const { pathname } = useLocation()
@@ -71,10 +70,10 @@ export function SystemAdminLayout() {
 
   return <WorkspaceTheme><div className={`app-shell system-admin-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
     <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
-    <aside className={`app-sidebar system-admin-sidebar ${menuOpen ? 'is-open' : ''}`} id="system-admin-sidebar">
+    <aside className={`app-sidebar system-admin-sidebar ${menuOpen ? 'is-open' : ''}`} id="system-admin-sidebar" ref={asideRef} role={menuOpen ? 'dialog' : undefined} aria-modal={menuOpen || undefined}>
       <div className="sidebar-brand">
-        <NavLink to="/" aria-label="AgriDrone - Trang chủ" onClick={() => setMenuOpen(false)}><BrandMark /></NavLink>
-        <button className="sidebar-close" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)}><CloseOutlined aria-hidden="true" /></button>
+        <NavLink to="/" aria-label="AgriDrone - Trang chủ" onClick={closeMenu}><BrandMark /></NavLink>
+        <button className="sidebar-close" type="button" aria-label="Đóng menu" onClick={closeMenu}><CloseOutlined aria-hidden="true" /></button>
       </div>
       <div className="workspace-context system-workspace-context">
         <span>Phạm vi quản trị</span>
@@ -83,7 +82,7 @@ export function SystemAdminLayout() {
       </div>
       <nav className="sidebar-navigation" aria-label="Điều hướng quản trị hệ thống">
         <span className="sidebar-group-label">Quản trị</span>
-        {navigation.map(item => <NavLink end={item.end} to={item.to} aria-label={item.label} title={item.label} onClick={() => setMenuOpen(false)} key={item.to}>{item.icon}<span>{item.label}</span></NavLink>)}
+        {navigation.map(item => <NavLink end={item.end} to={item.to} aria-label={item.label} title={item.label} onClick={closeMenu} key={item.to}>{item.icon}<span>{item.label}</span></NavLink>)}
       </nav>
       <div className="sidebar-footer">
         <Dropdown menu={{ items: accountMenu }} trigger={['click']} placement="topLeft">
@@ -95,14 +94,14 @@ export function SystemAdminLayout() {
         </Dropdown>
       </div>
     </aside>
-    {menuOpen ? <button className="sidebar-backdrop" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)} /> : null}
+    {menuOpen ? <button className="sidebar-backdrop" type="button" aria-label="Đóng menu" onClick={closeMenu} /> : null}
     <div className="app-main-column">
       <header className="app-topbar"><div className="app-topbar-heading"><SidebarToggle collapsed={collapsed} onToggle={toggleSidebar} controls="system-admin-sidebar" /><strong>{pageTitle(pathname)}</strong></div><div className="topbar-scope"><span>Phạm vi</span><strong>Toàn hệ thống</strong></div></header>
-      <header className="mobile-header">
-        <button className="mobile-menu-button" type="button" aria-label="Mở menu" aria-controls="system-admin-sidebar" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}><MenuOutlined aria-hidden="true" /></button>
-        <Link to="/" aria-label="AgriDrone - Trang chủ" onClick={() => setMenuOpen(false)}><BrandMark /></Link>
+      <header className="mobile-header" inert={menuOpen || undefined}>
+        <button className="mobile-menu-button" type="button" aria-label="Mở menu" aria-controls="system-admin-sidebar" aria-expanded={menuOpen} onClick={openMenu}><MenuOutlined aria-hidden="true" /></button>
+        <Link to="/" aria-label="AgriDrone - Trang chủ" onClick={closeMenu}><BrandMark /></Link>
       </header>
-      <main className="app-content" id="main-content"><div className="page-container"><Outlet /></div></main>
+      <main className="app-content" id="main-content" inert={menuOpen || undefined}><div className="page-container"><Outlet /></div></main>
     </div>
   </div></WorkspaceTheme>
 }

@@ -80,7 +80,7 @@ export function FarmManagementActions({ farmId, name, version, zone, onArchived 
       okButtonProps={{ danger: mode === 'archive', disabled: blocked || reloading || !Number.isSafeInteger(snapshot.version) || snapshot.version < 1 }}
       confirmLoading={mutation.isPending} cancelButtonProps={{ disabled: busy }} closable={!busy} maskClosable={!busy} keyboard={!busy}
       onOk={() => form.submit()} onCancel={() => { if (!busy) setMode(null) }}>
-      <Form form={form} layout="vertical" requiredMark={false} disabled={busy} onFinish={values => { if (mode && !blocked && !busy) mutation.mutate(values) }}>
+      <Form form={form} layout="vertical" disabled={busy} onFinish={values => { if (mode && !blocked && !busy) mutation.mutate(values) }}>
       <FormSubmit disabled={busy || blocked || !Number.isSafeInteger(snapshot.version) || snapshot.version < 1} />
         {mode === 'edit' ? <>
           <p>Owner hoặc người được phân công quản lý khu vực có thể chỉnh sửa thông tin này.</p>

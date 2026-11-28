@@ -11,12 +11,11 @@ import {
   SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import { Avatar, Dropdown, type MenuProps } from 'antd'
-import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BrandMark } from '../components/BrandMark'
 import { useAuth } from '../features/auth/AuthContext'
 import { WorkspaceTheme } from '../components/WorkspaceTheme'
-import { SidebarToggle, useSidebarCollapsed } from './SidebarToggle'
+import { SidebarToggle, useMobileDrawer, useSidebarCollapsed } from './SidebarToggle'
 
 const roleLabels = {
   SYSTEM_ADMIN: 'Quản trị hệ thống',
@@ -44,7 +43,7 @@ function getPageTitle(pathname: string) {
 }
 
 export function AppLayout() {
-  const [menuOpen, setMenuOpen] = useState(false)
+  const { menuOpen, openMenu, closeMenu, asideRef } = useMobileDrawer()
   const { collapsed, toggleSidebar } = useSidebarCollapsed()
   const { session, logout } = useAuth()
   const { pathname } = useLocation()
@@ -59,12 +58,12 @@ export function AppLayout() {
     <WorkspaceTheme><div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <a className="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
 
-      <aside className={`app-sidebar ${menuOpen ? 'is-open' : ''}`} id="app-sidebar">
+      <aside className={`app-sidebar ${menuOpen ? 'is-open' : ''}`} id="app-sidebar" ref={asideRef} role={menuOpen ? 'dialog' : undefined} aria-modal={menuOpen || undefined}>
         <div className="sidebar-brand">
-          <NavLink to="/" aria-label="AgriDrone - Trang chủ" onClick={() => setMenuOpen(false)}>
+          <NavLink to="/" aria-label="AgriDrone - Trang chủ" onClick={closeMenu}>
             <BrandMark />
           </NavLink>
-          <button className="sidebar-close" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)}>
+          <button className="sidebar-close" type="button" aria-label="Đóng menu" onClick={closeMenu}>
             <CloseOutlined aria-hidden="true" />
           </button>
         </div>
@@ -77,19 +76,19 @@ export function AppLayout() {
 
         <nav className="sidebar-navigation" aria-label="Điều hướng chính">
           <span className="sidebar-group-label">Vận hành</span>
-          <NavLink to="/dashboard" aria-label="Tổng quan" title="Tổng quan" onClick={() => setMenuOpen(false)}>
+          <NavLink to="/dashboard" aria-label="Tổng quan" title="Tổng quan" onClick={closeMenu}>
             <DashboardOutlined aria-hidden="true" />
             <span>Tổng quan</span>
           </NavLink>
           {activeNavigation.map((item) => (
-            <NavLink to={item.to} aria-label={item.label} title={item.label} onClick={() => setMenuOpen(false)} key={item.to}>
+            <NavLink to={item.to} aria-label={item.label} title={item.label} onClick={closeMenu} key={item.to}>
               {item.icon}
               <span>{item.label}</span>
             </NavLink>
           ))}
-          {session.role === 'OWNER' ? <NavLink to="/survey-requests/new" aria-label="Đăng ký khảo sát" title="Đăng ký khảo sát" onClick={() => setMenuOpen(false)}><RocketOutlined /><span>Đăng ký khảo sát</span></NavLink> : null}
-          {session.role === 'OWNER' ? <NavLink to="/survey-payments" aria-label="Thanh toán khảo sát" title="Thanh toán khảo sát" onClick={() => setMenuOpen(false)}><CreditCardOutlined /><span>Thanh toán khảo sát</span></NavLink> : null}
-          <NavLink to="/account" aria-label="Tài khoản" title="Tài khoản" onClick={() => setMenuOpen(false)}><SafetyCertificateOutlined /><span>Tài khoản</span></NavLink>
+          {session.role === 'OWNER' ? <NavLink to="/survey-requests/new" aria-label="Đăng ký khảo sát" title="Đăng ký khảo sát" onClick={closeMenu}><RocketOutlined /><span>Đăng ký khảo sát</span></NavLink> : null}
+          {session.role === 'OWNER' ? <NavLink to="/survey-payments" aria-label="Thanh toán khảo sát" title="Thanh toán khảo sát" onClick={closeMenu}><CreditCardOutlined /><span>Thanh toán khảo sát</span></NavLink> : null}
+          <NavLink to="/account" aria-label="Tài khoản" title="Tài khoản" onClick={closeMenu}><SafetyCertificateOutlined /><span>Tài khoản</span></NavLink>
         </nav>
 
         <div className="sidebar-footer">
@@ -107,7 +106,7 @@ export function AppLayout() {
       </aside>
 
       {menuOpen ? (
-        <button className="sidebar-backdrop" type="button" aria-label="Đóng menu" onClick={() => setMenuOpen(false)} />
+        <button className="sidebar-backdrop" type="button" aria-label="Đóng menu" onClick={closeMenu} />
       ) : null}
 
       <div className="app-main-column">
@@ -118,21 +117,21 @@ export function AppLayout() {
             <strong>{session.tenant?.name ?? 'Toàn hệ thống'}</strong>
           </div>
         </header>
-        <header className="mobile-header">
+        <header className="mobile-header" inert={menuOpen || undefined}>
           <button
             className="mobile-menu-button"
             type="button"
             aria-label="Mở menu"
             aria-controls="app-sidebar"
             aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(true)}
+            onClick={openMenu}
           >
             <MenuOutlined aria-hidden="true" />
           </button>
-          <Link to="/" aria-label="AgriDrone - Trang chủ" onClick={() => setMenuOpen(false)}><BrandMark /></Link>
+          <Link to="/" aria-label="AgriDrone - Trang chủ" onClick={closeMenu}><BrandMark /></Link>
         </header>
 
-        <main className="app-content" id="main-content">
+        <main className="app-content" id="main-content" inert={menuOpen || undefined}>
           <div className="page-container">
             <Outlet />
           </div>
