@@ -19,9 +19,9 @@ function PickMapPoint({ interaction }: { interaction: MapInteraction }) {
   return null
 }
 
-export function BaseMapViewer({ map, selectPlant, interaction, onImageState, renderPlant, children }: {
+export function BaseMapViewer({ map, selectPlant, interaction, onImageState, renderPlant, plantAnnotation, children }: {
   map: MapVersionDetail; selectPlant?: (plant: MapPlant) => void; interaction?: MapInteraction; onImageState?: (ready: boolean) => void
-  renderPlant?: (plant: MapPlant) => ReactNode; children?: ReactNode
+  renderPlant?: (plant: MapPlant) => ReactNode; plantAnnotation?: (plant: MapPlant) => ReactNode; children?: ReactNode
 }) {
   const [failedImage, setFailedImage] = useState<string | null>(null)
   const mapRef = useRef<LeafletMap | null>(null)
@@ -41,9 +41,26 @@ export function BaseMapViewer({ map, selectPlant, interaction, onImageState, ren
       <MapBaseLayers />
       {image && imageBounds && !imageFailed ? <ImageOverlay url={image} bounds={imageBounds} eventHandlers={{ load: () => onImageState?.(true), error: () => { setFailedImage(image); onImageState?.(false) } }} /> : null}
       {boundary ? <GeoJSON data={boundary} style={{ color: '#0c8c5e', fillOpacity: 0.03, weight: 2 }} /> : null}
-      {map.plants.filter(plant => Number.isFinite(plant.lat) && Number.isFinite(plant.lon) && Math.abs(plant.lat) <= 90 && Math.abs(plant.lon) <= 180).map(plant => renderPlant ? renderPlant(plant) : <CircleMarker key={plant.plantId} center={[plant.lat, plant.lon]} radius={5} bubblingMouseEvents={false} pathOptions={{ color: plant.lifecycleStatus.toUpperCase() === 'ACTIVE' ? '#0c8c5e' : '#6b7280', fillOpacity: 0.85 }}>
-        <Popup><strong>{readableCode(plant.plantCode) ?? `Trụ hàng ${plant.row}, cột ${plant.col}`}</strong><p>Hàng {plant.row} · Cột {plant.col}<br />{lifecycleLabel(plant.lifecycleStatus)}</p><div className="base-map-popup-actions">{selectPlant ? <Button onClick={() => selectPlant(plant)}>Lịch sử trụ</Button> : null}{interaction && !['REMOVED', 'REPLACED'].includes(plant.lifecycleStatus.toUpperCase()) ? <><Button disabled={interaction.disabled} onClick={() => beginPlantEdit(plant, 'Relocate')}>Dời trên ảnh</Button><Button danger disabled={interaction.disabled} onClick={() => beginPlantEdit(plant, 'Reject')}>Loại bỏ trụ</Button></> : null}</div></Popup>
-      </CircleMarker>)}
+      {map.plants.filter(plant => Number.isFinite(plant.lat) && Number.isFinite(plant.lon) && Math.abs(plant.lat) <= 90 && Math.abs(plant.lon) <= 180).map(plant => {
+        if (renderPlant) return renderPlant(plant)
+        const annotation = plantAnnotation?.(plant)
+        const status = plant.lifecycleStatus.toUpperCase()
+        const color = annotation ? '#b42318' : status === 'ACTIVE' ? '#0c8c5e' : '#6b7280'
+        return <CircleMarker key={plant.plantId} center={[plant.lat, plant.lon]} radius={annotation ? 7 : 5} bubblingMouseEvents={false} pathOptions={{ color, fillOpacity: 0.85 }}>
+          <Popup>
+            <strong>{readableCode(plant.plantCode) ?? `Trụ hàng ${plant.row}, cột ${plant.col}`}</strong>
+            <p>Hàng {plant.row} · Cột {plant.col}<br />{lifecycleLabel(plant.lifecycleStatus)}</p>
+            {annotation}
+            <div className="base-map-popup-actions">
+              {selectPlant ? <Button onClick={() => selectPlant(plant)}>Lịch sử trụ</Button> : null}
+              {interaction && !['REMOVED', 'REPLACED'].includes(status) ? <>
+                <Button disabled={interaction.disabled} onClick={() => beginPlantEdit(plant, 'Relocate')}>Dời trên ảnh</Button>
+                <Button danger disabled={interaction.disabled} onClick={() => beginPlantEdit(plant, 'Reject')}>Loại bỏ trụ</Button>
+              </> : null}
+            </div>
+          </Popup>
+        </CircleMarker>
+      })}
       {children}
       {interaction?.mode && image && !imageFailed ? <PickMapPoint interaction={interaction} /> : null}
       {interaction?.mode && interaction.point ? <Marker position={[interaction.point.lat, interaction.point.lon]} icon={editIcon} draggable={!interaction.disabled && !imageFailed} title="Vị trí trụ đang chọn — kéo để điều chỉnh" eventHandlers={{ dragend: event => {
