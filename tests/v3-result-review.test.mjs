@@ -33,6 +33,30 @@ test('blocking reasons parse back into the BE key, even when the source ID conta
   for (const invalid of ['', 'only', 'two:parts', ':id:code', 'type::code']) assert.equal(flow.parseBlockingReason(invalid), null, invalid)
 })
 
+test('grouped exclusion updates the finding and its blockers while retaining separate keys and evidence for BE', () => {
+  const review = { ...comboReview, comboPendingBatch: { ...batch, diseaseZones: [], blockingReasons: [
+    'BOUNDARY_EXCEPTION:f1:OUT_OF_BOUNDARY', 'FINDING_UNCERTAINTY:f1:REQUIRES_REVIEW', 'FINDING_UNCERTAINTY:f2:REQUIRES_REVIEW',
+  ] } }
+  const original = { ...flow.initialComboReviewDraft(review), reviewReason: 'Đã đối chiếu ảnh' }
+  const groups = flow.comboBlockerGroups(review.comboPendingBatch, flow.blockerItems(review.comboPendingBatch))
+  assert.equal(groups.length, 2)
+  assert.equal(groups[0].items.length, 2)
+  assert.equal(flow.excludeComboGroups(original, groups, ' '), original)
+  const partial = flow.excludeComboGroups(original, [groups[0]], ' Nằm ngoài vườn ')
+  assert.deepEqual(partial.findings.f1, { decision: 'Exclude', reason: 'Nằm ngoài vườn' })
+  assert.equal(partial.findings.f2, original.findings.f2)
+  assert.equal(flow.canExcludeComboGroup(partial, groups[0]), false)
+  const draft = flow.excludeComboGroups(partial, [groups[1]], 'Nhận diện nhầm')
+  draft.confirmNoDiseaseObserved = true
+  draft.negativeEvidence = 'Đã rà soát ảnh'
+  const body = flow.comboReviewBody(review, draft)
+  assert.deepEqual(body.blockerResolutions.map(item => [item.sourceType, item.sourceId, item.resolution, item.reason, item.evidenceMediaIds]), [
+    ['BOUNDARY_EXCEPTION', 'f1', 'Excluded', 'Nằm ngoài vườn', ['img-f1']],
+    ['FINDING_UNCERTAINTY', 'f1', 'Excluded', 'Nằm ngoài vườn', ['img-f1']],
+    ['FINDING_UNCERTAINTY', 'f2', 'Excluded', 'Nhận diện nhầm', ['img-f2']],
+  ])
+})
+
 test('COMBO shows detections on trụ only for exact mapping candidate links without spatial exceptions', () => {
   const plant = { plantId: 'c1', plantCode: 'P-1', row: 1, col: 1, lat: 10.4001, lon: 106.1001, lifecycleStatus: 'CANDIDATE' }
   const activePlant = { ...plant, plantId: 'p2', mappingCandidateId: 'c2', row: 2, lifecycleStatus: 'ACTIVE' }

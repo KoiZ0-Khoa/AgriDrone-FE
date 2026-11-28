@@ -1,6 +1,6 @@
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Checkbox, Form, Input, Radio, Select, Space, Table, Tag } from 'antd'
+import { Alert, Button, Checkbox, Form, Input, Modal, Radio, Select, Space, Table, Tag } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
@@ -13,9 +13,10 @@ import { getAssignedOrder } from './orderApi'
 import { ownerGuid } from './ownerOrderWorkflow'
 import { orderStatusLabels } from './orderWorkflow'
 import {
-  blockerItems, blockerResolutionLabels, comboBlockerLabel, comboFindingLabel, comboReviewBody, comboReviewProblems, defaultFreezeDecision, findingDecisionLabels, freezeBlocker,
+  blockerItems, blockerResolutionLabels, canExcludeComboGroup, comboBlockerGroups, comboBlockerLabel, comboFindingLabel, comboReviewBody, comboReviewProblems,
+  defaultFreezeDecision, excludeComboGroups, findingDecisionLabels, freezeBlocker,
   freezeDecisionLabels, freezeResultBody, initialComboReviewDraft, isCombo, isFrozen, isStaleReviewError, outcomeLabels, zoneDecisionLabels,
-  type ComboReviewDraft,
+  type ComboBlockerGroup, type ComboReviewDraft,
 } from './resultReviewWorkflow'
 import { freezeResultReview, getCaptureAttempts, getResultReview, recordComboReview } from './v3Api'
 import type { ComboBlockerResolutionValue, ComboFindingDecisionValue, ComboPendingFinding, ComboPendingZone, FreezeResult, FreezeResultReviewDecision, ResultReview } from './v3Types'
@@ -130,6 +131,8 @@ function ComboReviewSection({ token, review, reload, checkHandoff }: { token: st
   const batch = review.comboPendingBatch
   const [draft, setDraft] = useState<ComboReviewDraft | null>(() => batch ? initialComboReviewDraft(review) : null)
   const [selection, setSelection] = useState<ComboReviewSelection>({ kind: 'finding', id: null })
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([])
+  const [bulkReason, setBulkReason] = useState<string | null>(null)
   const mapAnchor = useRef<HTMLDivElement>(null)
   const operation = useRef<V3Operation | null>(null)
   useEffect(() => { operation.current = null }, [review.orderVersion])
@@ -153,10 +156,19 @@ function ComboReviewSection({ token, review, reload, checkHandoff }: { token: st
   const accepted = batch.findings.filter(finding => draft.findings[finding.findingId]?.decision === 'Accept').length
   const setFinding = (id: string, change: Partial<ComboReviewDraft['findings'][string]>) => setDraft(value => value && ({ ...value, findings: { ...value.findings, [id]: { ...value.findings[id], ...change } } }))
   const setZone = (id: string, change: Partial<ComboReviewDraft['zones'][string]>) => setDraft(value => value && ({ ...value, zones: { ...value.zones, [id]: { ...value.zones[id], ...change } } }))
-  const setBlocker = (key: string, change: Partial<ComboReviewDraft['blockers'][string]>) => setDraft(value => value && ({ ...value, blockers: { ...value.blockers, [key]: { ...value.blockers[key], ...change } } }))
+  const setBlockers = (keys: string[], change: Partial<ComboReviewDraft['blockers'][string]>) => setDraft(value => {
+    if (!value) return value
+    const blockers = { ...value.blockers }
+    for (const key of keys) blockers[key] = { ...blockers[key], ...change }
+    return { ...value, blockers }
+  })
   const current = review.currentComboReview
   const disabled = !editable || mutation.isPending
   const blockers = blockerItems(batch)
+  const groups = comboBlockerGroups(batch, blockers)
+  const pendingGroups = groups.filter(group => group.items.some(item => draft.blockers[item.key]?.resolution === 'Unresolved')).length
+  const eligible = groups.filter(group => canExcludeComboGroup(draft, group))
+  const selected = eligible.filter(group => selectedGroups.includes(group.key))
   const locate = (next: ComboReviewSelection) => {
     setSelection(next)
     mapAnchor.current?.scrollIntoView({ block: 'start' })
@@ -177,7 +189,7 @@ function ComboReviewSection({ token, review, reload, checkHandoff }: { token: st
 
     <div ref={mapAnchor} className="combo-review-map-anchor">
       <ComboReviewVisuals token={token} review={review} batch={batch} draft={draft} blockers={blockers} disabled={disabled}
-        selection={selection} onSelect={setSelection} onFindingChange={setFinding} onZoneChange={setZone} onBlockerChange={setBlocker} />
+        selection={selection} onSelect={setSelection} onFindingChange={setFinding} onZoneChange={setZone} onBlockerChange={(key, change) => setBlockers([key], change)} />
     </div>
 
     <details className="combo-review-list">
@@ -205,17 +217,51 @@ function ComboReviewSection({ token, review, reload, checkHandoff }: { token: st
     </details>
 
     <details className="combo-review-list">
-    <summary>Mục cần xử lý ({blockers.filter(item => draft.blockers[item.key]?.resolution === 'Unresolved').length}/{blockers.length})</summary>
-    <Table rowKey="key" size="small" dataSource={blockers} pagination={blockers.length > 10 ? { pageSize: 10 } : false} scroll={{ x: 760 }} locale={{ emptyText: 'Không có mục chặn.' }} columns={[
-      { title: 'Mục', render: (_, item) => <strong>{comboBlockerLabel(item.reasonCode)}</strong> },
-      { title: 'Bản đồ', render: (_, item) => {
-        const target = selectionForComboBlocker(batch, item)
+    <summary>Mục cần xử lý ({pendingGroups}/{groups.length} nhóm)</summary>
+    {editable && eligible.length ? <Space wrap className="workflow-toolbar">
+      <Button danger disabled={disabled || !selected.length} onClick={() => setBulkReason('')}>Loại phát hiện đã chọn{selected.length ? ` (${selected.length})` : ''}</Button>
+    </Space> : null}
+    <Table<ComboBlockerGroup> rowKey="key" size="small" dataSource={groups} pagination={groups.length > 10 ? { pageSize: 10 } : false} scroll={{ x: 760 }} locale={{ emptyText: 'Không có mục chặn.' }}
+      rowSelection={editable && eligible.length ? { selectedRowKeys: selected.map(group => group.key), onChange: keys => setSelectedGroups(keys.map(String)),
+        hideSelectAll: true, preserveSelectedRowKeys: true, getCheckboxProps: group => ({ disabled: disabled || !canExcludeComboGroup(draft, group) }) } : undefined} columns={[
+      { title: 'Mục', render: (_, group) => <Space orientation="vertical" size={4}>
+        {group.finding ? <strong>{comboFindingLabel(group.finding.suspectedClassCode)}</strong> : null}
+        <span>{group.items.map(item => comboBlockerLabel(item.reasonCode)).join(' · ')}</span>
+      </Space> },
+      { title: 'Bản đồ', render: (_, group) => {
+        const target = selectionForComboBlocker(batch, group.items[0])
         return target ? <Button size="small" onClick={() => locate(target)}>Mở trên bản đồ</Button> : null
       } },
-      { title: 'Xử lý', render: (_, item) => <Select aria-label={`Xử lý mục chặn ${item.key}`} disabled={disabled} value={draft.blockers[item.key]?.resolution} onChange={(resolution: ComboBlockerResolutionValue) => setBlocker(item.key, { resolution })} options={Object.entries(blockerResolutionLabels).map(([value, label]) => ({ value, label }))} style={{ minWidth: 180 }} /> },
-      { title: 'Giải trình (bắt buộc khi đã xử lý)', render: (_, item) => <Input disabled={disabled} maxLength={500} value={draft.blockers[item.key]?.reason} onChange={event => setBlocker(item.key, { reason: event.target.value })} /> },
+      { title: 'Xử lý và giải trình', render: (_, group) => {
+        const first = draft.blockers[group.items[0].key]
+        const shared = group.items.every(item => draft.blockers[item.key]?.resolution === first?.resolution && draft.blockers[item.key]?.reason === first?.reason)
+        const selections = shared ? [group.items] : group.items.map(item => [item])
+        return <Space orientation="vertical" size={8} style={{ width: '100%' }}>{selections.map(items => {
+          const item = items[0]
+          const keys = items.map(entry => entry.key)
+          const value = draft.blockers[item.key]
+          return <div key={item.key} className="combo-review-fields">
+            {shared ? null : <small>{comboBlockerLabel(item.reasonCode)}</small>}
+            <Select aria-label={`Xử lý mục chặn ${item.key}`} disabled={disabled} value={value?.resolution}
+              onChange={(resolution: ComboBlockerResolutionValue) => setBlockers(keys, { resolution })} options={Object.entries(blockerResolutionLabels).map(([value, label]) => ({ value, label }))} />
+            {value?.resolution !== 'Unresolved' ? <Input aria-label={`Giải trình ${item.key}`} placeholder="Nhập giải trình" disabled={disabled} maxLength={500}
+              value={value?.reason} onChange={event => setBlockers(keys, { reason: event.target.value })} /> : null}
+          </div>
+        })}</Space>
+      } },
     ]} />
     </details>
+    {bulkReason !== null ? <Modal open title={`Loại ${selected.length} phát hiện khỏi kết quả`} okText="Áp dụng" cancelText="Hủy"
+      okButtonProps={{ danger: true, disabled: disabled || !selected.length || !bulkReason.trim() }} onCancel={() => setBulkReason(null)}
+      onOk={() => {
+        if (disabled) return
+        setDraft(value => value && excludeComboGroups(value, selected, bulkReason))
+        setSelectedGroups([])
+        setBulkReason(null)
+      }}>
+      <p>Chỉ áp dụng cho các phát hiện đã xác minh cần loại. Lý do này được ghi cho từng phát hiện và các mục liên quan trong lần duyệt.</p>
+      <Input.TextArea aria-label="Lý do loại các phát hiện đã chọn" placeholder="Nhập lý do chung" rows={2} maxLength={500} showCount value={bulkReason} onChange={event => setBulkReason(event.target.value)} />
+    </Modal> : null}
 
     {editable ? <Form layout="vertical" className="workflow-section">
       <Form.Item label="Kết luận lần duyệt"><Radio.Group disabled={disabled} value={draft.outcome} onChange={event => setDraft(value => value && ({ ...value, outcome: event.target.value }))} options={Object.entries(outcomeLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>

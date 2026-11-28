@@ -97,6 +97,37 @@ export type ComboReviewDraft = {
   outcome: ComboReviewOutcome; reviewReason: string; confirmNoDiseaseObserved: boolean; negativeEvidence: string
 }
 
+export type ComboBlockerGroup = { key: string; finding?: ComboPendingFinding; items: BlockerItem[] }
+
+export function comboBlockerGroups(batch: ComboPendingBatch, blockers: BlockerItem[]): ComboBlockerGroup[] {
+  const findings = new Map(batch.findings.map(finding => [finding.findingId, finding]))
+  const groups = new Map<string, ComboBlockerGroup>()
+  for (const item of blockers) {
+    const finding = findings.get(item.sourceId)
+    const key = finding ? `finding:${finding.findingId}` : item.key
+    const group = groups.get(key)
+    if (group) group.items.push(item)
+    else groups.set(key, { key, finding, items: [item] })
+  }
+  return [...groups.values()]
+}
+
+export function canExcludeComboGroup(draft: ComboReviewDraft, group: ComboBlockerGroup): group is ComboBlockerGroup & { finding: ComboPendingFinding } {
+  return !!group.finding?.evidenceMediaIds.length && group.items.every(item => draft.blockers[item.key]?.resolution === 'Unresolved')
+}
+
+export function excludeComboGroups(draft: ComboReviewDraft, groups: ComboBlockerGroup[], reason: string): ComboReviewDraft {
+  const note = reason.trim()
+  const eligible = groups.filter(group => canExcludeComboGroup(draft, group))
+  if (!note || note.length > 500 || eligible.length === 0) return draft
+  const findings = { ...draft.findings }, blockers = { ...draft.blockers }
+  for (const { finding, items } of eligible) {
+    findings[finding.findingId] = { decision: 'Exclude', reason: note }
+    for (const item of items) blockers[item.key] = { resolution: 'Excluded', reason: note }
+  }
+  return { ...draft, findings, blockers }
+}
+
 // Bản nháp mặc định: lấy lại quyết định của lần duyệt trước nếu có; ngược lại chấp nhận mọi phát hiện, duyệt mọi vùng
 // (chọn sẵn hướng dẫn nếu chỉ có một), mục chặn để "Chưa xử lý".
 export function initialComboReviewDraft(review: ResultReview): ComboReviewDraft {

@@ -12,7 +12,7 @@ const tokens = { orderId: 'order', expectedOrderVersion: 40, expectedAttemptId: 
 const mapReview = { orderId: 'order', tenantId: 't', farmId: 'farm', orderVersion: 40, orderStatus: 'PROCESSING', serviceCode: 'MAP', screensDisease: false, mappingKind: 'FirstBaseline', captureAttemptId: 'att', captureAttemptVersion: 9, captureAttemptStatus: 'PROCESSING', missionId: 'm', farmBaseMapVersionId: 'map', baselineMapVersionId: 'base', farmBoundaryVersionId: 'b', mappingCandidateBatchId: 'mb', verifiedPoleCountSnapshotId: 'snap', verifiedBillablePoleCount: 1234, countSnapshotFingerprint: fp('a'), countSnapshotRevision: 1, currentApprovedResultRevisionId: null, currentApprovedResultFingerprint: null, comboPendingBatch: null, currentComboReview: null, expectedFreezeTokens: tokens }
 const batch = {
   batchId: 'batch', jobId: 'job', sourceRevision: 2, canonicalFingerprint: fp('b'), producedAt: '2026-11-20T02:00:00Z', importedAt: '2026-11-20T02:01:00Z',
-  blockingCount: 1, blockingReasons: ['BOUNDARY_EXCEPTION:f1:OUT_OF_BOUNDARY'], status: 'Pending', resultNature: 'PRELIMINARY', limitationNotice: 'Kết quả sơ bộ, không thay thế chẩn đoán',
+  blockingCount: 2, blockingReasons: ['BOUNDARY_EXCEPTION:f1:OUT_OF_BOUNDARY', 'FINDING_UNCERTAINTY:f1:REQUIRES_REVIEW'], status: 'Pending', resultNature: 'PRELIMINARY', limitationNotice: 'Kết quả sơ bộ, không thay thế chẩn đoán',
   findings: [{ findingId: 'f1', findingVersion: 1, plantProfileId: null, mappingCandidateId: null, longitude: 106.1, latitude: 10.4, observedAt: '2026-11-20T01:00:00Z', suspectedClassCode: 'ANTHRACNOSE', classificationNature: 'SUSPECTED', confidence: 0.82, uncertainty: 'MEDIUM', limitations: [], evidenceMediaIds: ['img-f1'] }],
   boundaryExceptions: [{ sourceReferenceId: 'f1', longitude: 106.1, latitude: 10.4, boundaryClassification: 'OUT_OF_BOUNDARY', measuredBoundaryDistanceM: 2.5, boundaryThresholdM: 1, evidenceMediaIds: ['img-f1'] }],
   diseaseZones: [{ sourceProposalId: 'zone-1', geometry: { type: 'Polygon', coordinates: [] }, suspectedClassCode: 'ANTHRACNOSE', membershipVersion: 1, memberships: [{ findingId: 'f1', plantProfileId: null, mappingCandidateId: null, confidence: 0.8 }], guidanceCandidates: [{ guidanceId: 'g1', versionNumber: 3, code: 'SPRAY-A', sourceReference: 'ref' }], evidenceMediaIds: ['img-zone'] }],
@@ -90,6 +90,9 @@ test('V3 result review page renders MAP count and freeze, COMBO decisions, and t
     assert.match(combo, /82%/)
     assert.match(combo, /SPRAY-A/) // chỉ một hướng dẫn: chọn sẵn
     assert.match(combo, /Ngoài ranh giới/)
+    assert.match(combo, /Mục cần xử lý \(1\/1 nhóm\)/)
+    assert.match(combo, /Ngoài ranh giới · Phát hiện cần xem lại/)
+    assert.match(combo, /Loại phát hiện đã chọn/)
     assert.equal((combo.match(/Mở trên bản đồ/g) ?? []).length, 3) // phát hiện, vùng và mục chặn
     assert.ok(combo.indexOf('Bản đồ và ảnh minh chứng') < combo.indexOf('Danh sách phát hiện'))
     assert.match(combo, /Còn mục chặn chưa xử lý/)
